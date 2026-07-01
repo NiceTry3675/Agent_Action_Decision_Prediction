@@ -343,13 +343,63 @@ def save_model_artifact(model, output_dir, class_bias, args, validation_metrics,
 
 def append_results_csv(path, row):
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["experiment_id", "model_family", "features", "split_type", "macro_f1", "notes", "artifact_path"]
-    exists = path.exists()
-    with path.open("a", encoding="utf-8", newline="") as f:
+    default_fieldnames = [
+        "experiment_id",
+        "model_family",
+        "base_model",
+        "features",
+        "serializer_name",
+        "split_type",
+        "seed",
+        "fold_id",
+        "max_length",
+        "epochs",
+        "learning_rate",
+        "batch_size",
+        "class_weight_power",
+        "label_smoothing",
+        "replay_mode",
+        "replay_size",
+        "macro_f1_raw",
+        "macro_f1_bias_tuned",
+        "macro_f1",
+        "weakest_classes",
+        "top_confusions",
+        "prediction_distribution",
+        "artifact_path",
+        "val_logits_path",
+        "test_logits_path",
+        "inference_time_sec",
+        "runtime_sec",
+        "artifact_size_mb",
+        "train_command",
+        "notes",
+        "decision",
+    ]
+    row = {key: row.get(key, "") for key in set(default_fieldnames) | set(row)}
+    fieldnames = default_fieldnames[:]
+    existing_rows = []
+    if path.exists() and path.stat().st_size > 0:
+        with path.open(encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames:
+                for fieldname in reader.fieldnames:
+                    if fieldname not in fieldnames:
+                        fieldnames.append(fieldname)
+                existing_rows = list(reader)
+    for fieldname in row:
+        if fieldname not in fieldnames:
+            fieldnames.append(fieldname)
+
+    needs_rewrite = bool(existing_rows) and any(fieldname not in existing_rows[0] for fieldname in fieldnames)
+    mode = "w" if needs_rewrite or not path.exists() or path.stat().st_size == 0 else "a"
+    rows_to_write = existing_rows + [row] if mode == "w" else [row]
+    with path.open(mode, encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not exists:
+        if mode == "w":
             writer.writeheader()
-        writer.writerow({key: row.get(key, "") for key in fieldnames})
+        for output_row in rows_to_write:
+            writer.writerow({key: output_row.get(key, "") for key in fieldnames})
 
 
 def append_research_log(path, experiment_id, split_type, metrics, args, decision):

@@ -403,3 +403,422 @@
 - Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
 - Decision: keep as GPU candidate
 - Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
+## 20260701_113611_gpu_transformer_session_current_v1_len160_qv600_stage1_cache_current_smoke
+
+- Date/time: 2026-07-01 11:36:11 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.665491
+- Overall Macro-F1: 0.665491
+- Per-class observations:
+  - Weakest: ask_user=0.368, read_file=0.413, run_tests=0.565, plan_task=0.571, web_search=0.575
+  - Strongest: respond_only=1.000, write_file=0.927, apply_patch=0.891, edit_file=0.889, run_bash=0.659
+- Top confusions: [(18, 'ask_user', 'plan_task'), (14, 'read_file', 'grep_search'), (11, 'list_directory', 'read_file'), (10, 'glob_pattern', 'read_file'), (10, 'run_tests', 'lint_or_typecheck'), (10, 'web_search', 'ask_user'), (10, 'run_bash', 'run_tests'), (8, 'ask_user', 'web_search')]
+- Prediction distribution: {'apply_patch': 49, 'ask_user': 33, 'edit_file': 47, 'glob_pattern': 27, 'grep_search': 54, 'lint_or_typecheck': 41, 'list_directory': 43, 'plan_task': 55, 'read_file': 49, 'respond_only': 43, 'run_bash': 39, 'run_tests': 42, 'web_search': 38, 'write_file': 40}
+- Runtime or package-size concerns: runtime=208.2s, tokenize=16.0s, train=188.2s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_113611_gpu_transformer_session_current_v1_len160_qv600_stage1_cache_current_smoke_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_114116_gpu_transformer_session_recent_pairs_v1_len160_qv600_stage1_recent_pairs_smoke
+
+- Date/time: 2026-07-01 11:41:16 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=recent_pairs_v1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.542845
+- Overall Macro-F1: 0.542845
+- Per-class observations:
+  - Weakest: web_search=0.185, lint_or_typecheck=0.373, ask_user=0.418, read_file=0.432, run_tests=0.455
+  - Strongest: respond_only=0.988, write_file=0.964, edit_file=0.635, list_directory=0.625, run_bash=0.529
+- Top confusions: [(29, 'web_search', 'ask_user'), (25, 'lint_or_typecheck', 'run_tests'), (23, 'apply_patch', 'edit_file'), (17, 'run_bash', 'run_tests'), (15, 'ask_user', 'plan_task'), (14, 'run_tests', 'run_bash'), (14, 'plan_task', 'ask_user'), (12, 'glob_pattern', 'grep_search')]
+- Prediction distribution: {'apply_patch': 32, 'ask_user': 67, 'edit_file': 61, 'glob_pattern': 24, 'grep_search': 54, 'lint_or_typecheck': 16, 'list_directory': 53, 'plan_task': 42, 'read_file': 45, 'respond_only': 42, 'run_bash': 44, 'run_tests': 67, 'web_search': 12, 'write_file': 41}
+- Runtime or package-size concerns: runtime=196.4s, tokenize=12.4s, train=179.9s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_114116_gpu_transformer_session_recent_pairs_v1_len160_qv600_stage1_recent_pairs_smoke_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_115211_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_replay_last1_cap10000
+
+- Date/time: 2026-07-01 11:52:11 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.692097
+- Overall Macro-F1: 0.692097
+- Per-class observations:
+  - Weakest: ask_user=0.518, plan_task=0.524, read_file=0.566, run_tests=0.578, grep_search=0.602
+  - Strongest: respond_only=0.988, write_file=0.964, edit_file=0.870, apply_patch=0.854, glob_pattern=0.667
+- Top confusions: [(12, 'run_tests', 'lint_or_typecheck'), (12, 'plan_task', 'ask_user'), (12, 'ask_user', 'plan_task'), (10, 'glob_pattern', 'read_file'), (9, 'grep_search', 'read_file'), (9, 'run_bash', 'run_tests'), (8, 'read_file', 'grep_search'), (8, 'list_directory', 'read_file')]
+- Prediction distribution: {'apply_patch': 46, 'ask_user': 42, 'edit_file': 49, 'glob_pattern': 23, 'grep_search': 50, 'lint_or_typecheck': 44, 'list_directory': 45, 'plan_task': 41, 'read_file': 56, 'respond_only': 42, 'run_bash': 41, 'run_tests': 40, 'web_search': 40, 'write_file': 41}
+- Runtime or package-size concerns: runtime=229.5s, tokenize=17.9s, train=207.2s, eval=0.4s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_115211_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_replay_last1_cap10000_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_115640_gpu_transformer_session_current_v1_len160_qv600_replay-last2_stage1_replay_last2_cap10000
+
+- Date/time: 2026-07-01 11:56:40 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last2, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.691595
+- Overall Macro-F1: 0.691595
+- Per-class observations:
+  - Weakest: ask_user=0.405, read_file=0.515, plan_task=0.578, grep_search=0.591, web_search=0.605
+  - Strongest: respond_only=0.977, write_file=0.951, apply_patch=0.903, edit_file=0.899, glob_pattern=0.696
+- Top confusions: [(15, 'ask_user', 'plan_task'), (11, 'run_bash', 'run_tests'), (10, 'glob_pattern', 'read_file'), (10, 'grep_search', 'read_file'), (9, 'read_file', 'grep_search'), (9, 'ask_user', 'web_search'), (9, 'web_search', 'ask_user'), (8, 'run_tests', 'lint_or_typecheck')]
+- Prediction distribution: {'apply_patch': 50, 'ask_user': 31, 'edit_file': 46, 'glob_pattern': 26, 'grep_search': 45, 'lint_or_typecheck': 37, 'list_directory': 49, 'plan_task': 47, 'read_file': 54, 'respond_only': 45, 'run_bash': 40, 'run_tests': 46, 'web_search': 44, 'write_file': 40}
+- Runtime or package-size concerns: runtime=218.5s, tokenize=16.9s, train=196.2s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_115640_gpu_transformer_session_current_v1_len160_qv600_replay-last2_stage1_replay_last2_cap10000_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_120904_gpu_transformer_session_current_v1_len192_replay-last1_stage2_replay_last1_cap10000_len192_ep3
+
+- Date/time: 2026-07-01 12:09:05 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=192, epochs=3, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session
+- Raw Macro-F1: 0.712909
+- Overall Macro-F1: 0.718145
+- Per-class observations:
+  - Weakest: list_directory=0.470, web_search=0.557, read_file=0.562, grep_search=0.592, lint_or_typecheck=0.601
+  - Strongest: respond_only=0.999, write_file=0.990, edit_file=0.959, apply_patch=0.921, run_bash=0.771
+- Top confusions: [(580, 'grep_search', 'read_file'), (360, 'read_file', 'list_directory'), (283, 'grep_search', 'list_directory'), (247, 'glob_pattern', 'read_file'), (244, 'list_directory', 'read_file'), (233, 'read_file', 'grep_search'), (187, 'run_bash', 'run_tests'), (161, 'ask_user', 'plan_task')]
+- Prediction distribution: {'apply_patch': 961, 'ask_user': 378, 'edit_file': 2259, 'glob_pattern': 720, 'grep_search': 1412, 'lint_or_typecheck': 433, 'list_directory': 1320, 'plan_task': 632, 'read_file': 2247, 'respond_only': 1048, 'run_bash': 926, 'run_tests': 1008, 'web_search': 348, 'write_file': 309}
+- Runtime or package-size concerns: runtime=650.1s, tokenize=15.3s, train=614.6s, eval=8.4s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_120904_gpu_transformer_session_current_v1_len192_replay-last1_stage2_replay_last1_cap10000_len192_ep3_val_logits.pt
+- Comparison against current best: improves fixed-session tuned Macro-F1 from 0.710721 to 0.718145 (+0.007424), but weak exploration classes remain the limiting errors.
+- Decision: keep as GPU candidate
+- Next suggested experiment: run max_length=256, epochs=4, lr=2e-5 with the same replay_last1 cap before deciding whether this direction deserves OOF.
+## 20260701_122727_gpu_transformer_session_current_v1_len256_replay-last1_stage2_replay_last1_cap10000_len256_ep4
+
+- Date/time: 2026-07-01 12:27:28 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=256, epochs=4, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session
+- Raw Macro-F1: 0.726448
+- Overall Macro-F1: 0.731768
+- Per-class observations:
+  - Weakest: list_directory=0.489, read_file=0.553, web_search=0.576, grep_search=0.602, glob_pattern=0.614
+  - Strongest: respond_only=1.000, write_file=0.992, edit_file=0.963, apply_patch=0.927, run_bash=0.804
+- Top confusions: [(480, 'grep_search', 'read_file'), (368, 'read_file', 'list_directory'), (325, 'read_file', 'grep_search'), (286, 'grep_search', 'list_directory'), (183, 'list_directory', 'read_file'), (183, 'glob_pattern', 'read_file'), (163, 'glob_pattern', 'list_directory'), (135, 'ask_user', 'plan_task')]
+- Prediction distribution: {'apply_patch': 940, 'ask_user': 479, 'edit_file': 2268, 'glob_pattern': 762, 'grep_search': 1654, 'lint_or_typecheck': 459, 'list_directory': 1382, 'plan_task': 564, 'read_file': 1900, 'respond_only': 1051, 'run_bash': 1013, 'run_tests': 918, 'web_search': 307, 'write_file': 304}
+- Runtime or package-size concerns: runtime=1003.5s, tokenize=16.7s, train=965.0s, eval=10.2s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_122727_gpu_transformer_session_current_v1_len256_replay-last1_stage2_replay_last1_cap10000_len256_ep4_val_logits.pt
+- Comparison against current best: improves fixed-session tuned Macro-F1 from 0.718145 to 0.731768 (+0.013623), and from the submitted local fixed score 0.710721 to 0.731768 (+0.021047).
+- Decision: keep as GPU candidate
+- Next suggested experiment: check lr=1e-5 with 5 epochs at max_length=256 before OOF, because public calibration still suggests this local score may not be enough for 0.74 Public.
+## 20260701_124846_gpu_transformer_session_current_v1_len256_replay-last1_stage2_replay_last1_cap10000_len256_ep5_lr1e-5
+
+- Date/time: 2026-07-01 12:48:48 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=256, epochs=5, lr=1e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session
+- Raw Macro-F1: 0.722781
+- Overall Macro-F1: 0.729483
+- Per-class observations:
+  - Weakest: list_directory=0.498, web_search=0.540, read_file=0.580, grep_search=0.596, lint_or_typecheck=0.612
+  - Strongest: respond_only=0.999, write_file=0.990, edit_file=0.960, apply_patch=0.929, run_bash=0.808
+- Top confusions: [(571, 'grep_search', 'read_file'), (306, 'read_file', 'list_directory'), (263, 'grep_search', 'list_directory'), (248, 'read_file', 'grep_search'), (237, 'glob_pattern', 'read_file'), (228, 'list_directory', 'read_file'), (156, 'ask_user', 'plan_task'), (149, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 908, 'ask_user': 427, 'edit_file': 2317, 'glob_pattern': 733, 'grep_search': 1448, 'lint_or_typecheck': 349, 'list_directory': 1264, 'plan_task': 623, 'read_file': 2253, 'respond_only': 1050, 'run_bash': 1047, 'run_tests': 977, 'web_search': 304, 'write_file': 301}
+- Runtime or package-size concerns: runtime=1184.0s, tokenize=3.4s, train=1156.8s, eval=11.8s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_124846_gpu_transformer_session_current_v1_len256_replay-last1_stage2_replay_last1_cap10000_len256_ep5_lr1e-5_val_logits.pt
+- Comparison against current best: trails the lr=2e-5, 4-epoch candidate 0.731768 by 0.002285 despite one extra epoch, so lr=1e-5 is not the current promotion path.
+- Decision: discard or revisit
+- Next suggested experiment: prepare 3-fold session-aware OOF for the max_length=256, epochs=4, lr=2e-5 replay_last1 candidate.
+## 20260701_131408_gpu_transformer_session_oof_current_v1_len256_fold0-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_fold
+
+- Date/time: 2026-07-01 13:14:09 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=256, epochs=4, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session_oof, fold=0/3
+- Raw Macro-F1: 0.721392
+- Overall Macro-F1: 0.721392
+- Per-class observations:
+  - Weakest: list_directory=0.487, read_file=0.563, web_search=0.582, grep_search=0.606, lint_or_typecheck=0.610
+  - Strongest: respond_only=0.997, write_file=0.983, edit_file=0.959, apply_patch=0.919, run_bash=0.778
+- Top confusions: [(774, 'grep_search', 'read_file'), (578, 'read_file', 'grep_search'), (539, 'read_file', 'list_directory'), (458, 'grep_search', 'list_directory'), (311, 'list_directory', 'read_file'), (288, 'glob_pattern', 'read_file'), (253, 'run_bash', 'run_tests'), (240, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 1695, 'ask_user': 828, 'edit_file': 3672, 'glob_pattern': 1409, 'grep_search': 2861, 'lint_or_typecheck': 879, 'list_directory': 2116, 'plan_task': 811, 'read_file': 3156, 'respond_only': 1723, 'run_bash': 1542, 'run_tests': 1556, 'web_search': 580, 'write_file': 506}
+- Runtime or package-size concerns: runtime=859.5s, tokenize=26.5s, train=810.9s, eval=16.7s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_131408_gpu_transformer_session_oof_current_v1_len256_fold0-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_fold_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_132925_gpu_transformer_session_oof_current_v1_len256_fold1-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1
+
+- Date/time: 2026-07-01 13:29:26 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=256, epochs=4, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session_oof, fold=1/3
+- Raw Macro-F1: 0.721838
+- Overall Macro-F1: 0.721838
+- Per-class observations:
+  - Weakest: list_directory=0.487, read_file=0.556, web_search=0.590, lint_or_typecheck=0.596, grep_search=0.606
+  - Strongest: respond_only=0.999, write_file=0.978, edit_file=0.956, apply_patch=0.920, run_bash=0.791
+- Top confusions: [(765, 'grep_search', 'read_file'), (621, 'read_file', 'grep_search'), (562, 'read_file', 'list_directory'), (476, 'grep_search', 'list_directory'), (296, 'list_directory', 'read_file'), (269, 'glob_pattern', 'list_directory'), (246, 'glob_pattern', 'read_file'), (234, 'run_bash', 'run_tests')]
+- Prediction distribution: {'apply_patch': 1751, 'ask_user': 835, 'edit_file': 3612, 'glob_pattern': 1410, 'grep_search': 2912, 'lint_or_typecheck': 854, 'list_directory': 2215, 'plan_task': 796, 'read_file': 3029, 'respond_only': 1731, 'run_bash': 1604, 'run_tests': 1511, 'web_search': 563, 'write_file': 510}
+- Runtime or package-size concerns: runtime=854.7s, tokenize=28.6s, train=802.1s, eval=17.9s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_132925_gpu_transformer_session_oof_current_v1_len256_fold1-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_150857_gpu_transformer_session_oof_current_v1_len256_fold2-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1
+
+- Date/time: 2026-07-01 15:08:57 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=256, epochs=4, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session_oof, fold=2/3
+- Raw Macro-F1: 0.720619
+- Overall Macro-F1: 0.720619
+- Per-class observations:
+  - Weakest: list_directory=0.494, read_file=0.543, web_search=0.572, lint_or_typecheck=0.594, ask_user=0.603
+  - Strongest: respond_only=0.999, write_file=0.980, edit_file=0.955, apply_patch=0.919, run_bash=0.782
+- Top confusions: [(699, 'read_file', 'grep_search'), (674, 'grep_search', 'read_file'), (573, 'read_file', 'list_directory'), (439, 'grep_search', 'list_directory'), (277, 'list_directory', 'read_file'), (256, 'glob_pattern', 'list_directory'), (244, 'glob_pattern', 'read_file'), (231, 'glob_pattern', 'grep_search')]
+- Prediction distribution: {'apply_patch': 1724, 'ask_user': 685, 'edit_file': 3651, 'glob_pattern': 1428, 'grep_search': 3112, 'lint_or_typecheck': 876, 'list_directory': 2185, 'plan_task': 890, 'read_file': 2842, 'respond_only': 1727, 'run_bash': 1550, 'run_tests': 1525, 'web_search': 644, 'write_file': 494}
+- Runtime or package-size concerns: runtime=915.2s, tokenize=3.6s, train=890.3s, eval=17.0s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_150857_gpu_transformer_session_oof_current_v1_len256_fold2-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_oof_current_v1_len256_ep4_lr2e-5_replay_last1_cap10000
+
+- Date/time: 2026-07-01 15:10:07 UTC
+- Validation setup: 3-fold session-aware OOF aggregate
+- Fold logits: ['experiments/logits/20260701_131408_gpu_transformer_session_oof_current_v1_len256_fold0-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_fold_val_logits.pt', 'experiments/logits/20260701_132925_gpu_transformer_session_oof_current_v1_len256_fold1-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_val_logits.pt', 'experiments/logits/20260701_150857_gpu_transformer_session_oof_current_v1_len256_fold2-of3_replay-last1_finalist_oof_len256_ep4_lr2e-5_replay_last1_val_logits.pt']
+- Raw OOF Macro-F1: 0.721322
+- Tuned OOF Macro-F1: 0.725204
+- Weakest classes: list_directory=0.489, web_search=0.577, read_file=0.578, grep_search=0.596, lint_or_typecheck=0.598
+- Top confusions: [(2867, 'grep_search', 'read_file'), (1729, 'read_file', 'list_directory'), (1432, 'grep_search', 'list_directory'), (1156, 'read_file', 'grep_search'), (1056, 'list_directory', 'read_file'), (980, 'glob_pattern', 'read_file'), (818, 'run_bash', 'run_tests'), (791, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 4790, 'ask_user': 2161, 'edit_file': 11339, 'glob_pattern': 4115, 'grep_search': 7048, 'lint_or_typecheck': 2128, 'list_directory': 6694, 'plan_task': 2887, 'read_file': 10809, 'respond_only': 5177, 'run_bash': 4695, 'run_tests': 5080, 'web_search': 1577, 'write_file': 1500}
+- Decision: OOF aggregate for current_v1 + replay_last1 cap10000 weight0.5, len256 epochs4 lr2e-5; compare to fixed-session 0.731768 before final refit
+- Interpretation: tuned OOF trails the fixed-session tuned score by 0.006564 and remains well below the 0.74 public target, so this is not strong enough for final refit or leaderboard submission yet.
+- Next suggested experiment: quick-screen targeted improvements for the persistent `list_directory` / `read_file` / `grep_search` / `web_search` / `lint_or_typecheck` errors, then promote only candidates that beat this OOF baseline.
+## 20260701_154129_gpu_transformer_session_hybrid_v1_len160_qv600_replay-last1_stage1_hybrid_replay_last1_cap10000
+
+- Date/time: 2026-07-01 15:41:29 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=hybrid_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.395243
+- Overall Macro-F1: 0.395243
+- Per-class observations:
+  - Weakest: glob_pattern=0.000, apply_patch=0.000, lint_or_typecheck=0.000, web_search=0.044, read_file=0.290
+  - Strongest: respond_only=0.989, write_file=0.953, edit_file=0.642, run_bash=0.500, list_directory=0.493
+- Top confusions: [(42, 'apply_patch', 'edit_file'), (35, 'glob_pattern', 'grep_search'), (32, 'web_search', 'ask_user'), (31, 'read_file', 'grep_search'), (30, 'lint_or_typecheck', 'run_tests'), (28, 'plan_task', 'ask_user'), (20, 'list_directory', 'grep_search'), (19, 'run_bash', 'run_tests')]
+- Prediction distribution: {'ask_user': 87, 'edit_file': 91, 'grep_search': 127, 'lint_or_typecheck': 2, 'list_directory': 30, 'plan_task': 33, 'read_file': 19, 'respond_only': 44, 'run_bash': 45, 'run_tests': 75, 'web_search': 3, 'write_file': 44}
+- Runtime or package-size concerns: runtime=226.7s, tokenize=3.1s, train=218.8s, eval=0.4s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_154129_gpu_transformer_session_hybrid_v1_len160_qv600_replay-last1_stage1_hybrid_replay_last1_cap10000_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_154605_gpu_transformer_session_compact_events_v1_len160_qv600_replay-last1_stage1_compact_events_replay_last1_cap10000
+
+- Date/time: 2026-07-01 15:46:05 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=compact_events_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.420960
+- Overall Macro-F1: 0.420960
+- Per-class observations:
+  - Weakest: glob_pattern=0.000, apply_patch=0.000, lint_or_typecheck=0.000, web_search=0.255, read_file=0.290
+  - Strongest: respond_only=0.965, write_file=0.952, edit_file=0.614, plan_task=0.533, list_directory=0.519
+- Top confusions: [(43, 'apply_patch', 'edit_file'), (35, 'lint_or_typecheck', 'run_tests'), (31, 'glob_pattern', 'grep_search'), (29, 'web_search', 'ask_user'), (27, 'read_file', 'grep_search'), (26, 'run_bash', 'run_tests'), (20, 'plan_task', 'ask_user'), (18, 'list_directory', 'grep_search')]
+- Prediction distribution: {'ask_user': 78, 'edit_file': 97, 'glob_pattern': 1, 'grep_search': 113, 'lint_or_typecheck': 1, 'list_directory': 38, 'plan_task': 32, 'read_file': 26, 'respond_only': 42, 'run_bash': 22, 'run_tests': 95, 'web_search': 13, 'write_file': 42}
+- Runtime or package-size concerns: runtime=246.2s, tokenize=24.7s, train=216.9s, eval=0.4s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_154605_gpu_transformer_session_compact_events_v1_len160_qv600_replay-last1_stage1_compact_events_replay_last1_cap10000_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+
+## Serializer screen conclusion
+
+- Date/time: 2026-07-01 15:46:05 UTC
+- Compared against `current_v1 + replay_last1 cap10000`, max_length 160, 1 epoch, quick_val600 baseline: 0.692097.
+- `hybrid_v1 + replay_last1 cap10000` scored 0.395243 and missed `glob_pattern`, `apply_patch`, and `lint_or_typecheck` on the quick set.
+- `compact_events_v1 + replay_last1 cap10000` scored 0.420960 and also missed `glob_pattern`, `apply_patch`, and `lint_or_typecheck`.
+- Decision: do not promote structured serializer variants at max_length 160. Continue with `current_v1 + replay_last1` as the active transformer path, and shift cheap screens to weighting, smoothing, or targeted reranking.
+
+## Class-weight screen conclusion
+
+- Date/time: 2026-07-01 15:55:01 UTC
+- Compared against `current_v1 + replay_last1 cap10000`, max_length 160, 1 epoch, quick_val600, `class_weight_power=0.5`: 0.692097.
+- `class_weight_power=0.75` scored 0.684071 and hurt `read_file` relative to the baseline.
+- `class_weight_power=0.25` scored 0.669840 and weakened `ask_user`, `plan_task`, `read_file`, and `web_search`.
+- Decision: keep `class_weight_power=0.5` for the current transformer path. Do not promote 0.25 or 0.75 without a new serializer/model reason.
+
+## Label-smoothing screen conclusion
+
+- Date/time: 2026-07-01 16:03:34 UTC
+- Compared against `current_v1 + replay_last1 cap10000`, max_length 160, 1 epoch, quick_val600, `label_smoothing=0.02`: 0.692097.
+- `label_smoothing=0.0` scored 0.679076 and hurt `read_file`.
+- `label_smoothing=0.05` scored 0.680512 and hurt `ask_user`.
+- Decision: keep `label_smoothing=0.02` for the current transformer path. The next cheap axis should be targeted weak-class diagnostics/reranking or a carefully scoped length/lr screen, not smoothing.
+
+## Rule-boost diagnostic conclusion
+
+- Date/time: 2026-07-01 16:17:20 UTC
+- Validation setup: deterministic sample/logit rule boosts tuned on 3-fold session-aware OOF logits for the `current_v1 + replay_last1 cap10000`, length-256, 4-epoch finalist.
+- OOF result: 0.725204 baseline to 0.728511 with 6 selected rules.
+- Fixed-session cross-check: 0.731768 baseline to 0.732621 using the same rule artifact with the fixed-run class bias.
+- Rule artifact: `experiments/artifacts/20260702_oof_rule_boosts_current_v1_len256_ep4_replay_last1_rule_boosts.json`
+- Code changes: `script.py` now applies `rule_boosts` from transformer `hf_meta.json` when present; `train_transformer.py` can include a rule artifact during final model export via `--rule-boosts-path`.
+- Decision: keep rule boosts as a small finalist add-on, but do not final refit or submit from this alone. The gain is consistent but still below the 0.74 public target.
+
+## Markov-prior ensemble conclusion
+
+- Date/time: 2026-07-01 16:28:33 UTC
+- Validation setup: fold-aware Markov/action prior fitted without validation sessions and evaluated on the current finalist OOF logits.
+- Transformer-only OOF baseline: 0.725204.
+- Transformer + Markov prior OOF: 0.725495 at prior weight 0.200; too small to matter.
+- Rule-boost baseline OOF: 0.728511.
+- Rule boosts + Markov prior + OOF bias retune: 0.729425 at prior weight 0.050.
+- Fixed-session cross-check: rule-only fixed validation was 0.732621, while adding the Markov prior dropped to 0.731527; adding the OOF extra bias dropped further to 0.729958.
+- Artifacts: `experiments/artifacts/20260702_oof_markov_prior_current_v1_len256_ep4_replay_last1_markov_prior.json`, `experiments/artifacts/20260702_oof_markov_prior_plus_rules_current_v1_len256_ep4_replay_last1_markov_prior.json`, `experiments/artifacts/20260702_oof_markov_prior_plus_rules_bias_current_v1_len256_ep4_replay_last1_markov_prior.json`.
+- Decision: reject Markov/action prior for promotion. It is not robust across fixed-session validation and should remain a diagnostic only.
+
+## Sparse SVC ensemble conclusion
+
+- Date/time: 2026-07-01 16:41:36 UTC
+- Validation setup: fold-aware TF-IDF LinearSVC OOF scores, trained without validation sessions, ensembled with current finalist transformer logits.
+- Sparse-only OOF: 0.518132.
+- Transformer-only OOF: 0.725204; transformer + sparse SVC OOF: 0.728315 at sparse weight 0.5.
+- Rule-boosted transformer OOF: 0.728511; rule boosts + sparse SVC OOF: 0.730254 at sparse weight 0.5.
+- Fixed-session cross-check: transformer baseline 0.731768, rule boosts 0.732621, rule boosts + sparse SVC 0.735248.
+- Artifacts: `experiments/artifacts/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_svc.json`, `experiments/artifacts/20260702_oof_sparse_svc_plus_rules_current_v1_len256_ep4_replay_last1_sparse_svc.json`.
+- Sparse OOF logits: `experiments/logits/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_oof_logits.pt`, `experiments/logits/20260702_oof_sparse_svc_plus_rules_current_v1_len256_ep4_replay_last1_sparse_oof_logits.pt`.
+- Decision: keep sparse SVC as the strongest complementary finalist component so far. It improves both OOF and fixed validation, but the OOF score is still below the 0.74 target, so do not final refit or submit yet.
+## 20260701_155056_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_cwp075
+
+- Date/time: 2026-07-01 15:50:56 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.684071
+- Overall Macro-F1: 0.684071
+- Per-class observations:
+  - Weakest: read_file=0.455, ask_user=0.474, grep_search=0.587, web_search=0.588, list_directory=0.593
+  - Strongest: respond_only=0.988, write_file=0.965, edit_file=0.899, apply_patch=0.864, run_bash=0.667
+- Top confusions: [(14, 'ask_user', 'plan_task'), (11, 'read_file', 'grep_search'), (10, 'ask_user', 'web_search'), (10, 'run_tests', 'lint_or_typecheck'), (9, 'list_directory', 'read_file'), (9, 'run_bash', 'run_tests'), (8, 'web_search', 'ask_user'), (8, 'grep_search', 'read_file')]
+- Prediction distribution: {'apply_patch': 45, 'ask_user': 33, 'edit_file': 46, 'glob_pattern': 31, 'grep_search': 49, 'lint_or_typecheck': 42, 'list_directory': 48, 'plan_task': 48, 'read_file': 45, 'respond_only': 42, 'run_bash': 41, 'run_tests': 44, 'web_search': 43, 'write_file': 43}
+- Runtime or package-size concerns: runtime=222.3s, tokenize=2.4s, train=215.3s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_155056_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_cwp075_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_155501_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_cwp025
+
+- Date/time: 2026-07-01 15:55:01 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.669840
+- Overall Macro-F1: 0.669840
+- Per-class observations:
+  - Weakest: ask_user=0.433, plan_task=0.482, read_file=0.509, web_search=0.528, list_directory=0.578
+  - Strongest: respond_only=0.976, write_file=0.927, apply_patch=0.882, edit_file=0.879, lint_or_typecheck=0.667
+- Top confusions: [(16, 'plan_task', 'ask_user'), (15, 'web_search', 'ask_user'), (13, 'glob_pattern', 'read_file'), (13, 'ask_user', 'plan_task'), (11, 'list_directory', 'read_file'), (10, 'grep_search', 'read_file'), (10, 'run_bash', 'run_tests'), (8, 'read_file', 'grep_search')]
+- Prediction distribution: {'apply_patch': 50, 'ask_user': 54, 'edit_file': 48, 'glob_pattern': 25, 'grep_search': 43, 'lint_or_typecheck': 38, 'list_directory': 40, 'plan_task': 40, 'read_file': 63, 'respond_only': 41, 'run_bash': 41, 'run_tests': 47, 'web_search': 30, 'write_file': 40}
+- Runtime or package-size concerns: runtime=202.0s, tokenize=2.3s, train=195.5s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_155501_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_cwp025_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_155929_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_ls000
+
+- Date/time: 2026-07-01 15:59:29 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.679076
+- Overall Macro-F1: 0.679076
+- Per-class observations:
+  - Weakest: read_file=0.451, ask_user=0.500, plan_task=0.518, grep_search=0.571, list_directory=0.598
+  - Strongest: respond_only=0.976, write_file=0.952, edit_file=0.870, apply_patch=0.864, run_bash=0.659
+- Top confusions: [(13, 'glob_pattern', 'read_file'), (13, 'plan_task', 'ask_user'), (13, 'ask_user', 'plan_task'), (11, 'read_file', 'grep_search'), (11, 'list_directory', 'read_file'), (10, 'web_search', 'ask_user'), (10, 'grep_search', 'read_file'), (9, 'run_tests', 'lint_or_typecheck')]
+- Prediction distribution: {'apply_patch': 45, 'ask_user': 45, 'edit_file': 49, 'glob_pattern': 24, 'grep_search': 48, 'lint_or_typecheck': 42, 'list_directory': 44, 'plan_task': 42, 'read_file': 59, 'respond_only': 41, 'run_bash': 42, 'run_tests': 43, 'web_search': 34, 'write_file': 42}
+- Runtime or package-size concerns: runtime=189.6s, tokenize=2.1s, train=183.4s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_155929_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_ls000_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_160334_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_ls005
+
+- Date/time: 2026-07-01 16:03:34 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `distilbert-base-multilingual-cased`, serializer=current_v1, replay=last1, max_length=160, epochs=1, lr=2e-05, batch=24, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.680512
+- Overall Macro-F1: 0.680512
+- Per-class observations:
+  - Weakest: ask_user=0.425, read_file=0.514, plan_task=0.556, web_search=0.561, list_directory=0.591
+  - Strongest: respond_only=0.976, write_file=0.952, apply_patch=0.864, edit_file=0.860, lint_or_typecheck=0.667
+- Top confusions: [(15, 'ask_user', 'plan_task'), (13, 'glob_pattern', 'read_file'), (11, 'grep_search', 'read_file'), (10, 'list_directory', 'read_file'), (10, 'ask_user', 'web_search'), (10, 'web_search', 'ask_user'), (9, 'plan_task', 'ask_user'), (9, 'run_bash', 'run_tests')]
+- Prediction distribution: {'apply_patch': 45, 'ask_user': 37, 'edit_file': 50, 'glob_pattern': 24, 'grep_search': 38, 'lint_or_typecheck': 41, 'list_directory': 45, 'plan_task': 47, 'read_file': 62, 'respond_only': 41, 'run_bash': 44, 'run_tests': 44, 'web_search': 40, 'write_file': 42}
+- Runtime or package-size concerns: runtime=189.5s, tokenize=2.2s, train=183.3s, eval=0.3s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_160334_gpu_transformer_session_current_v1_len160_qv600_replay-last1_stage1_current_replay_last1_ls005_val_logits.pt
+- Decision: screening only; require full fixed-session validation
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260702_oof_rule_boosts_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:14:31 UTC
+- Validation setup: 3-fold session-aware OOF aggregate with deterministic sample/logit rule boosts.
+- Baseline OOF Macro-F1: 0.725204
+- Boosted OOF Macro-F1: 0.728511
+- Selected rules: 6
+- Weakest classes: list_directory:0.4939, read_file:0.5809, web_search:0.5933, grep_search:0.5963, lint_or_typecheck:0.6003
+- Top confusions: [(2937, 'grep_search', 'read_file'), (1639, 'read_file', 'list_directory'), (1362, 'grep_search', 'list_directory'), (1156, 'read_file', 'grep_search'), (1081, 'list_directory', 'read_file'), (1014, 'glob_pattern', 'read_file'), (786, 'run_bash', 'run_tests'), (757, 'glob_pattern', 'list_directory')]
+- Rule artifact: experiments/artifacts/20260702_oof_rule_boosts_current_v1_len256_ep4_replay_last1_rule_boosts.json
+- Decision: OOF diagnostic: greedy deterministic sample/logit rule boosts on current_v1 + replay_last1 finalist OOF logits; inspect gain before inference integration
+## 20260702_oof_markov_prior_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:20:18 UTC
+- Validation setup: fold-aware Markov/action prior evaluated on 3-fold session-aware OOF logits.
+- Base Macro-F1: 0.725204
+- Prior-only Macro-F1: 0.373755
+- Best prior weight: 0.200
+- Best Macro-F1: 0.725495
+- Weakest classes: list_directory:0.4915, read_file:0.5726, web_search:0.5853, lint_or_typecheck:0.5966, grep_search:0.5979
+- Top confusions: [(2844, 'grep_search', 'read_file'), (1638, 'read_file', 'list_directory'), (1327, 'grep_search', 'list_directory'), (1307, 'read_file', 'grep_search'), (1079, 'list_directory', 'read_file'), (982, 'glob_pattern', 'read_file'), (846, 'run_bash', 'run_tests'), (749, 'glob_pattern', 'list_directory')]
+- Artifact: experiments/artifacts/20260702_oof_markov_prior_current_v1_len256_ep4_replay_last1_markov_prior.json
+- Decision: OOF diagnostic: fold-aware Markov/action prior added to current_v1 + replay_last1 finalist logits; no extra bias retune
+## 20260702_oof_markov_prior_plus_rules_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:23:17 UTC
+- Validation setup: fold-aware Markov/action prior evaluated on 3-fold session-aware OOF logits.
+- Base Macro-F1: 0.728511
+- Prior-only Macro-F1: 0.373755
+- Best prior weight: 0.000
+- Best Macro-F1: 0.728511
+- Weakest classes: list_directory:0.4939, read_file:0.5809, web_search:0.5933, grep_search:0.5963, lint_or_typecheck:0.6003
+- Top confusions: [(2937, 'grep_search', 'read_file'), (1639, 'read_file', 'list_directory'), (1362, 'grep_search', 'list_directory'), (1156, 'read_file', 'grep_search'), (1081, 'list_directory', 'read_file'), (1014, 'glob_pattern', 'read_file'), (786, 'run_bash', 'run_tests'), (757, 'glob_pattern', 'list_directory')]
+- Artifact: experiments/artifacts/20260702_oof_markov_prior_plus_rules_current_v1_len256_ep4_replay_last1_markov_prior.json
+- Decision: OOF diagnostic: fold-aware Markov/action prior added on top of 6 OOF rule boosts for current_v1 + replay_last1 finalist logits; no extra bias retune
+## 20260702_oof_markov_prior_plus_rules_bias_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:27:29 UTC
+- Validation setup: fold-aware Markov/action prior evaluated on 3-fold session-aware OOF logits.
+- Base Macro-F1: 0.728511
+- Prior-only Macro-F1: 0.373755
+- Best prior weight: 0.050
+- Best Macro-F1: 0.729425
+- Weakest classes: list_directory:0.4943, read_file:0.5749, web_search:0.5945, lint_or_typecheck:0.6008, grep_search:0.6021
+- Top confusions: [(2732, 'grep_search', 'read_file'), (1616, 'read_file', 'list_directory'), (1383, 'read_file', 'grep_search'), (1333, 'grep_search', 'list_directory'), (1043, 'list_directory', 'read_file'), (946, 'glob_pattern', 'read_file'), (750, 'glob_pattern', 'list_directory'), (744, 'run_bash', 'run_tests')]
+- Artifact: experiments/artifacts/20260702_oof_markov_prior_plus_rules_bias_current_v1_len256_ep4_replay_last1_markov_prior.json
+- Decision: OOF diagnostic: fold-aware Markov/action prior plus 6 OOF rule boosts with final class-bias retune; inspect before integration
+## 20260702_oof_sparse_svc_plus_rules_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:35:46 UTC
+- Validation setup: fold-aware TF-IDF LinearSVC OOF scores ensembled with current finalist transformer logits.
+- Base Macro-F1: 0.728511
+- Sparse-only Macro-F1: 0.518132
+- Best sparse weight: 0.500
+- Best Macro-F1: 0.730254
+- Weakest classes: list_directory:0.4943, read_file:0.5697, grep_search:0.5979, lint_or_typecheck:0.6080, web_search:0.6082
+- Top confusions: [(2658, 'grep_search', 'read_file'), (1730, 'read_file', 'list_directory'), (1423, 'grep_search', 'list_directory'), (1348, 'read_file', 'grep_search'), (958, 'list_directory', 'read_file'), (919, 'glob_pattern', 'read_file'), (785, 'glob_pattern', 'list_directory'), (730, 'run_bash', 'run_tests')]
+- Artifact: experiments/artifacts/20260702_oof_sparse_svc_plus_rules_current_v1_len256_ep4_replay_last1_sparse_svc.json
+- Sparse logits: experiments/logits/20260702_oof_sparse_svc_plus_rules_current_v1_len256_ep4_replay_last1_sparse_oof_logits.pt
+- Decision: OOF diagnostic: fold-aware TF-IDF LinearSVC scores ensembled with 6-rule boosted current_v1 + replay_last1 finalist logits; no extra bias retune
+## 20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1
+
+- Date/time: 2026-07-01 16:39:27 UTC
+- Validation setup: fold-aware TF-IDF LinearSVC OOF scores ensembled with current finalist transformer logits.
+- Base Macro-F1: 0.725204
+- Sparse-only Macro-F1: 0.518132
+- Best sparse weight: 0.500
+- Best Macro-F1: 0.728315
+- Weakest classes: list_directory:0.4908, read_file:0.5683, grep_search:0.5980, web_search:0.6003, lint_or_typecheck:0.6054
+- Top confusions: [(2609, 'grep_search', 'read_file'), (1777, 'read_file', 'list_directory'), (1466, 'grep_search', 'list_directory'), (1353, 'read_file', 'grep_search'), (943, 'list_directory', 'read_file'), (899, 'glob_pattern', 'read_file'), (802, 'glob_pattern', 'list_directory'), (755, 'run_bash', 'run_tests')]
+- Artifact: experiments/artifacts/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_svc.json
+- Sparse logits: experiments/logits/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_oof_logits.pt
+- Decision: OOF diagnostic: fold-aware TF-IDF LinearSVC scores ensembled with current_v1 + replay_last1 finalist logits; no rules, no extra bias retune
