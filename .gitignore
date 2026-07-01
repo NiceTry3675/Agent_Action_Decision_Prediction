@@ -4,3 +4,17 @@ __pycache__/
 experiments/artifacts/
 output/
 data/
+model/
+submit.zip
+.cache/
+.ipynb_checkpoints/
+runs/
+wandb/
+checkpoints/
+*.log
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.joblib
+*.pkl

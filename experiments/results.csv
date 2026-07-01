@@ -16,3 +16,13 @@ experiment_id,model_family,features,split_type,macro_f1,notes,artifact_path
 20260701_083300_prompt_svc_session,tfidf_linearsvc,current_prompt word+char ngrams,session,0.654798,Prompt/action-meta SVC regularization sweep C=0.025.; class bias tuned on validation scores; C override=0.025,
 20260701_083420_prompt_svc_random,tfidf_linearsvc,current_prompt word+char ngrams,random,0.662137,Chosen prompt/action-meta SVC C=0.05 evaluated on baseline-compatible random split.; class bias tuned on validation scores; C override=0.05,
 20260701_083541_prompt_svc_session,tfidf_linearsvc,current_prompt word+char ngrams,session,0.656725,"Final candidate: prompt/action-meta LinearSVC, balanced class weights, C=0.05, session-tuned class bias, refit on all training data.; class bias tuned on validation scores; C override=0.05",
+20260701_085147_gpu_linear_session,torch_gpu_linear,hashed prompt word/char ngrams plus action/workspace metadata,session,0.567094,GPU rewrite: Torch linear EmbeddingBag hashed prompt/action/meta features.,
+20260701_085320_gpu_mlp_session,torch_gpu_mlp,hashed prompt word/char ngrams plus action/workspace metadata,session,0.574049,GPU MLP EmbeddingBag hashed prompt/action/meta features.,
+20260701_085817_gpu_linear_session,torch_gpu_linear,hashed prompt word/char ngrams plus action/workspace metadata,session,0.556751,GPU vocab TF-IDF-style weighted features with Torch linear EmbeddingBag classifier.,
+20260701_085942_gpu_linear_session,torch_gpu_linear,hashed prompt word/char ngrams plus action/workspace metadata,session,0.574929,GPU vocab linear short training to check overfit.,
+20260701_090149_gpu_linear_session,torch_gpu_linear,hashed prompt word/char ngrams plus action/workspace metadata,session,0.559482,GPU vocab weighted features with OVR squared hinge loss.,
+20260701_090903_gpu_transformer_session,torch_gpu_transformer,serialized prompt/action/workspace text,session,0.654018,"GPU multilingual DistilBERT fine-tune, 1 epoch session validation.",
+20260701_091700_gpu_transformer_session,torch_gpu_transformer,serialized prompt/action/workspace text,session,0.692934,"GPU multilingual DistilBERT fine-tune, 2 epochs session validation.",
+20260701_092751_gpu_transformer_session,torch_gpu_transformer,serialized prompt/action/workspace text,session,0.709668,"GPU multilingual DistilBERT fine-tune, 3 epochs session validation.",
+20260701_093837_gpu_transformer_session,torch_gpu_transformer,serialized prompt/action/workspace text,session,0.710721,"Final GPU multilingual DistilBERT fine-tune, 3 epochs with session-tuned class bias.",model
+20260701_100225_gpu_transformer_random,torch_gpu_transformer,serialized prompt/action/workspace text,random,0.722073,"GPU multilingual DistilBERT fine-tune, 3 epochs random validation.",

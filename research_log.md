@@ -253,3 +253,153 @@
 - Runtime or package-size concerns: sparse sklearn model; expected offline CPU inference within limits.
 - Decision: discard or revisit
 - Next suggested experiment: compare random vs session split and inspect weak classes before widening features.
+## 20260701_085147_gpu_linear_session
+
+- Date/time: 2026-07-01 08:51:47 UTC
+- Hypothesis: Move the submission pipeline to a CUDA-first Torch classifier while keeping compact hashed prompt/action/meta features.
+- Code/config changes: Torch `linear` hashed n-gram model, epochs=12, lr=0.03, batch=512.
+- Validation setup: session
+- Overall Macro-F1: 0.567094
+- Per-class observations:
+  - Weakest: list_directory=0.295, glob_pattern=0.303, web_search=0.345, read_file=0.355, grep_search=0.413
+  - Strongest: respond_only=0.999, write_file=0.995, edit_file=0.846, run_bash=0.679, run_tests=0.626
+- Top confusions: [(582, 'read_file', 'grep_search'), (504, 'grep_search', 'read_file'), (340, 'read_file', 'glob_pattern'), (337, 'apply_patch', 'edit_file'), (319, 'glob_pattern', 'grep_search'), (308, 'grep_search', 'glob_pattern'), (285, 'edit_file', 'apply_patch'), (276, 'grep_search', 'list_directory')]
+- Prediction distribution: {'apply_patch': 924, 'ask_user': 476, 'edit_file': 2283, 'glob_pattern': 1168, 'grep_search': 2007, 'lint_or_typecheck': 379, 'list_directory': 976, 'plan_task': 591, 'read_file': 1629, 'respond_only': 1053, 'run_bash': 1028, 'run_tests': 903, 'web_search': 280, 'write_file': 304}
+- Runtime or package-size concerns: CUDA model inference uses Torch only; JSON/token hashing remains CPU-side preprocessing.
+- Decision: discard or revisit
+- Next suggested experiment: compare linear vs MLP hashed models and tune epochs/lr if GPU validation lags sparse SVC.
+## 20260701_085320_gpu_mlp_session
+
+- Date/time: 2026-07-01 08:53:20 UTC
+- Hypothesis: Move the submission pipeline to a CUDA-first Torch classifier while keeping compact hashed prompt/action/meta features.
+- Code/config changes: Torch `mlp` hashed n-gram model, epochs=10, lr=0.01, batch=512.
+- Validation setup: session
+- Overall Macro-F1: 0.574049
+- Per-class observations:
+  - Weakest: list_directory=0.296, glob_pattern=0.303, web_search=0.369, read_file=0.375, grep_search=0.405
+  - Strongest: respond_only=0.999, write_file=0.992, edit_file=0.856, run_bash=0.690, apply_patch=0.638
+- Top confusions: [(626, 'grep_search', 'read_file'), (547, 'read_file', 'grep_search'), (326, 'apply_patch', 'edit_file'), (318, 'glob_pattern', 'read_file'), (297, 'list_directory', 'read_file'), (285, 'glob_pattern', 'grep_search'), (279, 'read_file', 'list_directory'), (266, 'grep_search', 'list_directory')]
+- Prediction distribution: {'apply_patch': 885, 'ask_user': 594, 'edit_file': 2304, 'glob_pattern': 869, 'grep_search': 1873, 'lint_or_typecheck': 401, 'list_directory': 975, 'plan_task': 433, 'read_file': 2016, 'respond_only': 1050, 'run_bash': 1014, 'run_tests': 964, 'web_search': 321, 'write_file': 302}
+- Runtime or package-size concerns: CUDA model inference uses Torch only; JSON/token hashing remains CPU-side preprocessing.
+- Decision: discard or revisit
+- Next suggested experiment: compare linear vs MLP hashed models and tune epochs/lr if GPU validation lags sparse SVC.
+## 20260701_085817_gpu_linear_session
+
+- Date/time: 2026-07-01 08:58:17 UTC
+- Hypothesis: Move the submission pipeline to a CUDA-first Torch classifier while keeping compact hashed prompt/action/meta features.
+- Code/config changes: Torch `linear` hashed n-gram model, epochs=14, lr=0.05, batch=512.
+- Validation setup: session
+- Overall Macro-F1: 0.556751
+- Per-class observations:
+  - Weakest: glob_pattern=0.282, list_directory=0.299, web_search=0.353, read_file=0.364, grep_search=0.406
+  - Strongest: respond_only=0.998, write_file=0.990, edit_file=0.826, run_bash=0.677, run_tests=0.591
+- Top confusions: [(551, 'read_file', 'grep_search'), (544, 'grep_search', 'read_file'), (334, 'apply_patch', 'edit_file'), (332, 'edit_file', 'apply_patch'), (313, 'read_file', 'list_directory'), (291, 'glob_pattern', 'grep_search'), (287, 'grep_search', 'list_directory'), (279, 'glob_pattern', 'read_file')]
+- Prediction distribution: {'apply_patch': 986, 'ask_user': 456, 'edit_file': 2199, 'glob_pattern': 956, 'grep_search': 1929, 'lint_or_typecheck': 407, 'list_directory': 1097, 'plan_task': 616, 'read_file': 1769, 'respond_only': 1046, 'run_bash': 1095, 'run_tests': 812, 'web_search': 330, 'write_file': 303}
+- Runtime or package-size concerns: CUDA model inference uses Torch only; JSON/token hashing remains CPU-side preprocessing.
+- Decision: discard or revisit
+- Next suggested experiment: compare linear vs MLP hashed models and tune epochs/lr if GPU validation lags sparse SVC.
+## 20260701_085942_gpu_linear_session
+
+- Date/time: 2026-07-01 08:59:42 UTC
+- Hypothesis: Move the submission pipeline to a CUDA-first Torch classifier while keeping compact hashed prompt/action/meta features.
+- Code/config changes: Torch `linear` hashed n-gram model, epochs=4, lr=0.05, batch=512.
+- Validation setup: session
+- Overall Macro-F1: 0.574929
+- Per-class observations:
+  - Weakest: list_directory=0.289, glob_pattern=0.311, read_file=0.363, web_search=0.407, grep_search=0.424
+  - Strongest: respond_only=0.999, write_file=0.997, edit_file=0.816, run_bash=0.704, run_tests=0.630
+- Top confusions: [(605, 'read_file', 'grep_search'), (526, 'grep_search', 'read_file'), (396, 'edit_file', 'apply_patch'), (347, 'apply_patch', 'edit_file'), (325, 'glob_pattern', 'grep_search'), (290, 'read_file', 'list_directory'), (288, 'read_file', 'glob_pattern'), (263, 'grep_search', 'glob_pattern')]
+- Prediction distribution: {'apply_patch': 1011, 'ask_user': 506, 'edit_file': 2175, 'glob_pattern': 993, 'grep_search': 2101, 'lint_or_typecheck': 466, 'list_directory': 957, 'plan_task': 562, 'read_file': 1707, 'respond_only': 1054, 'run_bash': 1022, 'run_tests': 866, 'web_search': 276, 'write_file': 305}
+- Runtime or package-size concerns: CUDA model inference uses Torch only; JSON/token hashing remains CPU-side preprocessing.
+- Decision: discard or revisit
+- Next suggested experiment: compare linear vs MLP hashed models and tune epochs/lr if GPU validation lags sparse SVC.
+## 20260701_090149_gpu_linear_session
+
+- Date/time: 2026-07-01 09:01:49 UTC
+- Hypothesis: Move the submission pipeline to a CUDA-first Torch classifier while keeping compact hashed prompt/action/meta features.
+- Code/config changes: Torch `linear` vocab n-gram model, loss=ovr_squared_hinge, epochs=8, lr=0.03, batch=512.
+- Validation setup: session
+- Overall Macro-F1: 0.559482
+- Per-class observations:
+  - Weakest: list_directory=0.286, glob_pattern=0.291, read_file=0.377, grep_search=0.378, web_search=0.421
+  - Strongest: respond_only=0.997, write_file=0.993, edit_file=0.797, run_bash=0.681, run_tests=0.597
+- Top confusions: [(602, 'grep_search', 'read_file'), (487, 'read_file', 'grep_search'), (417, 'edit_file', 'apply_patch'), (358, 'apply_patch', 'edit_file'), (305, 'glob_pattern', 'read_file'), (300, 'grep_search', 'glob_pattern'), (295, 'read_file', 'glob_pattern'), (284, 'read_file', 'list_directory')]
+- Prediction distribution: {'apply_patch': 1035, 'ask_user': 571, 'edit_file': 2194, 'glob_pattern': 1085, 'grep_search': 1697, 'lint_or_typecheck': 489, 'list_directory': 1001, 'plan_task': 401, 'read_file': 1991, 'respond_only': 1054, 'run_bash': 1051, 'run_tests': 828, 'web_search': 297, 'write_file': 307}
+- Runtime or package-size concerns: CUDA model inference uses Torch only; JSON/token hashing remains CPU-side preprocessing.
+- Decision: discard or revisit
+- Next suggested experiment: compare linear vs MLP hashed models and tune epochs/lr if GPU validation lags sparse SVC.
+## 20260701_090903_gpu_transformer_session
+
+- Date/time: 2026-07-01 09:09:03 UTC
+- Hypothesis: A multilingual transformer fine-tuned on GPU should recover semantic prompt/action cues that sparse GPU models missed.
+- Code/config changes: `distilbert-base-multilingual-cased`, max_length=192, epochs=1, lr=2e-05, batch=24.
+- Validation setup: session
+- Overall Macro-F1: 0.654018
+- Per-class observations:
+  - Weakest: list_directory=0.451, web_search=0.462, read_file=0.483, lint_or_typecheck=0.512, ask_user=0.519
+  - Strongest: respond_only=0.997, write_file=0.911, edit_file=0.907, apply_patch=0.839, run_bash=0.730
+- Top confusions: [(468, 'grep_search', 'read_file'), (408, 'read_file', 'list_directory'), (385, 'read_file', 'grep_search'), (303, 'grep_search', 'list_directory'), (222, 'run_bash', 'run_tests'), (215, 'glob_pattern', 'read_file'), (193, 'list_directory', 'read_file'), (175, 'edit_file', 'apply_patch')]
+- Prediction distribution: {'apply_patch': 1041, 'ask_user': 536, 'edit_file': 2238, 'glob_pattern': 772, 'grep_search': 1631, 'lint_or_typecheck': 448, 'list_directory': 1430, 'plan_task': 480, 'read_file': 1794, 'respond_only': 1046, 'run_bash': 874, 'run_tests': 1081, 'web_search': 338, 'write_file': 292}
+- Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
+- Decision: keep as GPU candidate
+- Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
+## 20260701_091700_gpu_transformer_session
+
+- Date/time: 2026-07-01 09:17:00 UTC
+- Hypothesis: A multilingual transformer fine-tuned on GPU should recover semantic prompt/action cues that sparse GPU models missed.
+- Code/config changes: `distilbert-base-multilingual-cased`, max_length=192, epochs=2, lr=2e-05, batch=24.
+- Validation setup: session
+- Overall Macro-F1: 0.692934
+- Per-class observations:
+  - Weakest: list_directory=0.471, web_search=0.506, lint_or_typecheck=0.527, read_file=0.548, plan_task=0.562
+  - Strongest: respond_only=0.998, write_file=0.982, edit_file=0.953, apply_patch=0.913, run_bash=0.761
+- Top confusions: [(576, 'grep_search', 'read_file'), (419, 'read_file', 'list_directory'), (312, 'grep_search', 'list_directory'), (240, 'glob_pattern', 'read_file'), (223, 'list_directory', 'read_file'), (209, 'read_file', 'grep_search'), (208, 'run_bash', 'run_tests'), (163, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 947, 'ask_user': 550, 'edit_file': 2281, 'glob_pattern': 782, 'grep_search': 1303, 'lint_or_typecheck': 407, 'list_directory': 1477, 'plan_task': 423, 'read_file': 2172, 'respond_only': 1049, 'run_bash': 877, 'run_tests': 1057, 'web_search': 374, 'write_file': 302}
+- Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
+- Decision: keep as GPU candidate
+- Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
+## 20260701_092751_gpu_transformer_session
+
+- Date/time: 2026-07-01 09:27:51 UTC
+- Hypothesis: A multilingual transformer fine-tuned on GPU should recover semantic prompt/action cues that sparse GPU models missed.
+- Code/config changes: `distilbert-base-multilingual-cased`, max_length=192, epochs=3, lr=2e-05, batch=24.
+- Validation setup: session
+- Overall Macro-F1: 0.709668
+- Per-class observations:
+  - Weakest: list_directory=0.476, read_file=0.549, web_search=0.549, lint_or_typecheck=0.571, grep_search=0.590
+  - Strongest: respond_only=0.998, write_file=0.979, edit_file=0.959, apply_patch=0.925, run_bash=0.774
+- Top confusions: [(561, 'grep_search', 'read_file'), (419, 'read_file', 'list_directory'), (309, 'grep_search', 'list_directory'), (237, 'read_file', 'grep_search'), (235, 'glob_pattern', 'read_file'), (209, 'list_directory', 'read_file'), (179, 'run_bash', 'run_tests'), (169, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 954, 'ask_user': 499, 'edit_file': 2267, 'glob_pattern': 720, 'grep_search': 1398, 'lint_or_typecheck': 503, 'list_directory': 1469, 'plan_task': 477, 'read_file': 2110, 'respond_only': 1054, 'run_bash': 880, 'run_tests': 978, 'web_search': 382, 'write_file': 310}
+- Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
+- Decision: keep as GPU candidate
+- Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
+## 20260701_093837_gpu_transformer_session
+
+- Date/time: 2026-07-01 09:38:37 UTC
+- Hypothesis: A multilingual transformer fine-tuned on GPU should recover semantic prompt/action cues that sparse GPU models missed.
+- Code/config changes: `distilbert-base-multilingual-cased`, max_length=192, epochs=3, lr=2e-05, batch=24.
+- Validation setup: session
+- Overall Macro-F1: 0.710721
+- Per-class observations:
+  - Weakest: list_directory=0.475, web_search=0.548, read_file=0.553, lint_or_typecheck=0.580, grep_search=0.585
+  - Strongest: respond_only=0.999, write_file=0.982, edit_file=0.958, apply_patch=0.919, run_bash=0.770
+- Top confusions: [(559, 'grep_search', 'read_file'), (414, 'read_file', 'list_directory'), (315, 'grep_search', 'list_directory'), (225, 'glob_pattern', 'read_file'), (218, 'read_file', 'grep_search'), (211, 'list_directory', 'read_file'), (171, 'run_bash', 'run_tests'), (164, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 928, 'ask_user': 413, 'edit_file': 2310, 'glob_pattern': 791, 'grep_search': 1335, 'lint_or_typecheck': 516, 'list_directory': 1465, 'plan_task': 551, 'read_file': 2115, 'respond_only': 1049, 'run_bash': 895, 'run_tests': 929, 'web_search': 398, 'write_file': 306}
+- Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
+- Decision: keep as GPU candidate
+- Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
+## 20260701_100225_gpu_transformer_random
+
+- Date/time: 2026-07-01 10:02:25 UTC
+- Hypothesis: A multilingual transformer fine-tuned on GPU should recover semantic prompt/action cues that sparse GPU models missed.
+- Code/config changes: `distilbert-base-multilingual-cased`, max_length=192, epochs=3, lr=2e-05, batch=24.
+- Validation setup: random
+- Overall Macro-F1: 0.722073
+- Per-class observations:
+  - Weakest: list_directory=0.498, web_search=0.564, read_file=0.568, ask_user=0.572, grep_search=0.598
+  - Strongest: respond_only=0.998, write_file=0.987, edit_file=0.966, apply_patch=0.938, run_bash=0.791
+- Top confusions: [(586, 'grep_search', 'read_file'), (303, 'read_file', 'list_directory'), (263, 'grep_search', 'list_directory'), (261, 'read_file', 'grep_search'), (237, 'glob_pattern', 'read_file'), (217, 'list_directory', 'read_file'), (162, 'ask_user', 'plan_task'), (142, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 939, 'ask_user': 491, 'edit_file': 2272, 'glob_pattern': 776, 'grep_search': 1477, 'lint_or_typecheck': 459, 'list_directory': 1251, 'plan_task': 552, 'read_file': 2223, 'respond_only': 1036, 'run_bash': 1003, 'run_tests': 942, 'web_search': 280, 'write_file': 300}
+- Runtime or package-size concerns: GPU inference uses packaged HuggingFace weights; package remains under the 1 GB limit.
+- Decision: keep as GPU candidate
+- Next suggested experiment: tune max_length/epochs or ensemble with sparse GPU logits if transformer under-recognizes file-operation classes.
