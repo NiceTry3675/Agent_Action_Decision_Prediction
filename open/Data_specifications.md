@@ -1,58 +1,58 @@
-AI 코딩 에이전트가 사용자와 대화하며 작업하는 도중, 특정 시점에서 에이전트가 다음에 취할 행동(action)을 14개 클래스 중 하나로 예측하는 문제입니다.
+This is a problem where, at a specific point while an AI coding agent is conversing with a user and performing work, the agent's next action must be predicted as one of 14 classes.
 
-# 배포용 데이터 구조
+# Distributed Data Structure
 
 ```text
 open/
 
-baseline_submit.zip : 베이스라인 코드 기반 리더보드 제출 파일(zip) 예시 (참고용)
+baseline_submit.zip : Example leaderboard submission file (zip) based on the baseline code (for reference)
 data/
-  - train.jsonl : 학습 입력 데이터 (70,000건)
-  - train_labels.csv : 학습 정답 데이터 (70,000행 × 2컬럼)
-  - test.jsonl : 평가 입력 데이터 (형식 확인용 5건 샘플)
-  - sample_submission.csv : 제출 양식 파일 (2컬럼)
+  - train.jsonl : Training input data (70,000 records)
+  - train_labels.csv : Training label data (70,000 rows x 2 columns)
+  - test.jsonl : Evaluation input data (5 sample records for format checking)
+  - sample_submission.csv : Submission format file (2 columns)
 ```
 
-※ test.jsonl은 배포본에 형식 확인용 5건만 포함됩니다. 실제 평가 데이터(30,000건)는 비공개이며, 코드 제출 시 평가 서버에서 처리됩니다.
+Note: `test.jsonl` includes only 5 records in the distributed version for format checking. The actual evaluation data (30,000 records) is private and is processed by the evaluation server when code is submitted.
 
-※ train.jsonl, test.jsonl는 JSON Lines 형식으로, 한 줄(line)이 하나의 샘플(JSON 객체)입니다.
+Note: `train.jsonl` and `test.jsonl` use the JSON Lines format, where each line is one sample (JSON object).
 
-## [세부 설명]
+## Details
 
-### 1) 학습/추론 데이터: train.jsonl · test.jsonl
+### 1) Training/Inference Data: `train.jsonl` and `test.jsonl`
 
-각 줄(JSON 객체 1개)은 한 에이전트 세션의 특정 시점 상태이며 아래 4개 항목으로 구성됩니다. (test.jsonl은 정답 action만 없고 구조는 동일)
+Each line (one JSON object) represents the state of an agent session at a specific point in time and consists of the following 4 fields. (`test.jsonl` has the same structure but does not include the ground-truth `action`.)
 
-- id : 샘플 고유 식별자 (예: sess_sim_20260522_028750-step_02)
-- session_meta : 세션·작업공간 메타정보
-  - user_tier : 요금제 (enterprise / pro / free)
-  - language_pref : 선호 언어 (ko / en / mixed)
-  - budget_tokens_remaining : 잔여 토큰 예산 (정수)
-  - turn_index : 현재 턴 번호 (작을수록 세션 초반)
-  - elapsed_session_sec : 세션 경과 시간(초)
-  - workspace : 작업공간 상태
-    - language_mix : 코드베이스 언어 비율 (예: {"py": 0.45, "sql": 0.30}, 합 ≈ 1.0)
-    - loc : 전체 코드 라인 수
-    - git_dirty : 미커밋 변경 존재 여부 (true / false)
-    - open_files : 열려 있는 파일 경로 목록 (없으면 [])
-    - last_ci_status : 마지막 CI 상태 (passed / failed / none)
-- history : 이전까지의 대화·행동 기록 (시간순, 0~12개, user → assistant_action 교대)
-  - 사용자 턴 : role, content(발화 텍스트)
-  - 행동 턴 : role, name(행동명·14클래스), args(행동별 인자), result_summary(결과 요약)
-- current_prompt : 현재(가장 최근) 사용자 발화 — 이 시점에서의 다음 행동이 예측 대상
+- `id`: Unique sample identifier (e.g., `sess_sim_20260522_028750-step_02`)
+- `session_meta`: Session and workspace metadata
+  - `user_tier`: Subscription tier (`enterprise` / `pro` / `free`)
+  - `language_pref`: Preferred language (`ko` / `en` / `mixed`)
+  - `budget_tokens_remaining`: Remaining token budget (integer)
+  - `turn_index`: Current turn number (smaller values indicate earlier points in the session)
+  - `elapsed_session_sec`: Elapsed session time in seconds
+  - `workspace`: Workspace state
+    - `language_mix`: Language ratio in the codebase (e.g., `{"py": 0.45, "sql": 0.30}`, sum ~= 1.0)
+    - `loc`: Total number of lines of code
+    - `git_dirty`: Whether uncommitted changes exist (`true` / `false`)
+    - `open_files`: List of open file paths (`[]` if none)
+    - `last_ci_status`: Last CI status (`passed` / `failed` / `none`)
+- `history`: Conversation and action records up to the previous point in time (chronological order, 0-12 entries, alternating `user` -> `assistant_action`)
+  - User turn: `role`, `content` (utterance text)
+  - Action turn: `role`, `name` (action name / one of the 14 classes), `args` (action-specific arguments), `result_summary` (result summary)
+- `current_prompt`: Current (most recent) user utterance. The next action at this point is the prediction target.
 
-### 2) 학습 정답 데이터: train_labels.csv
+### 2) Training Label Data: `train_labels.csv`
 
-- id : train.jsonl과 연결되는 샘플 식별자
-- action : 예측 대상(타깃). 아래 14개 클래스 중 하나
-  - read_file 파일 읽기 · grep_search 패턴 검색 · list_directory 디렉터리 목록 · glob_pattern 글롭 패턴 검색
-  - edit_file 기존 파일 수정 · write_file 새 파일 작성 · apply_patch 패치(diff) 적용
-  - run_bash 셸 명령 실행 · run_tests 테스트 실행 · lint_or_typecheck 린트/타입 검사
-  - ask_user 사용자에게 질문 · plan_task 작업 계획 수립 · web_search 웹 검색 · respond_only 도구 없이 응답만
+- `id`: Sample identifier linked to `train.jsonl`
+- `action`: Prediction target. One of the following 14 classes:
+  - `read_file`: read a file; `grep_search`: search by pattern; `list_directory`: list a directory; `glob_pattern`: search by glob pattern
+  - `edit_file`: edit an existing file; `write_file`: create a new file; `apply_patch`: apply a patch/diff
+  - `run_bash`: run a shell command; `run_tests`: run tests; `lint_or_typecheck`: run linting/type checking
+  - `ask_user`: ask the user a question; `plan_task`: create a task plan; `web_search`: search the web; `respond_only`: respond without using tools
 
-### 3) 모델 추론 결과 양식 파일: sample_submission.csv
+### 3) Model Inference Result Format File: `sample_submission.csv`
 
-- id : 평가 데이터(test.jsonl)의 샘플 식별자
-- action : 예측값 (위 14개 클래스 중 하나)
+- `id`: Sample identifier from the evaluation data (`test.jsonl`)
+- `action`: Predicted value (one of the 14 classes above)
 
-※ 추론 시 예측 대상(타깃)의 action 값은 위 14개 클래스를 따르며, 대소문자까지 포함하여 클래스명이 동일해야합니다.
+Note: During inference, the `action` value for the prediction target must follow the 14 classes above, and the class names must match exactly, including letter case.
