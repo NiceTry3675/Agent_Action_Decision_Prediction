@@ -12,7 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion
 from sklearn.svm import LinearSVC
 
-from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample_current
+from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample
 from train import (
     CLASS_TO_ID,
     append_results_csv,
@@ -37,8 +37,8 @@ def load_samples_and_labels(data_dir):
     return samples, y, samples_by_id, sample_index_by_id
 
 
-def sparse_text(sample):
-    return serialize_transformer_sample_current(sample)
+def sparse_text(sample, text_serializer):
+    return serialize_transformer_sample(sample, text_serializer)
 
 
 def make_vectorizer(args):
@@ -110,8 +110,8 @@ def fit_predict_fold(args, samples, y, payload, all_session_ids):
     val_idx = [sample_index_by_id[sample_id] for sample_id in val_ids]
 
     vectorizer = make_vectorizer(args)
-    train_texts = [sparse_text(samples[idx]) for idx in train_idx]
-    val_texts = [sparse_text(samples[idx]) for idx in val_idx]
+    train_texts = [sparse_text(samples[idx], args.text_serializer) for idx in train_idx]
+    val_texts = [sparse_text(samples[idx], args.text_serializer) for idx in val_idx]
     fit_start = time.perf_counter()
     x_train = vectorizer.fit_transform(train_texts)
     x_val = vectorizer.transform(val_texts)
@@ -232,11 +232,13 @@ def main():
     parser.add_argument("--char-features", type=int, default=220000)
     parser.add_argument("--word-min-df", type=int, default=2)
     parser.add_argument("--char-min-df", type=int, default=2)
+    parser.add_argument("--text-serializer", choices=["current_v1", "state_v2", "compact_events_v1", "recent_pairs_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--normalize", action="store_true")
     parser.add_argument("--weights", default="0,0.02,0.05,0.08,0.1,0.15,0.2,0.3,0.4,0.5,0.7,1.0")
     parser.add_argument("--tune-bias", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--no-research-log", action="store_true")
     args = parser.parse_args()
 
     artifact, payloads = load_oof_payloads(args.oof_artifact)
@@ -267,6 +269,7 @@ def main():
             "ids": sparse_ids,
             "y_true": y_true,
             "classes": ALL_CLASSES,
+            "text_serializer": args.text_serializer,
             "metrics": sparse_metrics,
             "args": vars(args),
         },
@@ -280,6 +283,7 @@ def main():
         "source_rule_artifact": args.rule_artifact,
         "row_count": len(sparse_ids),
         "classes": ALL_CLASSES,
+        "text_serializer": args.text_serializer,
         "args": vars(args),
         "fold_summaries": fold_summaries,
         "sparse_metrics": sparse_metrics,
@@ -301,6 +305,7 @@ def main():
             "experiment_id": args.experiment_id,
             "model_family": "tfidf_linearsvc_oof_ensemble",
             "features": "OOF transformer logits + fold-aware TF-IDF LinearSVC scores",
+            "serializer_name": args.text_serializer,
             "split_type": "session_oof",
             "fold_id": "oof",
             "macro_f1_raw": f"{base_metrics['macro_f1']:.6f}",
@@ -324,6 +329,7 @@ def main():
         "- Validation setup: fold-aware TF-IDF LinearSVC OOF scores ensembled with current finalist transformer logits.",
         f"- Base Macro-F1: {base_metrics['macro_f1']:.6f}",
         f"- Sparse-only Macro-F1: {sparse_metrics['macro_f1']:.6f}",
+        f"- Text serializer: {args.text_serializer}",
         f"- Best sparse weight: {best['sparse_weight']:.3f}",
         f"- Old bias-tuned Macro-F1: {best['macro_f1_old_bias']:.6f}" if best["macro_f1_old_bias"] is not None else "- Old bias-tuned Macro-F1: not run",
         f"- Best Macro-F1: {best['macro_f1']:.6f}",
@@ -334,8 +340,9 @@ def main():
         f"- Decision: {args.notes or 'compare against rule-boost baseline before integration'}",
         "",
     ]
-    with Path("research_log.md").open("a", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    if not args.no_research_log:
+        with Path("research_log.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     print(f"best_sparse_weight={best['sparse_weight']:.3f}")
     print(f"best_macro_f1={best['macro_f1']:.6f}")

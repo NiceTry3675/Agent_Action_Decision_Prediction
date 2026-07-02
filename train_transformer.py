@@ -761,8 +761,9 @@ def run(args):
             f"- Decision: final transformer refit complete; next train final sparse SVC artifact and smoke-test offline submission package.",
             "",
         ]
-        with Path("research_log.md").open("a", encoding="utf-8") as f:
-            f.write("\n".join(lines))
+        if not args.no_research_log:
+            with Path("research_log.md").open("a", encoding="utf-8") as f:
+                f.write("\n".join(lines))
         print(f"saved final HF artifact: {args.output_dir} artifact_size_mb={artifact_size:.1f}")
         return
 
@@ -923,7 +924,8 @@ def run(args):
             "decision": decision,
         },
     )
-    append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size, old_bias_metrics)
+    if not args.no_research_log:
+        append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size, old_bias_metrics)
 
     metrics_path = Path("experiments/artifacts") / f"{experiment_id}_metrics.json"
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
@@ -966,7 +968,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
@@ -994,6 +996,7 @@ def parse_args():
     parser.add_argument("--keep-threshold", type=float, default=0.60)
     parser.add_argument("--notes", default="")
     parser.add_argument("--experiment-suffix", default="")
+    parser.add_argument("--no-research-log", action="store_true")
     parser.add_argument("--cache-dir", default="experiments/cache")
     parser.add_argument("--no-text-cache", action="store_true")
     parser.add_argument("--no-token-cache", action="store_true")

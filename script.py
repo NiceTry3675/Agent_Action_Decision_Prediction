@@ -202,6 +202,144 @@ def summarize_action_event(event):
     return " ".join(bits)
 
 
+def compact_text(value, limit=120):
+    text = re.sub(r"\s+", " ", safe_text(value)).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def compact_arg_value(value, limit=80):
+    if isinstance(value, dict):
+        pieces = [f"{safe_text(k)}:{compact_text(v, 40)}" for k, v in list(value.items())[:4]]
+        text = " ".join(pieces)
+    elif isinstance(value, (list, tuple)):
+        text = " ".join(compact_text(item, 40) for item in value[:4])
+    else:
+        text = safe_text(value)
+    return compact_text(text, limit)
+
+
+ARG_KEY_PRIORITY = (
+    "path",
+    "file",
+    "pattern",
+    "glob",
+    "query",
+    "regex",
+    "cmd",
+    "command",
+    "url",
+    "cwd",
+)
+
+
+def compact_action_args(event, max_items=4, value_limit=80):
+    args = event.get("args") or {}
+    if not isinstance(args, dict) or not args:
+        return "na"
+
+    def priority(item):
+        order, key, _ = item
+        key_l = safe_text(key).lower()
+        for idx, token in enumerate(ARG_KEY_PRIORITY):
+            if token in key_l:
+                return idx, order
+        return len(ARG_KEY_PRIORITY), order
+
+    selected = sorted(
+        [(order, key, value) for order, (key, value) in enumerate(args.items())],
+        key=priority,
+    )[:max_items]
+    bits = []
+    for _, key, value in selected:
+        key_text = compact_text(key, 24)
+        value_text = compact_arg_value(value, value_limit)
+        if value_text:
+            bits.append(f"{key_text}={value_text}")
+    return " ".join(bits) if bits else "na"
+
+
+def result_semantic(result_summary):
+    text = safe_text(result_summary).lower()
+    if not text:
+        return "na"
+    if re.search(r"\b(exit code|return code)\s*[:=]?\s*0\b", text):
+        return "pass"
+    if re.search(r"\b(exit code|return code)\s*[:=]?\s*[1-9][0-9]*\b", text):
+        return "fail"
+    if re.search(r"\b(no matches?|not found|0 matches?|empty|no results?|none)\b", text):
+        return "none"
+    if re.search(r"\b(error|failed|failure|fail|traceback|exception|permission denied|timed out|timeout)\b", text):
+        return "fail"
+    if re.search(r"\b(pass(?:ed)?|success(?:ful)?|succeeded|ok|clean|no errors?)\b", text):
+        return "pass"
+    if re.search(r"\b(found|matches?|occurrences?|results?)\b", text):
+        return "found"
+    if re.search(r"\b(exit code|return code)\b", text):
+        return "exit"
+    return "na"
+
+
+def workspace_language_signal(ws):
+    language_mix = ws.get("language_mix") or {}
+    if isinstance(language_mix, dict) and language_mix:
+        top_lang, _ = sorted(language_mix.items(), key=lambda kv: (-float(kv[1]), safe_text(kv[0])))[0]
+        return safe_text(top_lang).lower()
+    counts = {}
+    for path in ws.get("open_files") or []:
+        base = safe_text(path).replace("\\", "/").rsplit("/", 1)[-1]
+        if "." in base:
+            ext = base.rsplit(".", 1)[-1].lower()
+            counts[ext] = counts.get(ext, 0) + 1
+    if counts:
+        return "ext:" + sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+    return "na"
+
+
+def serialize_transformer_sample_state_v2(sample):
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_events = [event for event in history if event.get("role") == "assistant_action"]
+    action_names = [safe_text(event.get("name")) for event in action_events if safe_text(event.get("name"))]
+
+    parts = [f"cur: {prompt}"]
+    if action_events:
+        last = action_events[-1]
+        parts.append(
+            f"last: a={safe_text(last.get('name')) or 'na'} "
+            f"args={compact_action_args(last, max_items=2, value_limit=36)} "
+            f"res={result_semantic(last.get('result_summary'))}"
+        )
+
+    pairs = list(reversed(history_user_action_pairs(history)[-3:]))
+    for idx, (user_text, action_event) in enumerate(pairs, 1):
+        result = safe_text(action_event.get("result_summary"))
+        summary = compact_text(result, 24)
+        line = (
+            f"h{idx}: u={compact_text(user_text, 52)} "
+            f"a={safe_text(action_event.get('name')) or 'na'} "
+            f"args={compact_action_args(action_event, max_items=1, value_limit=32)} "
+            f"res={result_semantic(result)}"
+        )
+        if summary:
+            line += f" \"{summary}\""
+        parts.append(line)
+
+    parts.append(f"acts: {' > '.join(action_names[-8:]) if action_names else 'none'}")
+    open_files = [compact_text(path, 48) for path in (ws.get("open_files") or [])[:4]]
+    parts.append(
+        f"ws: turn={safe_text(sm.get('turn_index'))} "
+        f"dirty={safe_text(ws.get('git_dirty'))} "
+        f"ci={safe_text(ws.get('last_ci_status'))} "
+        f"open={' | '.join(open_files) if open_files else 'none'} "
+        f"lang={workspace_language_signal(ws)}"
+    )
+    return "\n".join(parts)
+
+
 def compact_event_tokens(sample):
     prompt = safe_text(sample.get("current_prompt", ""))
     history = sample.get("history") or []
@@ -229,6 +367,9 @@ def compact_event_tokens(sample):
                 for path_token in path_tokens(value_text)[:8]:
                     tokens.append(f"arg_{name}_{path_token}")
         result = safe_text(event.get("result_summary"))
+        semantic = result_semantic(result)
+        if semantic != "na":
+            tokens.append(f"result_{name}_{semantic}")
         for result_token in tokenize(result)[:16]:
             tokens.append(f"result_{name}_{result_token}")
 
@@ -281,6 +422,8 @@ def serialize_transformer_sample_recent_pairs(sample, pair_count=3):
 def serialize_transformer_sample(sample, serializer_name="current_v1"):
     if serializer_name in ("current", "current_v1"):
         return serialize_transformer_sample_current(sample)
+    if serializer_name == "state_v2":
+        return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":
         return serialize_transformer_sample_recent_pairs(sample, pair_count=3)
     if serializer_name == "compact_events_v1":
@@ -356,6 +499,9 @@ def rule_base_feature_flags(sample):
                 arg_tokens.extend(rule_path_like_tokens(value))
         result = safe_text(event.get("result_summary", "")).lower()
         if result:
+            semantic = result_semantic(result)
+            if semantic != "na":
+                result_tokens.append(f"result_{semantic}")
             if rule_text_has(r"\b(found|match|matches|occurrences?)\b", result):
                 result_tokens.append("result_found")
             if rule_text_has(r"\b(no matches|not found|empty|0 matches)\b", result):
@@ -462,7 +608,8 @@ def load_sparse_ensemble(model_dir, class_names):
 
 
 def sparse_ensemble_scores(sparse_ensemble, samples):
-    texts = [serialize_transformer_sample_current(sample) for sample in samples]
+    serializer_name = sparse_ensemble.get("meta", {}).get("text_serializer", "current_v1")
+    texts = [serialize_transformer_sample(sample, serializer_name) for sample in samples]
     features = sparse_ensemble["vectorizer"].transform(texts)
     scores = sparse_ensemble["model"].decision_function(features)
     if getattr(scores, "ndim", 1) != 2:

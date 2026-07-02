@@ -12,19 +12,21 @@ import torch.nn.functional as F
 
 from script import (
     ALL_CLASSES,
-    DEFAULT_BUCKETS,
-    ActionDecisionModel,
-    build_offsets,
-    build_sample_token_counts,
-    extract_feature_items,
-    extract_feature_indices,
     load_jsonl,
-    make_batch,
 )
 
 
 CLASS_TO_ID = {label: i for i, label in enumerate(ALL_CLASSES)}
 VOCAB_CHANNELS = ("word", "char", "meta", "last_user")
+LEGACY_HASH_MODEL_MESSAGE = (
+    "train.py's legacy hashed/vocab Torch model path depends on symbols removed "
+    "from the compacted script.py inference path. Use train_transformer.py for "
+    "active transformer experiments or the sparse SVC scripts for ensemble tuning."
+)
+
+
+def require_legacy_hash_model():
+    raise RuntimeError(LEGACY_HASH_MODEL_MESSAGE)
 
 
 def load_labels(path):
@@ -142,6 +144,7 @@ def vocab_limits(args):
 
 
 def build_vocab_config(samples, fit_idx, args):
+    require_legacy_hash_model()
     doc_freq = {channel: Counter() for channel in VOCAB_CHANNELS}
     for row_no, sample_idx in enumerate(fit_idx, 1):
         counts = build_sample_token_counts(samples[sample_idx])
@@ -188,6 +191,7 @@ def build_vocab_config(samples, fit_idx, args):
 
 
 def build_hash_config():
+    require_legacy_hash_model()
     _, num_features = build_offsets(DEFAULT_BUCKETS)
     return {
         "feature_mode": "hash",
@@ -197,12 +201,14 @@ def build_hash_config():
 
 
 def build_features(samples, config):
+    require_legacy_hash_model()
     if config["feature_mode"] == "vocab":
         return [extract_feature_items(sample, config) for sample in samples]
     return [extract_feature_indices(sample, config) for sample in samples]
 
 
 def train_one_model(feature_lists, y, train_idx, args, device, num_features):
+    require_legacy_hash_model()
     model = ActionDecisionModel(
         num_features=num_features,
         num_classes=len(ALL_CLASSES),
@@ -249,6 +255,7 @@ def train_one_model(feature_lists, y, train_idx, args, device, num_features):
 
 
 def collect_logits(model, feature_lists, indices, batch_size, device):
+    require_legacy_hash_model()
     model.eval()
     logits_parts = []
     with torch.inference_mode():
@@ -351,6 +358,7 @@ def save_tensor(path, tensor):
 
 
 def save_model_artifact(model, output_dir, class_bias, args, validation_metrics, feature_config):
+    require_legacy_hash_model()
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     config = {
@@ -479,6 +487,7 @@ def append_research_log(path, experiment_id, split_type, metrics, args, decision
 
 
 def train_and_evaluate(args):
+    require_legacy_hash_model()
     requested_device = args.device
     if requested_device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but torch.cuda.is_available() is false")

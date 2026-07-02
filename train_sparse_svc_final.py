@@ -10,7 +10,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import FeatureUnion
 from sklearn.svm import LinearSVC
 
-from script import ALL_CLASSES, load_jsonl, serialize_transformer_sample_current
+from script import ALL_CLASSES, load_jsonl, serialize_transformer_sample
 from train import CLASS_TO_ID, load_labels
 
 
@@ -61,6 +61,7 @@ def main():
     parser.add_argument("--char-features", type=int, default=220000)
     parser.add_argument("--word-min-df", type=int, default=2)
     parser.add_argument("--char-min-df", type=int, default=2)
+    parser.add_argument("--text-serializer", choices=["current_v1", "state_v2", "compact_events_v1", "recent_pairs_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -68,7 +69,7 @@ def main():
     samples = load_jsonl(data_dir / "train.jsonl")
     labels_by_id = load_labels(data_dir / "train_labels.csv")
     y = np.array([CLASS_TO_ID[labels_by_id[sample["id"]]] for sample in samples], dtype=np.int64)
-    texts = [serialize_transformer_sample_current(sample) for sample in samples]
+    texts = [serialize_transformer_sample(sample, args.text_serializer) for sample in samples]
 
     retune_payload, artifact_weight, class_bias = load_retune_payload(args.retune_artifact)
     sparse_weight = artifact_weight if args.sparse_weight is None else args.sparse_weight
@@ -94,6 +95,7 @@ def main():
     meta = {
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "classes": ALL_CLASSES,
+        "text_serializer": args.text_serializer,
         "sparse_weight": float(sparse_weight),
         "class_bias": [float(value) for value in class_bias],
         "retune_artifact": args.retune_artifact,
@@ -107,7 +109,8 @@ def main():
         json.dump(meta, f, ensure_ascii=False, indent=2)
     print(
         f"saved sparse SVC artifact to {output_dir} "
-        f"rows={len(samples)} features={x_train.shape[1]} elapsed={elapsed:.1f}s weight={sparse_weight}"
+        f"rows={len(samples)} features={x_train.shape[1]} elapsed={elapsed:.1f}s "
+        f"weight={sparse_weight} text_serializer={args.text_serializer}"
     )
 
 
