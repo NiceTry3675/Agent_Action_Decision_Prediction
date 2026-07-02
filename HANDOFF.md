@@ -31,6 +31,14 @@
 - CU 안전장치: 데몬이 학습 종료 시 자동 collect, 유휴 45분(AADP_IDLE_MAX_MIN) 후 자동 unassign (미회수 결과 있으면 반납 보류). 상세: `colab/COLAB.md` "Command channel and CU safety".
 - VM측 구현 `colab/vm_agent.py` (daemon/launch/status/collect). 커밋+`cloud_sync.py push` 후 유효.
 
+## Codex CLI Colab 확장 확인 (2026-07-03)
+
+- Codex CLI 세션에는 Claude Code의 `mcp__ide__executeCode`에 해당하는 IDE bridge 도구가 노출되지 않음.
+- VS Code 서버와 확장 설치는 확인됨: `google.colab`, `ms-toolsai.jupyter`, `openai.chatgpt`.
+- `code --command ...`는 현재 remote CLI에서 `Ignoring option 'command': not supported for code.`로 실패하므로 Codex CLI가 Colab 확장 명령/노트북 셀을 직접 실행하는 경로는 없음.
+- `cloud_sync.py hb`는 `[agent]` 셀 실행 전 `no heartbeat on Drive`로 실패. 즉 Codex CLI 자동화는 사람이 VS Code에서 `[agent]`를 한 번 실행해 daemon을 띄운 뒤부터 가능.
+- 결론: Codex CLI는 Colab 확장을 직접 조작하기보다, VS Code Colab 확장으로 런타임을 부팅한 뒤 Drive command channel(`cloud_sync.py cmd/hb/unassign`)만 안정적으로 사용.
+
 ## 환경 상태
 
 - rclone 원격 `gdrive` 설정 완료. Drive 교환 폴더 `AADP_exchange/` (code/data/runs).

@@ -1,133 +1,118 @@
 # Agent Action Decision Prediction
 
-This repository contains the code-submission solution for the AI Agent Action Decision Prediction Challenge. The task is to predict the next agent action among 14 classes from a coding-agent session state.
+Solution for the Dacon [AI Agent Action Decision Prediction Challenge](https://dacon.io/competitions/official/236694/):
+given the recorded state of an AI coding-agent session, predict the agent's next
+action among 14 classes. The metric is Macro-F1. This is a code-submission
+competition — you submit `submit.zip` (inference code plus trained model) and the
+server runs it offline.
 
-## Current baseline
+Current result: **Public Macro-F1 0.743** (as of 2026-07-02), from an
+`xlm-roberta-base` classifier with session-replay augmentation, OOF-tuned class
+bias and rule boosts, and a sparse-SVC ensemble. `final_summary.md` is the source
+of truth for the submitted package.
 
-The current submitted baseline cleared the target band:
+## Competition constraints
 
-- Public Macro-F1: `0.743`
-- Main validation signal: 3-fold session OOF 2-stage Macro-F1 `0.741881`
-- Model stack: `xlm-roberta-base` + `current_v1` serialization + `replay_last1 cap10000` + OOF-tuned rule boosts + sparse SVC ensemble
-- Final package: `submit.zip`, with root files `script.py`, `requirements.txt`, and `model/`
+The evaluation server runs `python script.py` on a T4 (16 GB) / 3 vCPU / 12 GB
+RAM box, fully offline (network only during pip install):
 
-Use `final_summary.md` as the source of truth for the current submitted package, validation basis, and smoke-test status.
+- inference ≤ 10 minutes, package install ≤ 10 minutes
+- `submit.zip` ≤ 1 GB, archive root exactly `script.py`, `requirements.txt`, `model/`
+
+## Task and data
+
+Each JSONL sample has `current_prompt` (latest user message), `history` (prior
+conversation and actions), and `session_meta`. The label is one of:
+
+```text
+read_file  grep_search  list_directory  glob_pattern
+edit_file  write_file   apply_patch
+run_bash   run_tests    lint_or_typecheck
+ask_user   plan_task    web_search      respond_only
+```
+
+Local data lives in `open/data/` (`train.jsonl`, `train_labels.csv`,
+`test.jsonl`, `sample_submission.csv`); the training scripts default to
+`--data-dir open/data`. The evaluation server instead provides `./data/`, which
+is what `script.py` reads (with a local fallback to `./open/data`). Details:
+`outline.md` and `open/Data_specifications.md`.
+
+## Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install torch transformers==4.46.3 scikit-learn safetensors joblib
+```
+
+Note: `requirements.txt` is not the dev environment — it is the minimal install
+list for the evaluation server, where torch is preinstalled.
+
+## Pipeline
+
+Every experiment appends a row to `experiments/results.csv`; its `train_command`
+column holds the exact reproduction command for each run. The typical progression
+(full policy in `AGENTS.md`):
+
+```bash
+# 1. Quick screen (1 epoch, small validation) — cheap rejection of weak ideas
+.venv/bin/python train_transformer.py --base-model xlm-roberta-base \
+  --serializer current_v1 --epochs 1 --quick-val-size 600 ...
+
+# 2. Fixed session split — sanity + weak-class check (optimistic; never final)
+.venv/bin/python train_transformer.py ... --split session --epochs 5 --tune-bias
+
+# 3. Session-grouped 3-fold OOF — the promotion metric
+.venv/bin/python train_transformer.py ... --split session_oof --fold-id 0  # then 1, 2
+.venv/bin/python aggregate_oof.py ...
+
+# 4. OOF-tuned add-ons: rule boosts and sparse-SVC ensemble
+.venv/bin/python tune_oof_rule_boosts.py ...
+.venv/bin/python tune_sparse_svc_oof.py ...
+.venv/bin/python train_sparse_svc_final.py ...
+
+# 5. Final artifacts into model/
+.venv/bin/python train_transformer.py ... --final-model --save-fp16
+```
+
+Long GPU runs go through the Colab lane (`colab/COLAB.md`): code and data sync
+over a Google Drive exchange folder via `colab/cloud_sync.py`, background
+launches on the VM, and results merged back with `cloud_sync.py pull`.
+
+## Inference and packaging
+
+```bash
+python script.py    # reads ./data (or ./open/data) + ./model, writes ./output/submission.csv
+rm -f submit.zip && zip -r submit.zip script.py requirements.txt model
+```
+
+Before submitting, run the pre-submission checklist in `AGENTS.md` (offline and
+CPU-only smoke tests from a clean zip extraction).
 
 ## Repository map
 
 ```text
-.
-├── script.py                      # Offline inference entrypoint used by the evaluation server
-├── train_transformer.py           # Transformer training, replay augmentation, OOF, caching
-├── train.py                       # Shared metrics, split, bias-tuning, and legacy utilities
-├── tune_sparse_svc_oof.py          # Fold-aware sparse SVC OOF ensemble tuning
-├── train_sparse_svc_final.py       # Final sparse SVC artifact training
-├── aggregate_oof.py                # OOF logits aggregation and bias tuning
-├── evaluate_rule_boosts.py         # Rule-boost evaluation on saved logits
-├── tune_oof_rule_boosts.py         # OOF-derived rule boost selection
-├── final_summary.md                # Current public baseline and package evidence
-├── leaderboard_calibration.md      # Local/OOF/Public calibration notes
-├── research_log.md                 # Compact decision log, not raw experiment dump
-├── experiments/results.csv         # Machine-readable experiment index
-└── open/                           # Competition docs and baseline assets
+script.py                  Offline inference entrypoint (what the server runs)
+train_transformer.py       Transformer training: serializers, replay, splits/OOF, caching
+train.py                   Shared metrics, splits, bias tuning
+aggregate_oof.py           Merge OOF fold logits, tune class bias
+tune_oof_rule_boosts.py    Select rule boosts on OOF logits
+tune_sparse_svc_oof.py     Fold-aware sparse-SVC ensemble tuning
+train_sparse_svc_final.py  Final sparse-SVC artifact
+evaluate_*.py              One-off evaluations on saved logits
+colab/                     Cloud training lane (COLAB.md, cloud_sync.py, vm_agent.py, runner notebook)
+experiments/results.csv    Experiment index (cloud rows merged only via cloud_sync.py pull)
+open/                      Competition handouts: data, spec, baseline
 ```
 
-Large local artifacts are intentionally ignored by git:
+Git-ignored local artifacts: `data/`, `model/`, `output/`, `submit.zip`,
+`experiments/{artifacts,logits,cache,incoming}/`, and checkpoint files.
 
-```text
-data/
-model/
-output/
-submit.zip
-experiments/artifacts/
-experiments/logits/
-experiments/cache/
-*.pt, *.pkl, *.safetensors
-```
+## Documents
 
-## Data and labels
-
-Expected competition data files:
-
-```text
-data/train.jsonl
-data/train_labels.csv
-data/test.jsonl
-data/sample_submission.csv
-```
-
-Each JSONL row contains `id`, `session_meta`, `history`, and `current_prompt`. Labels are one of:
-
-```text
-read_file, grep_search, list_directory, glob_pattern,
-edit_file, write_file, apply_patch,
-run_bash, run_tests, lint_or_typecheck,
-ask_user, plan_task, web_search, respond_only
-```
-
-## Inference
-
-The evaluation server runs `script.py`. The script expects a trained artifact under `./model` and writes `./output/submission.csv`.
-
-```bash
-python script.py
-```
-
-The current inference path loads:
-
-- Hugging Face model from `model/hf_model/`
-- metadata from `model/hf_meta.json`
-- optional sparse SVC ensemble from `model/sparse_svc.pkl` and `model/sparse_meta.json`
-
-The script fails clearly if `./model` is missing.
-
-## Build submission zip
-
-```bash
-rm -f submit.zip
-zip -r submit.zip script.py requirements.txt model
-```
-
-The archive root must contain exactly the expected submission files:
-
-```text
-submit.zip
-├── script.py
-├── requirements.txt
-└── model/
-```
-
-## Smoke checks
-
-Before submitting, run from a clean extracted directory with `data/` copied in:
-
-```bash
-TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 python script.py
-```
-
-Check:
-
-- `output/submission.csv` exists
-- columns are exactly `id,action`
-- row count and ID order match `sample_submission.csv` when available
-- every predicted action is in the 14-class label set
-- inference does not require internet access
-- `submit.zip` stays under the competition size limit
-
-## Research workflow
-
-Use a staged validation funnel:
-
-1. Quick screen: reject weak ideas cheaply.
-2. Fixed session split: sanity check and weak-class inspection.
-3. Session OOF: promote finalists and tune class bias, rules, and ensembles.
-4. Public leaderboard: final calibration only after packaging and smoke checks.
-
-Do not promote a candidate from fixed-session validation alone. The current baseline showed that OOF tracked Public much better than fixed-session validation.
-
-## Key documents
-
-- `final_summary.md` — current baseline, score table, package evidence, and next candidates
-- `leaderboard_calibration.md` — relationship between fixed, OOF, and Public scores
-- `research_log.md` — compact decision log
-- `experiments/results.csv` — full experiment index
+| File | Role |
+| --- | --- |
+| `AGENTS.md` | Operating manual for coding agents: invariants, validation policy, leakage rules |
+| `final_summary.md` | Source of truth for the submitted package and its scores |
+| `leaderboard_calibration.md` | How fixed/OOF validation maps to Public score |
+| `research_log.md` | Compact decision log |
+| `colab/COLAB.md` | Cloud GPU lane protocol |
