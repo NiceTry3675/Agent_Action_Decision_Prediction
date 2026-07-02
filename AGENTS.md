@@ -125,6 +125,15 @@ Alternative encoders are secondary. Existing quick screens showed:
 
 Do not spend long runs on alternative encoders unless there is a clear OOF ensemble-diversity hypothesis.
 
+## Cloud training lane (Colab)
+
+Cloud GPU runs go through the VS Code Colab extension driving `colab/colab_runner.ipynb`.
+Read `colab/COLAB.md` before using it.
+
+- Sync code/data through the Drive exchange folder with `colab/cloud_sync.py` (`push`/`pull`).
+- Merge cloud experiment rows into `experiments/results.csv` only via `cloud_sync.py pull` (dedupes by experiment_id); never hand-copy results.
+- Launch training with the background `[launch]` cell and monitor with `[poll]`; never run a long training synchronously in a notebook cell.
+
 ## Code style and safety
 
 - Keep files compact and operational.

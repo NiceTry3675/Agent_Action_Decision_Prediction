@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 experiments/artifacts/
+experiments/incoming/
 output/
 data/
 model/
