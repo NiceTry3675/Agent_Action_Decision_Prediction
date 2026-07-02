@@ -296,6 +296,55 @@ def tune_class_bias(logits, y_true, rounds=3):
     return bias, best
 
 
+def tune_class_bias_two_stage(
+    logits,
+    y_true,
+    initial_bias=None,
+    initial_best=None,
+    coarse_rounds=2,
+    fine_rounds=2,
+    fine_window=0.24,
+    fine_step=0.02,
+):
+    if initial_bias is None:
+        bias, best = tune_class_bias(logits, y_true, rounds=coarse_rounds)
+    else:
+        bias = initial_bias.detach().cpu().float().clone()
+        if initial_best is None:
+            initial_pred = predict_with_bias(logits, bias)
+            best = f1_metrics(y_true, initial_pred)["macro_f1"]
+        else:
+            best = float(initial_best)
+
+    steps_each_side = max(1, int(round(fine_window / fine_step)))
+    offsets = [round(step * fine_step, 6) for step in range(-steps_each_side, steps_each_side + 1)]
+    for round_no in range(fine_rounds):
+        improved = False
+        for class_id, class_name in enumerate(ALL_CLASSES):
+            current = float(bias[class_id])
+            local_best = best
+            local_value = current
+            for offset in offsets:
+                candidate = current + offset
+                trial = bias.clone()
+                trial[class_id] = candidate
+                pred = predict_with_bias(logits, trial)
+                score = f1_metrics(y_true, pred)["macro_f1"]
+                if score > local_best + 1e-7:
+                    local_best = score
+                    local_value = candidate
+            if local_best > best + 1e-7:
+                bias[class_id] = local_value
+                best = local_best
+                improved = True
+                print(f"  bias fine_round={round_no + 1} class={class_name} value={local_value:.2f} macro_f1={best:.5f}")
+            else:
+                bias[class_id] = current
+        if not improved:
+            break
+    return bias, best
+
+
 def save_tensor(path, tensor):
     tensor = tensor.detach().cpu().float().contiguous()
     tensor.numpy().tofile(path)
@@ -362,6 +411,7 @@ def append_results_csv(path, row):
         "replay_size",
         "macro_f1_raw",
         "macro_f1_bias_tuned",
+        "macro_f1_bias_tuned_2stage",
         "macro_f1",
         "weakest_classes",
         "top_confusions",

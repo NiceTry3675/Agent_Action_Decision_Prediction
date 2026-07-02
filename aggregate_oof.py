@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 
 from script import ALL_CLASSES
-from train import append_results_csv, f1_metrics, predict_with_bias, tune_class_bias
+from train import append_results_csv, f1_metrics, predict_with_bias, tune_class_bias, tune_class_bias_two_stage
 
 
 def torch_load(path):
@@ -56,7 +56,16 @@ def main():
 
     raw_pred = torch.argmax(logits, dim=1).tolist()
     raw_metrics = f1_metrics(y_true, raw_pred)
-    bias, _ = tune_class_bias(logits, y_true, rounds=3)
+    old_bias, _ = tune_class_bias(logits, y_true, rounds=3)
+    old_tuned_pred = predict_with_bias(logits, old_bias)
+    old_tuned_metrics = f1_metrics(y_true, old_tuned_pred)
+    bias, _ = tune_class_bias_two_stage(
+        logits,
+        y_true,
+        initial_bias=old_bias,
+        initial_best=old_tuned_metrics["macro_f1"],
+        fine_rounds=2,
+    )
     tuned_pred = predict_with_bias(logits, bias)
     tuned_metrics = f1_metrics(y_true, tuned_pred)
 
@@ -71,7 +80,9 @@ def main():
         "unique_id_count": len(set(ids)),
         "classes": ALL_CLASSES,
         "raw_metrics": raw_metrics,
+        "old_bias_metrics": old_tuned_metrics,
         "metrics": tuned_metrics,
+        "old_class_bias": dict(zip(ALL_CLASSES, [float(x) for x in old_bias.tolist()])),
         "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in bias.tolist()])),
     }
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -86,7 +97,8 @@ def main():
             "split_type": "session_oof",
             "fold_id": "oof",
             "macro_f1_raw": f"{raw_metrics['macro_f1']:.6f}",
-            "macro_f1_bias_tuned": f"{tuned_metrics['macro_f1']:.6f}",
+            "macro_f1_bias_tuned": f"{old_tuned_metrics['macro_f1']:.6f}",
+            "macro_f1_bias_tuned_2stage": f"{tuned_metrics['macro_f1']:.6f}",
             "macro_f1": f"{tuned_metrics['macro_f1']:.6f}",
             "weakest_classes": ";".join(f"{name}:{score:.4f}" for name, score in weak),
             "top_confusions": json.dumps(tuned_metrics["top_confusions"][:8], ensure_ascii=False),
@@ -104,7 +116,8 @@ def main():
         "- Validation setup: 3-fold session-aware OOF aggregate",
         f"- Fold logits: {fold_paths}",
         f"- Raw OOF Macro-F1: {raw_metrics['macro_f1']:.6f}",
-        f"- Tuned OOF Macro-F1: {tuned_metrics['macro_f1']:.6f}",
+        f"- Old bias-tuned OOF Macro-F1: {old_tuned_metrics['macro_f1']:.6f}",
+        f"- 2-stage tuned OOF Macro-F1: {tuned_metrics['macro_f1']:.6f}",
         f"- Weakest classes: {', '.join(f'{k}={v:.3f}' for k, v in weak)}",
         f"- Top confusions: {tuned_metrics['top_confusions'][:8]}",
         f"- Prediction distribution: {tuned_metrics['prediction_distribution']}",
@@ -115,7 +128,8 @@ def main():
         f.write("\n".join(lines))
 
     print(f"raw_oof_macro_f1={raw_metrics['macro_f1']:.6f}")
-    print(f"tuned_oof_macro_f1={tuned_metrics['macro_f1']:.6f}")
+    print(f"old_tuned_oof_macro_f1={old_tuned_metrics['macro_f1']:.6f}")
+    print(f"tuned_2stage_oof_macro_f1={tuned_metrics['macro_f1']:.6f}")
     print(f"saved {output_path}")
 
 

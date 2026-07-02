@@ -15,7 +15,17 @@ import torch.nn.functional as F
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
 from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample
-from train import CLASS_TO_ID, append_results_csv, f1_metrics, load_labels, predict_with_bias, session_id, split_indices, tune_class_bias
+from train import (
+    CLASS_TO_ID,
+    append_results_csv,
+    f1_metrics,
+    load_labels,
+    predict_with_bias,
+    session_id,
+    split_indices,
+    tune_class_bias,
+    tune_class_bias_two_stage,
+)
 
 
 def safe_slug(value):
@@ -422,6 +432,8 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
     output_dir = Path(output_dir)
     hf_dir = output_dir / "hf_model"
     hf_dir.mkdir(parents=True, exist_ok=True)
+    if args.save_fp16:
+        model = model.half()
     model.save_pretrained(hf_dir, safe_serialization=True)
     tokenizer.save_pretrained(hf_dir)
     meta = {
@@ -438,7 +450,11 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "replay_sample_weight": args.replay_sample_weight,
         "base_model": args.base_model,
         "trained_with_cuda": torch.cuda.is_available(),
+        "final_refit": bool(args.final_model),
+        "saved_fp16": bool(args.save_fp16),
     }
+    if args.class_bias_artifact:
+        meta["class_bias_source"] = str(args.class_bias_artifact)
     if args.rule_boosts_path:
         with Path(args.rule_boosts_path).open(encoding="utf-8") as f:
             rule_payload = json.load(f)
@@ -460,7 +476,47 @@ def summarize_weak_classes(metrics, count=5):
     return ";".join(f"{name}:{score:.4f}" for name, score in sorted(metrics["per_class_f1"].items(), key=lambda kv: kv[1])[:count])
 
 
-def append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size_mb):
+def load_tokenizer_for_args(args):
+    try:
+        return AutoTokenizer.from_pretrained(args.base_model, use_fast=not args.slow_tokenizer)
+    except ImportError:
+        if args.slow_tokenizer:
+            raise
+        print(f"fast tokenizer unavailable for {args.base_model}; falling back to slow tokenizer")
+        return AutoTokenizer.from_pretrained(args.base_model, use_fast=False)
+
+
+def load_class_bias_artifact(path):
+    if not path:
+        return None, None
+    with Path(path).open(encoding="utf-8") as f:
+        payload = json.load(f)
+    raw_bias = payload.get("class_bias")
+    if raw_bias is None:
+        raise ValueError(f"{path} does not contain class_bias")
+    if isinstance(raw_bias, dict):
+        bias_values = [float(raw_bias.get(label, 0.0)) for label in ALL_CLASSES]
+    else:
+        bias_values = [float(value) for value in raw_bias]
+    if len(bias_values) != len(ALL_CLASSES):
+        raise ValueError(f"{path} class_bias has {len(bias_values)} values, expected {len(ALL_CLASSES)}")
+    metrics = payload.get("metrics") or {}
+    if "macro_f1" not in metrics:
+        metrics = {"macro_f1": float(payload.get("validation_macro_f1", 0.0))}
+    return torch.tensor(bias_values, dtype=torch.float32), metrics
+
+
+def append_log(
+    experiment_id,
+    args,
+    raw_metrics,
+    metrics,
+    decision,
+    runtime,
+    val_logits_path,
+    artifact_size_mb,
+    old_bias_metrics=None,
+):
     weak = sorted(metrics["per_class_f1"].items(), key=lambda kv: kv[1])[:5]
     strong = sorted(metrics["per_class_f1"].items(), key=lambda kv: kv[1], reverse=True)[:5]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -474,6 +530,7 @@ def append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val
         f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}, bucket_multiplier={args.bucket_multiplier}.",
         f"- Validation setup: {args.split}{fold_note}{quick_note}",
         f"- Raw Macro-F1: {raw_metrics['macro_f1']:.6f}",
+        f"- Old bias-tuned Macro-F1: {old_bias_metrics['macro_f1']:.6f}" if old_bias_metrics else "- Old bias-tuned Macro-F1: not run",
         f"- Overall Macro-F1: {metrics['macro_f1']:.6f}",
         "- Per-class observations:",
         f"  - Weakest: {', '.join(f'{k}={v:.3f}' for k, v in weak)}",
@@ -490,7 +547,19 @@ def append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val
         f.write("\n".join(lines))
 
 
-def save_val_logits(experiment_id, logits, y_true, ordered_indices, samples, bias, raw_metrics, metrics, args):
+def save_val_logits(
+    experiment_id,
+    logits,
+    y_true,
+    ordered_indices,
+    samples,
+    bias,
+    raw_metrics,
+    metrics,
+    args,
+    old_bias=None,
+    old_bias_metrics=None,
+):
     if not args.save_val_logits:
         return ""
     path = Path(args.logits_dir) / f"{experiment_id}_val_logits.pt"
@@ -503,7 +572,9 @@ def save_val_logits(experiment_id, logits, y_true, ordered_indices, samples, bia
             "ids": [samples[i].get("id", "") for i in ordered_indices],
             "classes": ALL_CLASSES,
             "class_bias": [float(x) for x in bias.tolist()],
+            "old_class_bias": [float(x) for x in old_bias.tolist()] if old_bias is not None else None,
             "raw_metrics": raw_metrics,
+            "old_bias_metrics": old_bias_metrics,
             "metrics": metrics,
             "base_model": args.base_model,
             "serializer_name": args.serializer,
@@ -563,6 +634,138 @@ def run(args):
     y = [CLASS_TO_ID[labels_by_id[sample["id"]]] for sample in samples]
     base_samples = samples
     base_y = y
+    if args.final_only:
+        if not args.final_model:
+            raise ValueError("--final-only requires --final-model")
+        if args.split == "session_oof":
+            raise ValueError("Use --split session, not session_oof, for --final-only")
+        tokenizer = load_tokenizer_for_args(args)
+        if args.replay_mode == "none":
+            final_samples = base_samples
+            final_y = base_y
+            final_idx = list(range(len(base_samples)))
+            final_sample_weights = [1.0] * len(base_samples)
+            final_replay_size = 0
+        else:
+            final_samples, final_y, final_idx, final_sample_weights, final_replay_size = add_replay_examples(
+                base_samples,
+                base_y,
+                list(range(len(base_samples))),
+                args,
+            )
+        print(f"split=final_refit train={len(final_idx)} replay_size={final_replay_size}")
+        token_start = time.perf_counter()
+        final_texts, text_cache_path = build_serialized_texts(final_samples, args, train_path, cache_scope="final")
+        final_encoded_features, final_lengths, token_cache_path = tokenize_texts(
+            tokenizer,
+            final_texts,
+            args,
+            train_path,
+            cache_scope="final",
+        )
+        token_sec = time.perf_counter() - token_start
+        avg_len = sum(final_lengths) / max(1, len(final_lengths))
+        print(f"token lengths avg={avg_len:.1f} max={max(final_lengths) if final_lengths else 0}")
+        if args.cache_only:
+            print("cache-only requested; skipping final refit")
+            return
+
+        train_start = time.perf_counter()
+        final_model = train_model(
+            tokenizer,
+            final_encoded_features,
+            final_lengths,
+            final_y,
+            final_sample_weights,
+            final_idx,
+            args,
+            device,
+        )
+        train_sec = time.perf_counter() - train_start
+        artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
+        if artifact_bias is None:
+            artifact_bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
+            source_metrics = {"macro_f1": 0.0}
+        save_hf_artifact(final_model, tokenizer, args.output_dir, artifact_bias, args, source_metrics)
+        artifact_size = dir_size_mb(args.output_dir)
+        runtime = {
+            "tokenize_sec": token_sec,
+            "train_sec": train_sec,
+            "eval_sec": 0.0,
+            "total_sec": time.perf_counter() - run_start,
+        }
+        experiment_id = experiment_id_for(args)
+        metric_value = source_metrics.get("macro_f1", "")
+        weak = ""
+        if source_metrics.get("per_class_f1"):
+            weak = summarize_weak_classes(source_metrics)
+        append_results_csv(
+            Path("experiments/results.csv"),
+            {
+                "experiment_id": experiment_id,
+                "model_family": "torch_gpu_transformer_final_refit",
+                "base_model": args.base_model,
+                "features": "serialized prompt/action/workspace text",
+                "serializer_name": args.serializer,
+                "split_type": "final_refit",
+                "seed": args.seed,
+                "max_length": args.max_length,
+                "epochs": args.epochs,
+                "learning_rate": args.lr,
+                "batch_size": args.batch_size,
+                "class_weight_power": args.class_weight_power,
+                "label_smoothing": args.label_smoothing,
+                "replay_mode": args.replay_mode,
+                "replay_size": final_replay_size,
+                "macro_f1": f"{metric_value:.6f}" if isinstance(metric_value, (float, int)) else "",
+                "weakest_classes": weak,
+                "artifact_path": args.output_dir,
+                "runtime_sec": f"{runtime['total_sec']:.3f}",
+                "artifact_size_mb": f"{artifact_size:.3f}",
+                "train_command": " ".join(shlex.quote(part) for part in sys.argv),
+                "notes": args.notes or "final refit",
+                "decision": "final transformer refit complete; requires sparse artifact and package smoke test",
+            },
+        )
+        metrics_path = Path("experiments/artifacts") / f"{experiment_id}_metrics.json"
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        with metrics_path.open("w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "experiment_id": experiment_id,
+                    "metrics_source": args.class_bias_artifact,
+                    "source_metrics": source_metrics,
+                    "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in artifact_bias.tolist()])),
+                    "device": str(device),
+                    "runtime": runtime,
+                    "serializer_name": args.serializer,
+                    "text_cache_path": str(text_cache_path),
+                    "token_cache_path": str(token_cache_path),
+                    "replay_size": final_replay_size,
+                    "artifact_size_mb": artifact_size,
+                    "rule_boosts_path": args.rule_boosts_path,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        lines = [
+            f"## {experiment_id}",
+            "",
+            f"- Date/time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            "- Validation setup: final refit on all labeled rows; no validation rows used.",
+            f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}.",
+            f"- OOF class-bias source: {args.class_bias_artifact or 'none'}",
+            f"- Rule boosts source: {args.rule_boosts_path or 'none'}",
+            f"- Runtime or package-size concerns: runtime={runtime['total_sec']:.1f}s, tokenize={runtime['tokenize_sec']:.1f}s, train={runtime['train_sec']:.1f}s, artifact_size_mb={artifact_size:.1f}.",
+            f"- Decision: final transformer refit complete; next train final sparse SVC artifact and smoke-test offline submission package.",
+            "",
+        ]
+        with Path("research_log.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        print(f"saved final HF artifact: {args.output_dir} artifact_size_mb={artifact_size:.1f}")
+        return
+
     train_idx, val_idx = split_for_args(samples, y, args)
     full_val_count = len(val_idx)
     val_idx = select_balanced_subset(val_idx, y, args.quick_val_size, args.seed + 17)
@@ -570,7 +773,7 @@ def run(args):
     fold_text = f" fold={args.fold_id}/{args.n_folds}" if args.split == "session_oof" else ""
     print(f"split={args.split}{fold_text} train={len(train_idx)} val={len(val_idx)} full_val={full_val_count}")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model)
+    tokenizer = load_tokenizer_for_args(args)
     token_start = time.perf_counter()
     train_cache_scope = "train"
     if args.split == "session_oof":
@@ -594,16 +797,41 @@ def run(args):
     print(f"  raw_macro_f1={raw_metrics['macro_f1']:.6f}")
 
     bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
+    old_bias = None
+    old_bias_metrics = None
     metrics = raw_metrics
     if args.tune_bias:
-        print("  tuning class bias")
-        bias, _ = tune_class_bias(logits, y_val, rounds=2)
+        print("  tuning old class bias")
+        old_bias, _ = tune_class_bias(logits, y_val, rounds=2)
+        old_pred = predict_with_bias(logits, old_bias)
+        old_bias_metrics = f1_metrics(y_val, old_pred)
+        print(f"  old_tuned_macro_f1={old_bias_metrics['macro_f1']:.6f}")
+        print("  tuning 2-stage class bias")
+        bias, _ = tune_class_bias_two_stage(
+            logits,
+            y_val,
+            initial_bias=old_bias,
+            initial_best=old_bias_metrics["macro_f1"],
+            fine_rounds=2,
+        )
         pred = predict_with_bias(logits, bias)
         metrics = f1_metrics(y_val, pred)
-        print(f"  tuned_macro_f1={metrics['macro_f1']:.6f}")
+        print(f"  tuned_2stage_macro_f1={metrics['macro_f1']:.6f}")
 
     experiment_id = experiment_id_for(args)
-    val_logits_path = save_val_logits(experiment_id, logits, y_val, ordered_val_idx, samples, bias, raw_metrics, metrics, args)
+    val_logits_path = save_val_logits(
+        experiment_id,
+        logits,
+        y_val,
+        ordered_val_idx,
+        samples,
+        bias,
+        raw_metrics,
+        metrics,
+        args,
+        old_bias=old_bias,
+        old_bias_metrics=old_bias_metrics,
+    )
     runtime = {
         "tokenize_sec": token_sec,
         "train_sec": train_sec,
@@ -678,7 +906,8 @@ def run(args):
             "replay_mode": args.replay_mode,
             "replay_size": replay_size,
             "macro_f1_raw": f"{raw_metrics['macro_f1']:.6f}",
-            "macro_f1_bias_tuned": f"{metrics['macro_f1']:.6f}" if args.tune_bias else "",
+            "macro_f1_bias_tuned": f"{old_bias_metrics['macro_f1']:.6f}" if old_bias_metrics else "",
+            "macro_f1_bias_tuned_2stage": f"{metrics['macro_f1']:.6f}" if args.tune_bias else "",
             "macro_f1": f"{metrics['macro_f1']:.6f}",
             "weakest_classes": summarize_weak_classes(metrics),
             "top_confusions": json.dumps(metrics["top_confusions"][:8], ensure_ascii=False),
@@ -694,7 +923,7 @@ def run(args):
             "decision": decision,
         },
     )
-    append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size)
+    append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size, old_bias_metrics)
 
     metrics_path = Path("experiments/artifacts") / f"{experiment_id}_metrics.json"
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
@@ -703,8 +932,10 @@ def run(args):
             {
                 "experiment_id": experiment_id,
                 "raw_metrics": raw_metrics,
+                "old_bias_metrics": old_bias_metrics,
                 "metrics": metrics,
                 "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in bias.tolist()])),
+                "old_class_bias": dict(zip(ALL_CLASSES, [float(x) for x in old_bias.tolist()])) if old_bias is not None else None,
                 "device": str(device),
                 "runtime": runtime,
                 "serializer_name": args.serializer,
@@ -755,8 +986,11 @@ def parse_args():
     parser.add_argument("--gradient-checkpointing", action="store_true")
     parser.add_argument("--tune-bias", action="store_true")
     parser.add_argument("--final-model", action="store_true")
+    parser.add_argument("--final-only", action="store_true")
+    parser.add_argument("--save-fp16", action="store_true")
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--rule-boosts-path", default="")
+    parser.add_argument("--class-bias-artifact", default="")
     parser.add_argument("--keep-threshold", type=float, default=0.60)
     parser.add_argument("--notes", default="")
     parser.add_argument("--experiment-suffix", default="")
@@ -766,6 +1000,7 @@ def parse_args():
     parser.add_argument("--rebuild-cache", action="store_true")
     parser.add_argument("--cache-only", action="store_true")
     parser.add_argument("--tokenize-batch-size", type=int, default=4096)
+    parser.add_argument("--slow-tokenizer", action="store_true")
     parser.add_argument("--quick-val-size", type=int, default=0)
     parser.add_argument("--replay-mode", choices=["none", "last1", "last2"], default="none")
     parser.add_argument("--max-replay-samples", type=int, default=20000)

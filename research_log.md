@@ -822,3 +822,280 @@
 - Artifact: experiments/artifacts/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_svc.json
 - Sparse logits: experiments/logits/20260702_oof_sparse_svc_current_v1_len256_ep4_replay_last1_sparse_oof_logits.pt
 - Decision: OOF diagnostic: fold-aware TF-IDF LinearSVC scores ensembled with current_v1 + replay_last1 finalist logits; no rules, no extra bias retune
+## 20260701_slack_xlm_roberta_base_public_07081
+
+- Date/time: 2026-07-01 23:47:20 KST
+- Source: Slack handoff by `jinsanroh02` in `#2026-aisw중심대학-디지털-경진대회-ai부문-전체`; message `https://2026aiswai.slack.com/archives/C0BE7C9R2UT/p1782917240220989`, Canvas `F0BEGTEFKUJ`.
+- Hypothesis: Replacing `distilbert-base-multilingual-cased` with `xlm-roberta-base` is the next meaningful jump; sparse TF-IDF features appear capped around local 0.64 and DistilBERT public was 0.6983.
+- Code/config changes: External teammate run, not yet reproduced in this repo. `xlm-roberta-base` fine-tuned with the teammate `serialize_transformer_sample` format: current prompt, tier/lang/turn/budget/elapsed meta, workspace meta, recent 8 actions, optional last_user/args/results.
+- Training setup: epochs=3, lr=2e-5, max_length=192, batch_size=16, class-weighted CrossEntropy with label_smoothing=0.02, class_weight_power=0.5, AdamW weight_decay=0.01, linear warmup 6%, bf16 training, class-bias post tuning, full 70k final refit saved as fp16.
+- Validation setup: session split.
+- Local session Macro-F1: 0.718793.
+- Public Macro-F1: 0.7080569737, reported as the current team best; previous DistilBERT public score was 0.6983.
+- Local-public gap: -0.0107.
+- Runtime or package-size concerns: 30k inference took 1m 7s; fp16 artifact 556MB and zipped submission 513MB, within the 10 minute and 1GB limits.
+- Per-class observations:
+  - Weakest shared classes: list_directory=~0.48, read_file=~0.54, web_search=~0.54, lint_or_typecheck=~0.58, grep_search=~0.60.
+  - Main confusion region remains file/exploration actions: grep_search, read_file, and list_directory.
+- Decision: keep this 3-epoch `xlm-roberta-base` result as the historical public calibration anchor; it is superseded locally by the 5-epoch XLM-R handoff below.
+- Next suggested experiment: use the 5-epoch XLM-R baseline as the reference point, then test replay_last1 cap10000 with saved validation logits and 2-stage bias tuning.
+## 20260702_slack_xlm_roberta_base_5ep_fixed_07389
+
+- Date/time: 2026-07-02 KST
+- Source: teammate handoff shared in the active research thread; no validation logits were saved for this teammate run.
+- Hypothesis: `xlm-roberta-base` needs longer fine-tuning than the earlier 3-epoch public submission; 5 epochs may become the fixed-session reference before testing replay or OOF.
+- Code/config changes: External teammate run using current_v1-style serialization and the current GitHub `script.py`; only the `model/` artifact changes to XLM-R fp16 weights.
+- Training setup: model=xlm-roberta-base, max_length=192, epochs=5, lr=2e-5, batch_size=16, seed=42, class_weight_power=0.5, label_smoothing=0.02, replay=none.
+- Validation setup: fixed session split, validation rows=14,001.
+- Raw Macro-F1: 0.7354.
+- Old bias-tuned Macro-F1: not shared.
+- 2-stage bias-tuned Macro-F1: 0.7389.
+- Per-class observations:
+  - Weakest: list_directory=0.474, read_file=0.561, grep_search=0.596, web_search=0.610, glob_pattern=0.626.
+  - Main confusions: grep_search -> read_file=564, read_file -> list_directory=360, grep_search -> list_directory=283.
+- Runtime or package-size concerns: fp16 XLM-R artifact is about 556MB, within the 1GB submission limit. Expected Public from fixed 0.7389 is roughly 0.726-0.728, so this is better but still likely below the 0.74 target.
+- Decision: promote XLM-R 5ep no-replay to the canonical fixed-session baseline; the older 3ep XLM-R result is now only a historical public anchor.
+- Next suggested experiment: run XLM-R 5ep + replay_last1 cap10000 weight0.5 with 2-stage class-bias tuning and saved validation logits; promote to 3-fold session OOF only if replay improves fixed-session score or weak-class F1.
+## 20260701_183208_gpu_transformer_session_current_v1_len192_replay-last1_stage2_xlmr_base_len192_ep5_replay_last1_cap1000
+
+- Date/time: 2026-07-01 18:32:08 UTC
+- Hypothesis: Replay_last1 may improve the new canonical XLM-R 5ep baseline by adding supervised prior user-action pairs without changing inference packaging.
+- Code/config changes: `xlm-roberta-base`, serializer=current_v1, replay=last1, max_length=192, epochs=5, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session
+- Raw Macro-F1: 0.739664
+- Old bias-tuned Macro-F1: 0.743909
+- Overall Macro-F1: 0.744625
+- Per-class observations:
+  - Weakest: list_directory=0.505, web_search=0.588, read_file=0.604, grep_search=0.610, glob_pattern=0.627
+  - Strongest: respond_only=0.999, write_file=0.993, edit_file=0.977, apply_patch=0.955, run_bash=0.812
+- Top confusions: [(564, 'grep_search', 'read_file'), (320, 'read_file', 'list_directory'), (270, 'grep_search', 'list_directory'), (218, 'glob_pattern', 'read_file'), (209, 'list_directory', 'read_file'), (182, 'read_file', 'grep_search'), (154, 'glob_pattern', 'list_directory'), (148, 'ask_user', 'plan_task')]
+- Prediction distribution: {'apply_patch': 927, 'ask_user': 466, 'edit_file': 2264, 'glob_pattern': 804, 'grep_search': 1368, 'lint_or_typecheck': 448, 'list_directory': 1300, 'plan_task': 584, 'read_file': 2254, 'respond_only': 1052, 'run_bash': 998, 'run_tests': 921, 'web_search': 306, 'write_file': 309}
+- Runtime or package-size concerns: runtime=2411.1s, tokenize=13.4s, train=2368.5s, eval=14.8s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_183208_gpu_transformer_session_current_v1_len192_replay-last1_stage2_xlmr_base_len192_ep5_replay_last1_cap1000_val_logits.pt
+- Decision: promote to 3-fold session OOF. Replay improved fixed-session raw Macro-F1 from the no-replay handoff 0.7354 to 0.739664 and 2-stage tuned Macro-F1 from 0.7389 to 0.744625. `list_directory`, `read_file`, and `grep_search` improved, but `web_search` fell versus the handoff and needs OOF confirmation.
+- Next suggested experiment: run 3-fold session-aware OOF for `xlm-roberta-base`, current_v1, max_length 192, epochs 5, replay_last1 cap10000 weight0.5, then tune 2-stage class bias, rule boosts, and sparse SVC ensemble on the aggregate OOF logits.
+## 20260701_190742_gpu_transformer_session_oof_current_v1_len192_fold0-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold0
+
+- Date/time: 2026-07-01 19:07:42 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `xlm-roberta-base`, serializer=current_v1, replay=last1, max_length=192, epochs=5, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session_oof, fold=0/3
+- Raw Macro-F1: 0.731585
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.731585
+- Per-class observations:
+  - Weakest: list_directory=0.447, read_file=0.539, ask_user=0.592, grep_search=0.601, web_search=0.619
+  - Strongest: respond_only=0.999, write_file=0.988, edit_file=0.973, apply_patch=0.948, run_bash=0.801
+- Top confusions: [(757, 'grep_search', 'read_file'), (667, 'read_file', 'grep_search'), (578, 'read_file', 'list_directory'), (448, 'grep_search', 'list_directory'), (346, 'list_directory', 'read_file'), (261, 'glob_pattern', 'read_file'), (243, 'list_directory', 'grep_search'), (235, 'ask_user', 'plan_task')]
+- Prediction distribution: {'apply_patch': 1650, 'ask_user': 751, 'edit_file': 3684, 'glob_pattern': 1439, 'grep_search': 3070, 'lint_or_typecheck': 814, 'list_directory': 2055, 'plan_task': 839, 'read_file': 3031, 'respond_only': 1728, 'run_bash': 1566, 'run_tests': 1598, 'web_search': 606, 'write_file': 503}
+- Runtime or package-size concerns: runtime=2038.4s, tokenize=13.2s, train=1996.0s, eval=24.7s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_190742_gpu_transformer_session_oof_current_v1_len192_fold0-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold0_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_194151_gpu_transformer_session_oof_current_v1_len192_fold1-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold1
+
+- Date/time: 2026-07-01 19:41:51 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `xlm-roberta-base`, serializer=current_v1, replay=last1, max_length=192, epochs=5, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session_oof, fold=1/3
+- Raw Macro-F1: 0.720607
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.720607
+- Per-class observations:
+  - Weakest: list_directory=0.445, read_file=0.548, web_search=0.578, lint_or_typecheck=0.598, grep_search=0.599
+  - Strongest: respond_only=1.000, write_file=0.979, edit_file=0.971, apply_patch=0.946, run_bash=0.788
+- Top confusions: [(864, 'grep_search', 'read_file'), (618, 'read_file', 'grep_search'), (493, 'read_file', 'list_directory'), (415, 'list_directory', 'read_file'), (399, 'grep_search', 'list_directory'), (298, 'glob_pattern', 'read_file'), (253, 'run_bash', 'run_tests'), (226, 'plan_task', 'ask_user')]
+- Prediction distribution: {'apply_patch': 1684, 'ask_user': 850, 'edit_file': 3663, 'glob_pattern': 1490, 'grep_search': 2885, 'lint_or_typecheck': 771, 'list_directory': 1841, 'plan_task': 776, 'read_file': 3358, 'respond_only': 1726, 'run_bash': 1575, 'run_tests': 1614, 'web_search': 589, 'write_file': 511}
+- Runtime or package-size concerns: runtime=2039.1s, tokenize=12.5s, train=1997.4s, eval=24.7s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_194151_gpu_transformer_session_oof_current_v1_len192_fold1-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold1_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260701_201604_gpu_transformer_session_oof_current_v1_len192_fold2-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold2
+
+- Date/time: 2026-07-01 20:16:04 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `xlm-roberta-base`, serializer=current_v1, replay=last1, max_length=192, epochs=5, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session_oof, fold=2/3
+- Raw Macro-F1: 0.718740
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.718740
+- Per-class observations:
+  - Weakest: list_directory=0.423, read_file=0.546, web_search=0.588, lint_or_typecheck=0.592, ask_user=0.605
+  - Strongest: respond_only=0.997, write_file=0.992, edit_file=0.969, apply_patch=0.941, run_bash=0.791
+- Top confusions: [(892, 'grep_search', 'read_file'), (614, 'read_file', 'grep_search'), (543, 'list_directory', 'read_file'), (442, 'read_file', 'list_directory'), (358, 'glob_pattern', 'read_file'), (336, 'grep_search', 'list_directory'), (261, 'run_bash', 'run_tests'), (227, 'ask_user', 'plan_task')]
+- Prediction distribution: {'apply_patch': 1695, 'ask_user': 759, 'edit_file': 3663, 'glob_pattern': 1405, 'grep_search': 2907, 'lint_or_typecheck': 804, 'list_directory': 1609, 'plan_task': 869, 'read_file': 3653, 'respond_only': 1736, 'run_bash': 1523, 'run_tests': 1619, 'web_search': 599, 'write_file': 492}
+- Runtime or package-size concerns: runtime=2039.2s, tokenize=12.6s, train=1997.4s, eval=24.7s, artifact_size_mb=520.0.
+- Validation logits: experiments/logits/20260701_201604_gpu_transformer_session_oof_current_v1_len192_fold2-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold2_val_logits.pt
+- Decision: oof fold complete; aggregate before decision
+- Next suggested experiment: quick-screen serializer/replay variants, then promote only broad fixed-session improvements to OOF.
+## 20260702_oof_xlmr_base_len192_ep5_replay_last1_cap10000
+
+- Date/time: 2026-07-01 20:17:07 UTC
+- Validation setup: 3-fold session-aware OOF aggregate
+- Fold logits: ['experiments/logits/20260701_190742_gpu_transformer_session_oof_current_v1_len192_fold0-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold0_val_logits.pt', 'experiments/logits/20260701_194151_gpu_transformer_session_oof_current_v1_len192_fold1-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold1_val_logits.pt', 'experiments/logits/20260701_201604_gpu_transformer_session_oof_current_v1_len192_fold2-of3_replay-last1_oof_xlmr_len192_ep5_replay_last1_cap10000_fold2_val_logits.pt']
+- Raw OOF Macro-F1: 0.723739
+- Old bias-tuned OOF Macro-F1: 0.728371
+- 2-stage tuned OOF Macro-F1: 0.728569
+- Weakest classes: list_directory=0.454, read_file=0.566, grep_search=0.589, web_search=0.600, lint_or_typecheck=0.610
+- Top confusions: [(3139, 'grep_search', 'read_file'), (1858, 'read_file', 'list_directory'), (1440, 'grep_search', 'list_directory'), (1340, 'list_directory', 'read_file'), (1158, 'glob_pattern', 'read_file'), (997, 'read_file', 'grep_search'), (724, 'ask_user', 'plan_task'), (709, 'glob_pattern', 'list_directory')]
+- Prediction distribution: {'apply_patch': 4898, 'ask_user': 2390, 'edit_file': 11152, 'glob_pattern': 4072, 'grep_search': 6554, 'lint_or_typecheck': 1978, 'list_directory': 6508, 'plan_task': 2719, 'read_file': 11597, 'respond_only': 5186, 'run_bash': 5003, 'run_tests': 4915, 'web_search': 1543, 'write_file': 1485}
+- Decision: Aggregate 3-fold session OOF for promoted XLM-R replay finalist; compare against fixed-session 0.744625 before rule/sparse ensemble or final refit
+## 20260702_oof_rule_boosts_xlmr_base_len192_ep5_replay_last1_cap10000
+
+- Date/time: 2026-07-01 20:22:51 UTC
+- Validation setup: 3-fold session-aware OOF aggregate with deterministic sample/logit rule boosts.
+- Baseline OOF Macro-F1: 0.728569
+- Boosted OOF Macro-F1: 0.735673
+- Selected rules: 12
+- Weakest classes: list_directory:0.4678, read_file:0.5659, grep_search:0.5893, lint_or_typecheck:0.6173, web_search:0.6263
+- Top confusions: [(3110, 'grep_search', 'read_file'), (1954, 'read_file', 'list_directory'), (1476, 'grep_search', 'list_directory'), (1195, 'list_directory', 'read_file'), (1115, 'glob_pattern', 'read_file'), (995, 'read_file', 'grep_search'), (756, 'glob_pattern', 'list_directory'), (726, 'ask_user', 'plan_task')]
+- Rule artifact: experiments/artifacts/20260702_oof_rule_boosts_xlmr_base_len192_ep5_replay_last1_cap10000_rule_boosts.json
+- Decision: OOF rule boost diagnostic on XLM-R replay finalist; only promote if gain is meaningful over 0.728569 2-stage OOF baseline
+## 20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000
+
+- Date/time: 2026-07-01 20:35:21 UTC
+- Validation setup: fold-aware TF-IDF LinearSVC OOF scores ensembled with current finalist transformer logits.
+- Base Macro-F1: 0.735673
+- Sparse-only Macro-F1: 0.536014
+- Best sparse weight: 1.000
+- Old bias-tuned Macro-F1: 0.738590
+- Best Macro-F1: 0.739142
+- Weakest classes: list_directory:0.4674, read_file:0.5684, grep_search:0.5973, lint_or_typecheck:0.6215, ask_user:0.6308
+- Top confusions: [(2999, 'grep_search', 'read_file'), (1653, 'read_file', 'list_directory'), (1310, 'grep_search', 'list_directory'), (1289, 'list_directory', 'read_file'), (1266, 'read_file', 'grep_search'), (1086, 'glob_pattern', 'read_file'), (765, 'ask_user', 'plan_task'), (697, 'glob_pattern', 'list_directory')]
+- Artifact: experiments/artifacts/20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_sparse_svc.json
+- Sparse logits: experiments/logits/20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_sparse_oof_logits.pt
+- Decision: OOF sparse SVC ensemble on top of XLM-R replay plus OOF rule boosts; fold-aware sparse training, tune sparse weight and 2-stage bias on OOF only
+## 20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_w4_retune
+
+- Date/time: 2026-07-01 20:56:23 UTC
+- Validation setup: 3-fold session-aware OOF, XLM-R replay logits plus OOF rule boosts plus saved fold-aware sparse SVC scores.
+- Base rule-boosted Macro-F1: 0.735673
+- Sparse-only Macro-F1: 0.536014
+- Sparse weight: 4.000
+- Combined raw Macro-F1: 0.739852
+- Old bias-tuned Macro-F1: 0.741570
+- 2-stage tuned Macro-F1: 0.741881
+- Weakest classes: list_directory:0.4824, read_file:0.5682, grep_search:0.6035, lint_or_typecheck:0.6298, ask_user:0.6349
+- Top confusions: [(2736, 'grep_search', 'read_file'), (1701, 'read_file', 'list_directory'), (1451, 'read_file', 'grep_search'), (1374, 'grep_search', 'list_directory'), (1089, 'list_directory', 'read_file'), (1037, 'glob_pattern', 'read_file'), (756, 'ask_user', 'plan_task'), (728, 'glob_pattern', 'list_directory')]
+- Artifact: experiments/artifacts/20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_w4_retune_sparse_weight_retune.json
+- Decision: best OOF candidate so far and above 0.74, but final inference would need packaged sparse SVC support plus rule boosts; do not submit until packaging and smoke tests are done.
+## 20260702_fixed_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_w4_check
+
+- Date/time: 2026-07-01 20:53:00 UTC
+- Validation setup: fixed session split cross-check using saved XLM-R replay fixed logits, OOF rule artifact, and fold-safe sparse SVC trained without validation sessions.
+- Base fixed Macro-F1: 0.744625
+- Rule-boosted fixed Macro-F1: 0.747755
+- Sparse-only fixed Macro-F1: 0.550580
+- Combined fixed Macro-F1 at sparse weight 4.0: 0.751733
+- Weakest combined classes: list_directory=0.5084, read_file=0.5947, grep_search=0.6097, glob_pattern=0.6301, ask_user=0.6390, web_search=0.6396.
+- Decision: fixed split agrees that rules+sparse help, but OOF 0.741881 remains the primary promotion signal. Continue only through packaging/final-refit checks, not additional fixed-only tuning.
+## 20260702_final_package_xlmr_replay_rules_sparse_w4
+
+- Date/time: 2026-07-02 KST
+- Package: `submit.zip`
+- Validation basis: best OOF stack `20260702_oof_sparse_svc_plus_rules_xlmr_base_len192_ep5_replay_last1_cap10000_w4_retune`, 2-stage tuned OOF Macro-F1 0.741881.
+- Final refit: `xlm-roberta-base`, current_v1, max_length=192, epochs=5, lr=2e-5, batch=16, replay_last1 cap10000 weight0.5, trained on all 70k labels plus replay examples.
+- Inference stack: final fp16 XLM-R transformer, OOF transformer class bias, 12 OOF-derived rule boosts, final sparse SVC artifact, sparse weight=4.0, final ensemble class bias from OOF retune.
+- Requirements: `transformers==4.46.3`, `safetensors==0.8.0`, `scikit-learn==1.8.0`, `joblib==1.5.3`.
+- Package-size checks: `model/` is 611MB; `submit.zip` is 529MB; archive contains only `script.py`, `requirements.txt`, and `model/`.
+- Offline smoke: zip extracted to a clean temp directory, `TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1`, sample data copied as `data/`; `script.py` produced `output/submission.csv`.
+- Submission checks: output columns exactly `id,action`; row count matches sample submission; id order matches sample submission; predicted labels are valid; missing `model/` fails clearly.
+- Decision: submitted later with reported Public Macro-F1 0.743; see `20260702_final_package_public_0743`.
+## 20260701_215145_gpu_transformer_session_current_v1_len192_replay-last1_final_xlmr_len192_ep5_replay_last1_oofbias_rules
+
+- Date/time: 2026-07-01 21:51:45 UTC
+- Validation setup: final refit on all labeled rows; no validation rows used.
+- Code/config changes: `xlm-roberta-base`, serializer=current_v1, replay=last1, max_length=192, epochs=5, lr=2e-05, batch=16.
+- OOF class-bias source: experiments/artifacts/20260702_oof_xlmr_base_len192_ep5_replay_last1_cap10000_oof_metrics.json
+- Rule boosts source: experiments/artifacts/20260702_oof_rule_boosts_xlmr_base_len192_ep5_replay_last1_cap10000_rule_boosts.json
+- Runtime or package-size concerns: runtime=2840.1s, tokenize=12.4s, train=2818.8s. Initial fp32 artifact was 1082.8MB, then converted to fp16 for the final package; packaged `model/` is 611MB and `submit.zip` is 529MB.
+- Decision: final transformer refit complete; next train final sparse SVC artifact and smoke-test offline submission package.
+## 20260702_dacon_submission_url_and_public_snapshot
+
+- Date/time: 2026-07-02 KST
+- Competition page: https://dacon.io/competitions/official/236694/overview/description
+- Submission page: https://dacon.io/competitions/official/236694/mysubmission
+- Public leaderboard: https://dacon.io/competitions/official/236694/leaderboard
+- Live leaderboard snapshot: rank 1 public Macro-F1 0.77975; rank 4 0.74359; a 0.70805 row matching the prior XLM-R 3ep public anchor is visible.
+- Submission state: public web view is logged out. Upload requires a logged-in Dacon account with team access; no repo-local submission CLI is documented.
+- Decision: superseded by submitted result `20260702_final_package_public_0743`; reported Public Macro-F1 0.743 meets the 0.74 target.
+## 20260701_221707_gpu_transformer_session_current_v1_len192_qv600_stage1_xlm_align_base_len192_ep1_qv600
+
+- Date/time: 2026-07-01 22:17:07 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `microsoft/xlm-align-base`, serializer=current_v1, replay=none, max_length=192, epochs=1, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.133759
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.133759
+- Per-class observations:
+  - Weakest: write_file=0.000, ask_user=0.000, grep_search=0.030, glob_pattern=0.043, lint_or_typecheck=0.043
+  - Strongest: list_directory=0.335, run_tests=0.317, web_search=0.250, apply_patch=0.244, edit_file=0.208
+- Top confusions: [(32, 'lint_or_typecheck', 'run_tests'), (26, 'respond_only', 'run_tests'), (26, 'write_file', 'list_directory'), (19, 'plan_task', 'list_directory'), (15, 'apply_patch', 'run_tests'), (13, 'run_bash', 'run_tests'), (11, 'grep_search', 'apply_patch'), (11, 'web_search', 'grep_search')]
+- Prediction distribution: {'apply_patch': 88, 'edit_file': 63, 'glob_pattern': 4, 'grep_search': 24, 'lint_or_typecheck': 4, 'list_directory': 124, 'plan_task': 3, 'read_file': 39, 'respond_only': 46, 'run_bash': 39, 'run_tests': 140, 'web_search': 22, 'write_file': 4}
+- Runtime or package-size concerns: runtime=443.4s, tokenize=11.3s, train=423.1s, eval=0.6s, artifact_size_mb=610.3.
+- Validation logits: experiments/logits/20260701_221707_gpu_transformer_session_current_v1_len192_qv600_stage1_xlm_align_base_len192_ep1_qv600_val_logits.pt
+- Decision: discard. Quick-val Macro-F1 0.133759 is far below the XLM-R/DistilBERT screens and misses multiple classes entirely, so do not promote `microsoft/xlm-align-base` to full fixed-session or replay.
+- Next suggested experiment: if continuing local model search before a Dacon upload result, quick-screen `microsoft/infoxlm-base` at the same 1-epoch quick-val budget; otherwise prioritize submitting the packaged XLM-R replay + rules + sparse candidate.
+## 20260701_222632_gpu_transformer_session_current_v1_len192_qv600_stage1_infoxlm_base_len192_ep1_qv600
+
+- Date/time: 2026-07-01 22:26:32 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `microsoft/infoxlm-base`, serializer=current_v1, replay=none, max_length=192, epochs=1, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.009553
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.009553
+- Per-class observations:
+  - Weakest: grep_search=0.000, list_directory=0.000, glob_pattern=0.000, edit_file=0.000, write_file=0.000
+  - Strongest: read_file=0.134, grep_search=0.000, list_directory=0.000, glob_pattern=0.000, edit_file=0.000
+- Top confusions: [(43, 'apply_patch', 'read_file'), (43, 'run_tests', 'read_file'), (43, 'glob_pattern', 'read_file'), (43, 'respond_only', 'read_file'), (43, 'grep_search', 'read_file'), (43, 'ask_user', 'read_file'), (43, 'run_bash', 'read_file'), (43, 'plan_task', 'read_file')]
+- Prediction distribution: {'read_file': 600}
+- Runtime or package-size concerns: runtime=441.9s, tokenize=10.9s, train=423.0s, eval=0.6s, artifact_size_mb=610.3.
+- Validation logits: experiments/logits/20260701_222632_gpu_transformer_session_current_v1_len192_qv600_stage1_infoxlm_base_len192_ep1_qv600_val_logits.pt
+- Decision: discard. Quick-val Macro-F1 0.009553 collapsed to `read_file` for all 600 validation rows, so do not promote `microsoft/infoxlm-base` to full fixed-session or replay.
+- Next suggested experiment: do not spend more time on XLM-Align or InfoXLM. If continuing local model search before a Dacon upload result, the remaining cheap encoder screen is `microsoft/mdeberta-v3-base` with reduced batch size; otherwise prioritize submitting the packaged XLM-R replay + rules + sparse candidate.
+## 20260701_224444_gpu_transformer_session_current_v1_len192_qv600_stage1_mdeberta_v3_base_len192_ep1_qv600
+
+- Date/time: 2026-07-01 22:44:44 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `microsoft/mdeberta-v3-base`, serializer=current_v1, replay=none, max_length=192, epochs=1, lr=2e-05, batch=8, bucket_multiplier=8. The fast tokenizer path required `protobuf`, so `train_transformer.py` fell back to the slow tokenizer without adding a dependency.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.664922
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.664922
+- Per-class observations:
+  - Weakest: read_file=0.378, ask_user=0.452, web_search=0.493, grep_search=0.536, plan_task=0.583
+  - Strongest: respond_only=1.000, write_file=0.988, edit_file=0.889, apply_patch=0.881, run_bash=0.651
+- Top confusions: [(19, 'read_file', 'grep_search'), (17, 'ask_user', 'plan_task'), (14, 'web_search', 'ask_user'), (12, 'run_bash', 'run_tests'), (12, 'glob_pattern', 'grep_search'), (11, 'run_tests', 'lint_or_typecheck'), (8, 'plan_task', 'ask_user'), (7, 'web_search', 'plan_task')]
+- Prediction distribution: {'apply_patch': 41, 'ask_user': 41, 'edit_file': 47, 'glob_pattern': 22, 'grep_search': 69, 'lint_or_typecheck': 41, 'list_directory': 51, 'plan_task': 53, 'read_file': 31, 'respond_only': 43, 'run_bash': 43, 'run_tests': 46, 'web_search': 31, 'write_file': 41}
+- Runtime or package-size concerns: runtime=965.5s, tokenize=34.3s, train=925.6s, eval=1.2s, artifact_size_mb=610.3.
+- Validation logits: experiments/logits/20260701_224444_gpu_transformer_session_current_v1_len192_qv600_stage1_mdeberta_v3_base_len192_ep1_qv600_val_logits.pt
+- Decision: do not promote. Quick-val Macro-F1 0.664922 only matches the older DistilBERT no-replay screen, trails the active quick baselines, and is slower with the slow-tokenizer fallback.
+- Next suggested experiment: no alternative encoder has beaten the XLM-R reference path. Prioritize submitting the packaged XLM-R replay + rules + sparse candidate; only revisit mDeBERTa for ensemble diversity if a public result shows the current package misses the target.
+## 20260701_225233_gpu_transformer_session_current_v1_len192_qv600_stage1_mbert_base_len192_ep1_qv600
+
+- Date/time: 2026-07-01 22:52:33 UTC
+- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.
+- Code/config changes: `bert-base-multilingual-cased`, serializer=current_v1, replay=none, max_length=192, epochs=1, lr=2e-05, batch=16, bucket_multiplier=8.
+- Validation setup: session, quick_val_size=600
+- Raw Macro-F1: 0.697580
+- Old bias-tuned Macro-F1: not run
+- Overall Macro-F1: 0.697580
+- Per-class observations:
+  - Weakest: read_file=0.455, ask_user=0.500, run_tests=0.591, grep_search=0.609, lint_or_typecheck=0.619
+  - Strongest: respond_only=0.989, write_file=0.976, edit_file=0.920, apply_patch=0.911, list_directory=0.667
+- Top confusions: [(13, 'ask_user', 'plan_task'), (11, 'run_tests', 'lint_or_typecheck'), (11, 'ask_user', 'web_search'), (11, 'run_bash', 'run_tests'), (10, 'glob_pattern', 'read_file'), (10, 'read_file', 'grep_search'), (9, 'plan_task', 'web_search'), (9, 'grep_search', 'read_file')]
+- Prediction distribution: {'apply_patch': 47, 'ask_user': 29, 'edit_file': 44, 'glob_pattern': 28, 'grep_search': 49, 'lint_or_typecheck': 41, 'list_directory': 50, 'plan_task': 47, 'read_file': 45, 'respond_only': 44, 'run_bash': 39, 'run_tests': 45, 'web_search': 50, 'write_file': 42}
+- Runtime or package-size concerns: runtime=370.0s, tokenize=13.4s, train=349.9s, eval=0.7s, artifact_size_mb=610.3.
+- Validation logits: experiments/logits/20260701_225233_gpu_transformer_session_current_v1_len192_qv600_stage1_mbert_base_len192_ep1_qv600_val_logits.pt
+- Decision: keep only as a possible ensemble-diversity candidate. Quick-val Macro-F1 0.697580 is slightly above the DistilBERT replay quick screen but far below the XLM-R finalist path, so do not spend full fixed-session validation time before seeing the Dacon result for the packaged XLM-R candidate.
+- Next suggested experiment: submit the packaged XLM-R replay + rules + sparse candidate. If the public score misses 0.74, consider whether mBERT adds complementary OOF errors before any full mBERT training.
+## 20260702_final_package_public_0743
+
+- Date/time: 2026-07-02 KST
+- Submission: `submit.zip`, final XLM-R replay + OOF rule boosts + sparse SVC weight 4.0 package.
+- Reported Public Macro-F1: 0.743.
+- Local basis: OOF raw 0.739852, old bias-tuned OOF 0.741570, 2-stage tuned OOF 0.741881. Fixed cross-check was 0.751733.
+- Calibration: OOF 2-stage was close to Public (+0.001119), while fixed cross-check was optimistic by about 0.008733.
+- Decision: target met. Use this package as the achieved submission baseline; further experiments are leaderboard-improvement work rather than recovery work.

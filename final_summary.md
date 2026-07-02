@@ -1,57 +1,76 @@
-# Final Submission Summary
+# Current Submission Candidate Summary
 
-## Best Local Validation
+## Candidate
 
-- Baseline-compatible random split:
-  - Baseline TF-IDF + LogisticRegression: Macro-F1 `0.438757`
-  - Previous CPU sparse candidate: Macro-F1 `0.662137`
-  - Final GPU candidate: Macro-F1 `0.722073`
-- Session-aware split using id prefix before `-step_`:
-  - Baseline TF-IDF + LogisticRegression: Macro-F1 `0.432977`
-  - Previous CPU sparse candidate: Macro-F1 `0.656725`
-  - Final GPU candidate: Macro-F1 `0.710721`
+The current packaged candidate is `submit.zip`, built from:
 
-## Chosen Model
+- `xlm-roberta-base`
+- `current_v1` serializer
+- `max_length=192`
+- 5 epochs, learning rate `2e-5`, batch size 16
+- `class_weight_power=0.5`, `label_smoothing=0.02`
+- `replay_last1 cap10000 weight=0.5`
+- OOF-tuned transformer class bias
+- 12 OOF-tuned rule boosts
+- final sparse SVC ensemble, sparse weight `4.0`
 
-The final submission uses a GPU transformer:
+The transformer was final-refit on all 70,000 labeled rows plus replay examples and saved as fp16 weights. The sparse SVC was final-fit on all labeled rows.
 
-- `distilbert-base-multilingual-cased`
-- Fine-tuned on CUDA for 3 epochs
-- Serialized prompt/action/workspace text input
-- Class-weighted cross entropy with label smoothing
-- Validation-tuned additive class bias for Macro-F1
+## Validation Basis
 
-The final artifact was refit on all 70,000 training rows and saved under `model/hf_model/`, with metadata in `model/hf_meta.json`.
+- Canonical XLM-R 5ep no-replay handoff baseline:
+  - fixed raw Macro-F1: `0.7354`
+  - fixed 2-stage bias-tuned Macro-F1: `0.7389`
+  - expected Public: roughly `0.726-0.728`
+- XLM-R 5ep replay fixed-session:
+  - raw Macro-F1: `0.739664`
+  - old bias-tuned Macro-F1: `0.743909`
+  - 2-stage bias-tuned Macro-F1: `0.744625`
+- XLM-R 5ep replay 3-fold session OOF:
+  - raw Macro-F1: `0.723739`
+  - old bias-tuned Macro-F1: `0.728371`
+  - 2-stage bias-tuned Macro-F1: `0.728569`
+- XLM-R replay + OOF rule boosts + sparse SVC weight 4.0:
+  - combined raw OOF Macro-F1: `0.739852`
+  - old bias-tuned OOF Macro-F1: `0.741570`
+  - 2-stage tuned OOF Macro-F1: `0.741881`
 
-## Discarded Approaches
+Use the OOF `0.741881` score as the main promotion signal. The fixed-session cross-check reached `0.751733`, but the fixed split has been optimistic.
 
-- Baseline current-prompt LogisticRegression was much weaker on both random and session-aware validation.
-- Full raw history channels slightly hurt session-aware Macro-F1, likely because old user turns and result text diluted the current decision signal.
-- No-class-weight SVC reduced Macro-F1 versus balanced weighting.
-- Very low `C=0.025` underfit compared with `C=0.05`.
-- GPU hashed/vocab sparse Torch classifiers underperformed the CPU sparse SVC, topping out near Macro-F1 `0.574929`.
-- GPU transformer 1 epoch was close to the old CPU sparse model, while 2-3 epochs clearly improved validation Macro-F1.
+## Package Evidence
 
-## Risks
-
-- The hardest classes remain `list_directory`, `read_file`, `web_search`, `grep_search`, and `lint_or_typecheck`.
-- Validation uses one fixed session-aware split; true private distribution may differ.
-- Class-bias tuning is validation-derived and may overfit slightly, but it improved both conservative and baseline-compatible local checks.
-- The final package is much larger than the sparse model but remains under the 1 GB limit.
-
-## Build Command
-
-```bash
-rm -f submit.zip && zip -r submit.zip script.py requirements.txt model
-```
+- `submit.zip` size: 529MB
+- `model/` size: 611MB
+- Archive root contains only `script.py`, `requirements.txt`, and `model/`
+- `model/hf_model/model.safetensors` is fp16, about 556MB decimal
+- `model/sparse_svc.pkl` is included
+- `requirements.txt` pins:
+  - `transformers==4.46.3`
+  - `safetensors==0.8.0`
+  - `scikit-learn==1.8.0`
+  - `joblib==1.5.3`
 
 ## Smoke Checks
 
-- `script.py` runs from repository root.
-- Extracted `submit.zip` runs from a clean temporary directory with `data/` added.
-- `output/submission.csv` is created.
+- Zip-extracted offline smoke passed with `TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1`.
+- CPU-only smoke passed with `CUDA_VISIBLE_DEVICES=''`.
+- `script.py` creates `output/submission.csv`.
 - Output columns are exactly `id,action`.
-- Row count and id order match `sample_submission.csv` on the local 5-row format-check data.
+- Row count and id order match `sample_submission.csv` on the local format-check data.
 - All predictions are in the 14 valid labels.
-- `submit.zip` contains only `script.py`, `requirements.txt`, and `model/` at the root.
-- Local smoke test used CUDA and printed `device=cuda`.
+- Missing `model/` fails clearly.
+- `python3 -m py_compile train.py train_transformer.py aggregate_oof.py tune_sparse_svc_oof.py train_sparse_svc_final.py script.py` passes.
+
+## Public Result
+
+`submit.zip` was submitted and reached reported Public Macro-F1 `0.743`, clearing the `0.74` Public target.
+
+Dacon pages:
+
+- Competition page: `https://dacon.io/competitions/official/236694/overview/description`
+- Submission page: `https://dacon.io/competitions/official/236694/mysubmission`
+- Public leaderboard: `https://dacon.io/competitions/official/236694/leaderboard`
+
+Calibration note: OOF 2-stage `0.741881` mapped closely to Public `0.743`, while the fixed cross-check `0.751733` remained optimistic. Use the OOF/rules/sparse validation path as the main baseline for future improvements.
+
+Short Korean team-share summary: `team_share_ko_0702.md`.

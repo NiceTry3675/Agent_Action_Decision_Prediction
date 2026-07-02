@@ -2,6 +2,7 @@ import csv
 import json
 import math
 import os
+import pickle
 import re
 import zlib
 from collections import Counter
@@ -746,6 +747,41 @@ def apply_rule_boosts_to_logits(logits, samples, rules, class_names):
     return boosted
 
 
+def load_sparse_ensemble(model_dir, class_names):
+    model_path = os.path.join(model_dir, "sparse_svc.pkl")
+    meta_path = os.path.join(model_dir, "sparse_meta.json")
+    if not os.path.exists(model_path):
+        return None
+    if not os.path.exists(meta_path):
+        raise FileNotFoundError("Found sparse_svc.pkl but missing sparse_meta.json")
+    with open(model_path, "rb") as f:
+        payload = pickle.load(f)
+    with open(meta_path, encoding="utf-8") as f:
+        meta = json.load(f)
+    sparse_classes = meta.get("classes", class_names)
+    if list(sparse_classes) != list(class_names):
+        raise ValueError("sparse ensemble class order does not match transformer class order")
+    return {
+        "vectorizer": payload["vectorizer"],
+        "model": payload["model"],
+        "meta": meta,
+    }
+
+
+def sparse_ensemble_scores(sparse_ensemble, samples):
+    texts = [serialize_transformer_sample_current(sample) for sample in samples]
+    features = sparse_ensemble["vectorizer"].transform(texts)
+    scores = sparse_ensemble["model"].decision_function(features)
+    if getattr(scores, "ndim", 1) != 2:
+        raise ValueError("expected multiclass sparse SVC decision scores")
+    model_classes = [int(value) for value in getattr(sparse_ensemble["model"], "classes_", range(len(ALL_CLASSES)))]
+    expected = list(range(len(ALL_CLASSES)))
+    if model_classes != expected:
+        order = [model_classes.index(class_id) for class_id in expected]
+        scores = scores[:, order]
+    return torch.tensor(scores, dtype=torch.float32)
+
+
 def run_hf_inference(model_dir, data_dir, output_path, device):
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -756,6 +792,8 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     model = AutoModelForSequenceClassification.from_pretrained(hf_dir, local_files_only=True).to(device)
     if device.type == "cuda":
         model.half()
+    else:
+        model.float()
     model.eval()
 
     test_path = os.path.join(data_dir, "test.jsonl")
@@ -766,6 +804,20 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     texts = [serialize_transformer_sample(sample, serializer_name) for sample in samples]
     class_bias = torch.tensor(meta.get("class_bias", [0.0] * len(meta["classes"])), dtype=torch.float32, device=device)
     rule_boosts = meta.get("rule_boosts") or []
+    sparse_ensemble = load_sparse_ensemble(model_dir, meta["classes"])
+    sparse_scores = None
+    sparse_weight = 0.0
+    sparse_bias = None
+    if sparse_ensemble is not None:
+        sparse_meta = sparse_ensemble["meta"]
+        sparse_scores = sparse_ensemble_scores(sparse_ensemble, samples)
+        sparse_weight = float(sparse_meta.get("sparse_weight", 0.0))
+        sparse_bias = torch.tensor(
+            sparse_meta.get("class_bias", [0.0] * len(meta["classes"])),
+            dtype=torch.float32,
+            device=device,
+        )
+        print(f"Loaded sparse SVC ensemble weight={sparse_weight}")
 
     preds = []
     batch_size = int(meta.get("batch_size", 32))
@@ -783,6 +835,9 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
             encoded = {key: value.to(device) for key, value in encoded.items()}
             logits = model(**encoded).logits.float() + class_bias
             logits = apply_rule_boosts_to_logits(logits, samples[start:start + batch_size], rule_boosts, meta["classes"])
+            if sparse_scores is not None:
+                sparse_batch = sparse_scores[start:start + len(batch_texts)].to(device)
+                logits = logits + sparse_weight * sparse_batch + sparse_bias
             pred_ids = torch.argmax(logits, dim=1).detach().cpu().tolist()
             preds.extend(meta["classes"][i] for i in pred_ids)
 

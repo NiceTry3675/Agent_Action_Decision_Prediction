@@ -13,7 +13,16 @@ from sklearn.pipeline import FeatureUnion
 from sklearn.svm import LinearSVC
 
 from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample_current
-from train import CLASS_TO_ID, append_results_csv, f1_metrics, load_labels, predict_with_bias, session_id, tune_class_bias
+from train import (
+    CLASS_TO_ID,
+    append_results_csv,
+    f1_metrics,
+    load_labels,
+    predict_with_bias,
+    session_id,
+    tune_class_bias,
+    tune_class_bias_two_stage,
+)
 from tune_oof_rule_boosts import torch_load
 from evaluate_rule_boosts import apply_rules
 
@@ -172,15 +181,28 @@ def tune_ensemble(base_scores, sparse_scores, y_true, weights, tune_bias):
         combined = base_scores + weight * sparse_scores
         raw_metrics = score_metrics(y_true, combined)
         bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
+        old_bias = None
+        old_metrics = None
         metrics = raw_metrics
         if tune_bias:
-            bias, _ = tune_class_bias(combined, y_true.tolist(), rounds=2)
+            old_bias, _ = tune_class_bias(combined, y_true.tolist(), rounds=2)
+            old_pred = predict_with_bias(combined, old_bias)
+            old_metrics = f1_metrics(y_true.tolist(), old_pred)
+            bias, _ = tune_class_bias_two_stage(
+                combined,
+                y_true.tolist(),
+                initial_bias=old_bias,
+                initial_best=old_metrics["macro_f1"],
+                fine_rounds=2,
+            )
             pred = predict_with_bias(combined, bias)
             metrics = f1_metrics(y_true.tolist(), pred)
         candidate = {
             "sparse_weight": weight,
             "macro_f1_raw": raw_metrics["macro_f1"],
+            "macro_f1_old_bias": old_metrics["macro_f1"] if old_metrics else None,
             "macro_f1": metrics["macro_f1"],
+            "old_class_bias": [float(value) for value in old_bias.tolist()] if old_bias is not None else None,
             "class_bias": [float(value) for value in bias.tolist()],
             "metrics": metrics,
         }
@@ -265,6 +287,8 @@ def main():
         "metrics": best["metrics"],
         "best_sparse_weight": best["sparse_weight"],
         "best_raw_macro_f1": best["macro_f1_raw"],
+        "best_old_bias_macro_f1": best["macro_f1_old_bias"],
+        "best_old_class_bias": dict(zip(ALL_CLASSES, best["old_class_bias"])) if best["old_class_bias"] is not None else None,
         "best_class_bias": dict(zip(ALL_CLASSES, best["class_bias"])),
         "sparse_logits_path": str(sparse_logits_path),
         "rule_count": len(rules),
@@ -280,7 +304,8 @@ def main():
             "split_type": "session_oof",
             "fold_id": "oof",
             "macro_f1_raw": f"{base_metrics['macro_f1']:.6f}",
-            "macro_f1_bias_tuned": f"{best['macro_f1']:.6f}",
+            "macro_f1_bias_tuned": f"{best['macro_f1_old_bias']:.6f}" if best["macro_f1_old_bias"] is not None else "",
+            "macro_f1_bias_tuned_2stage": f"{best['macro_f1']:.6f}" if args.tune_bias else "",
             "macro_f1": f"{best['macro_f1']:.6f}",
             "weakest_classes": summarize_weak(best["metrics"]),
             "top_confusions": json.dumps(best["metrics"]["top_confusions"][:8], ensure_ascii=False),
@@ -300,6 +325,7 @@ def main():
         f"- Base Macro-F1: {base_metrics['macro_f1']:.6f}",
         f"- Sparse-only Macro-F1: {sparse_metrics['macro_f1']:.6f}",
         f"- Best sparse weight: {best['sparse_weight']:.3f}",
+        f"- Old bias-tuned Macro-F1: {best['macro_f1_old_bias']:.6f}" if best["macro_f1_old_bias"] is not None else "- Old bias-tuned Macro-F1: not run",
         f"- Best Macro-F1: {best['macro_f1']:.6f}",
         f"- Weakest classes: {summarize_weak(best['metrics']).replace(';', ', ')}",
         f"- Top confusions: {best['metrics']['top_confusions'][:8]}",
