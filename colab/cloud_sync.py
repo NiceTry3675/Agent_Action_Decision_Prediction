@@ -14,6 +14,11 @@ cmd/hb/unassign need the daemon started once per runtime by the notebook
 
 Requires an rclone remote for Google Drive (default name: gdrive,
 override with AADP_RCLONE_REMOTE). See colab/COLAB.md for setup.
+
+Multi-lane: AADP_EXCHANGE_DIR selects the Drive exchange folder (default
+AADP_exchange). Each concurrent Colab runtime gets its own lane, e.g.
+    AADP_EXCHANGE_DIR=AADP_exchange_b python colab/cloud_sync.py hb
+paired with colab/colab_runner_b.ipynb on the VM side.
 """
 
 import argparse
@@ -31,7 +36,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 REMOTE = os.environ.get("AADP_RCLONE_REMOTE", "gdrive")
-EXCHANGE = f"{REMOTE}:AADP_exchange"
+EXCHANGE = f"{REMOTE}:{os.environ.get('AADP_EXCHANGE_DIR', 'AADP_exchange')}"
 
 
 def sh(cmd, cwd=None):

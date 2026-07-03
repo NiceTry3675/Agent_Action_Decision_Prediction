@@ -17,6 +17,8 @@ Env knobs (set before starting the daemon):
     AADP_IDLE_MAX_MIN     idle minutes before auto-unassign, default 45
     AADP_AUTO_COLLECT     "0" disables auto-collect of finished runs, default on
     AADP_CMD_MAX_AGE_MIN  queued commands older than this expire unexecuted, default 30
+    AADP_EXCHANGE_DIR     Drive exchange folder name, default AADP_exchange
+                          (one folder per concurrent runtime = one lane)
 """
 
 import argparse
@@ -32,7 +34,7 @@ import time
 from pathlib import Path
 
 WORK = Path("/content/AADP")
-EXCHANGE = Path("/content/drive/MyDrive/AADP_exchange")
+EXCHANGE = Path("/content/drive/MyDrive") / os.environ.get("AADP_EXCHANGE_DIR", "AADP_exchange")
 CMD = EXCHANGE / "cmd"
 STATE_PATH = Path("/content/aadp_state.json")
 OUTPUT_CAP = 20000

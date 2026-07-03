@@ -41,6 +41,25 @@ single auth surface, and it can ship uncommitted experiment code (bundles are ta
 - Keep the notebook tab active in VS Code while the agent drives it. The agent's
   `executeCode` tool fails with `No active notebook editor` otherwise.
 
+## Multiple concurrent runtimes (lanes)
+
+One exchange folder = one runtime. Two daemons on the same folder fight over
+`cmd/queue/` and overwrite each other's heartbeat — never attach two runtimes to
+one exchange. To run a second runtime in parallel:
+
+- VM side: attach the second runtime to `colab/colab_runner_b.ipynb` (pins
+  `AADP_EXCHANGE_DIR=AADP_exchange_b` in its `[mount]` cell) and run
+  `[mount]→[bootstrap]→[agent]` there as usual.
+- Local side: prefix every `cloud_sync.py` / `chain_oof_folds.py` call for that
+  lane with `AADP_EXCHANGE_DIR=AADP_exchange_b`. Unprefixed calls keep talking
+  to the main lane.
+- One-time per new lane: `AADP_EXCHANGE_DIR=AADP_exchange_b python
+  colab/cloud_sync.py push --data` (code push too) — lanes do not share bundles.
+- `pull` merges into the same local `experiments/results.csv` regardless of lane
+  (dedup by experiment_id), so results converge as usual.
+- Fair comparisons stay within one lane/GPU class; use the second lane for
+  replicates or independent tracks, not for arms of the same paired experiment.
+
 ## Agent protocol
 
 Every `mcp__ide__executeCode` call pops a VS Code Quick Pick the user must approve —

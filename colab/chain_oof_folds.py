@@ -17,6 +17,7 @@ Exit codes: 0 = all folds collected, 2 = heartbeat stale (daemon/VM gone),
 """
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -25,7 +26,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PY = str(REPO / ".venv/bin/python")
-REMOTE = "gdrive:AADP_exchange/cmd/heartbeat.json"
+REMOTE = (f"{os.environ.get('AADP_RCLONE_REMOTE', 'gdrive')}:"
+          f"{os.environ.get('AADP_EXCHANGE_DIR', 'AADP_exchange')}/cmd/heartbeat.json")
 
 BASE_ARGS = [
     "--device", "cuda", "--split", "session_oof", "--n-folds", "3",
