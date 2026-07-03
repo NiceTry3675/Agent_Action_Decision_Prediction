@@ -77,11 +77,13 @@ runtimes with `cloud_sync.py unassign`.
 ## Alternative encoders
 
 Screened: `xlm-align-base` and `infoxlm-base` collapsed under the current
-recipe; `mdeberta-v3-base` slow long-shot; `bert-base-multilingual-cased`
-and `kakaobank/kf-deberta-base` (Korean, XLM-R-parity tokenizer; screens
-0.6976 / 0.6945) are the diversity candidates; klue/koelectra-class Korean
-vocabs rejected at the tokenizer gate (+35-38% tokens on ~8%-Korean inputs).
-No long runs without a concrete OOF ensemble-diversity hypothesis.
+recipe; `mdeberta-v3-base` slow long-shot; klue/koelectra-class Korean vocabs
+rejected at the tokenizer gate (+35-38% tokens on ~8%-Korean inputs). qv600
+logit-ensemble probe (`experiments/artifacts/20260703_qv600_encoder_diversity_probe.json`):
+`bert-base-multilingual-cased` (0.6976) is the diversity candidate — best
+pairing with xlm-r-large; `kakaobank/kf-deberta-base` (0.6945) demoted, helps
+no ensemble (ask_user-rule long-shot only). No long runs without a concrete
+OOF ensemble-diversity hypothesis.
 
 ## Pre-submission smoke
 

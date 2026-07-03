@@ -622,14 +622,60 @@ def sparse_ensemble_scores(sparse_ensemble, samples):
     return torch.tensor(scores, dtype=torch.float32)
 
 
+INT8_FORMAT_VERSION = "int8-rowwise-v1"
+INT8_SCALE_SUFFIX = ".__scale__"
+
+
+def load_int8_state_dict(path, dtype=torch.float32):
+    """Reconstruct an fp state_dict from a quantize_checkpoint.py int8 codec file."""
+    from safetensors.torch import load_file
+
+    packed = load_file(path)
+    with open(path + ".meta.json", encoding="utf-8") as f:
+        meta = json.load(f)
+    if meta["format"] != INT8_FORMAT_VERSION:
+        raise ValueError(f"unknown int8 codec format {meta['format']}")
+    quantized = set(meta["quantized"])
+    state = {}
+    for name, tensor in packed.items():
+        if name.endswith(INT8_SCALE_SUFFIX):
+            continue
+        if name in quantized:
+            scale = packed[name + INT8_SCALE_SUFFIX]
+            shaped = scale.view(-1, *([1] * (tensor.ndim - 1)))
+            state[name] = (tensor.float() * shaped).to(dtype)
+        elif tensor.is_floating_point():
+            state[name] = tensor.to(dtype)
+        else:
+            state[name] = tensor
+    return state
+
+
+def load_hf_model(hf_dir, device):
+    from transformers import AutoConfig, AutoModelForSequenceClassification
+
+    int8_path = os.path.join(hf_dir, "model.int8.safetensors")
+    if os.path.exists(int8_path):
+        config = AutoConfig.from_pretrained(hf_dir, local_files_only=True)
+        model = AutoModelForSequenceClassification.from_config(config)
+        state = load_int8_state_dict(int8_path)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        missing = [k for k in missing if not k.endswith("position_ids")]
+        if missing or unexpected:
+            raise RuntimeError(f"int8 checkpoint mismatch: missing={missing} unexpected={unexpected}")
+        print(f"Loaded int8-codec checkpoint {os.path.basename(int8_path)}")
+        return model.to(device)
+    return AutoModelForSequenceClassification.from_pretrained(hf_dir, local_files_only=True).to(device)
+
+
 def run_hf_inference(model_dir, data_dir, output_path, device):
-    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    from transformers import AutoTokenizer
 
     hf_dir = os.path.join(model_dir, "hf_model")
     with open(os.path.join(model_dir, "hf_meta.json"), encoding="utf-8") as f:
         meta = json.load(f)
     tokenizer = AutoTokenizer.from_pretrained(hf_dir, local_files_only=True)
-    model = AutoModelForSequenceClassification.from_pretrained(hf_dir, local_files_only=True).to(device)
+    model = load_hf_model(hf_dir, device)
     if device.type == "cuda":
         model.half()
     else:
@@ -702,6 +748,10 @@ def main():
     hf_config_path = os.path.join(model_dir, "hf_model", "config.json")
     if not os.path.exists(hf_config_path):
         raise FileNotFoundError("Expected HuggingFace model artifacts at ./model/hf_model/config.json.")
+    weight_paths = [os.path.join(model_dir, "hf_model", name)
+                    for name in ("model.int8.safetensors", "model.safetensors")]
+    if not any(os.path.exists(path) for path in weight_paths):
+        raise FileNotFoundError("Expected model weights at ./model/hf_model/ (model.int8.safetensors or model.safetensors).")
 
     print(f"Load transformer model from {model_dir}; device={device}")
     run_hf_inference(model_dir, data_dir, output_path, device)
