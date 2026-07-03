@@ -78,8 +78,10 @@ runtimes with `cloud_sync.py unassign`.
 
 Screened: `xlm-align-base` and `infoxlm-base` collapsed under the current
 recipe; `mdeberta-v3-base` slow long-shot; `bert-base-multilingual-cased`
-possible diversity candidate. No long runs without a concrete OOF
-ensemble-diversity hypothesis.
+and `kakaobank/kf-deberta-base` (Korean, XLM-R-parity tokenizer; screens
+0.6976 / 0.6945) are the diversity candidates; klue/koelectra-class Korean
+vocabs rejected at the tokenizer gate (+35-38% tokens on ~8%-Korean inputs).
+No long runs without a concrete OOF ensemble-diversity hypothesis.
 
 ## Pre-submission smoke
 
