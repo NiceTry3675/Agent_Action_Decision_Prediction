@@ -377,6 +377,7 @@ def main():
     parser.add_argument("--min-gain", type=float, default=0.00005)
     parser.add_argument("--boost-values", default="-0.60,-0.40,-0.20,0.20,0.40,0.60")
     parser.add_argument("--notes", default="")
+    parser.add_argument("--no-research-log", action="store_true")
     args = parser.parse_args()
 
     artifact = json.loads(Path(args.oof_artifact).read_text(encoding="utf-8"))
@@ -464,8 +465,9 @@ def main():
         f"- Decision: {args.notes or 'inspect OOF gain before integrating rules into final inference'}",
         "",
     ]
-    with Path("research_log.md").open("a", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    if not args.no_research_log:
+        with Path("research_log.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     print(f"saved {output_path}", flush=True)
 

@@ -16,7 +16,7 @@ Milestones:
 
 | Milestone | File | Target dates | Status |
 |---|---|---|---|
-| M1 | [milestone_1_length_and_xlmr_large.md](milestone_1_length_and_xlmr_large.md) | 07-03 → 07-05 | Detailed, ready to execute |
+| M1 | [milestone_1_length_and_xlmr_large.md](milestone_1_length_and_xlmr_large.md) | 07-03 → 07-05 | Completed 2026-07-03: Phase 0 OOF `0.743183`; length failed fixed gate; xlm-r-large package-size blocked |
 | M2 | [milestone_2_hparam_resweep.md](milestone_2_hparam_resweep.md) | 07-05 → 07-07 | Scoped, re-plan at M1 close |
 | Checkpoint | (see below) | 07-07/08 | Go/no-go + reprioritization |
 | M3 | [milestone_3_bigger_swings.md](milestone_3_bigger_swings.md) | 07-08 → 07-11 | Candidates identified, sequencing set at Checkpoint |
@@ -48,7 +48,7 @@ cluster** (discriminability problem, not imbalance). Top confusion cells:
 `grep_search→read_file` (~2700-3100), `read_file→list_directory` (~1700-
 2000), `glob_pattern→read_file`/`list_directory` (~1000-1150).
 
-### Key finding #1 — `max_length=192` truncates the predictive tail
+### Key finding #1 — `max_length=192` truncates the predictive tail, but longer current_v1 did not validate
 
 Tokenizing `current_v1` text with the real xlm-roberta-base tokenizer: mean
 261.5 tokens, **~70.7% of rows truncated at `max_length=192`**, right-side
@@ -56,6 +56,8 @@ truncation, silently dropping the `args:`/`results:` tail — exactly the
 action-outcome signal the rule-boost system already proves predictive (e.g.
 `ci:passed → lint_or_typecheck`). Inference cost of longer length is trivial
 (len384 projects to ~3-5 min for 30k rows, well under the 10-min cap).
+M1 tested clean current_v1 length screens anyway: len256 raw `0.728402` and
+len320 raw `0.735856` both missed the fixed gate, so no length OOF was run.
 
 ### Key finding #2 — the state_v2 rejection does not falsify the length hypothesis
 
@@ -67,18 +69,19 @@ switch to `state_v2`, a **strictly information-poorer serializer** (drops
 `elapsed_session_sec` entirely; collapses the 5-language mix-with-ratios
 down to a single dominant-language token). The more defensible read is "the
 input distribution changed too aggressively," not "length extension doesn't
-help." **A clean current_v1+XLM-R run at length >192 has never been done**
-— this is why it's M1's headline experiment. See M1's documentation tasks
-for the `research_log.md` correction entry.
+help." M1 then ran the clean current_v1 length test and rejected it at the
+fixed-session gate, so the state_v2 interpretation is corrected but the
+length-relief branch is now retired for this recipe.
 
 ### Confirmed dead ends — do not repeat
 
 `xlm-align-base`/`infoxlm-base` (collapsed under default recipe, likely an
 LR/warmup mismatch for those specific checkpoints — see M1's Track B note on
 why this doesn't predict xlm-roberta-large's behavior), `state_v2`/
-`recent_pairs_v1`/`hybrid_v1` as *primary* serializers, `replay_mode=last2`
-(no gain over last1), hashed-embedding linear/MLP models, "kitchen sink"
-sparse feature channels.
+`recent_pairs_v1`/`hybrid_v1` as *primary* serializers, current_v1 length
+extension to 256/320 under the M1 recipe, `replay_mode=last2` (no gain over
+last1), hashed-embedding linear/MLP models, "kitchen sink" sparse feature
+channels.
 
 ### Infra baseline
 
@@ -132,9 +135,9 @@ Full data: 70,000 rows / 9,429 sessions, 64% Korean-dominant.
 
 | Lever | Plausible gap closure | Confidence | Risk |
 |---|---|---|---|
-| Phase 0 (logit reuse) | +0.001 to +0.004 | High something helps a little | Low |
-| M1 Track A (length) | +0.005 to +0.015 | Medium-high | Medium |
-| M1 Track B scouting (Steps 1-2) | informational, not a direct F1 gain | High value as a cheap de-risking step | Near-zero |
+| Phase 0 (logit reuse) | landed at OOF `0.743183` (+0.001302) | Done | Low |
+| M1 Track A (length) | no gain; fixed gate failed | Done | Retired |
+| M1 Track B scouting (Steps 1-2) | package-size blocked at `1089.108 MB` fp16 | Done | High package risk |
 | M1 Track B full commit (Steps 3-4) | +0.005 to +0.02 if it works | Low-medium | High — checkpointing gap + tight/uncertain package size |
 | M2 (hparams) | +0.002 to +0.006 | Medium | Low-medium |
 | M3 mBERT | +0.002 to +0.008 | Medium | Medium; only viable if base stays XLM-R-base |

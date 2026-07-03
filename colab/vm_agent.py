@@ -16,9 +16,11 @@ Env knobs (set before starting the daemon):
     AADP_CMD_POLL_S       queue/heartbeat interval, default 15
     AADP_IDLE_MAX_MIN     idle minutes before auto-unassign, default 45
     AADP_AUTO_COLLECT     "0" disables auto-collect of finished runs, default on
+    AADP_CMD_MAX_AGE_MIN  queued commands older than this expire unexecuted, default 30
 """
 
 import argparse
+import calendar
 import csv
 import json
 import os
@@ -147,14 +149,20 @@ def collect(extra_paths):
     return run_name
 
 
-def unassign():
+# google.colab.runtime.unassign() needs the IPython kernel and the daemon is a plain
+# subprocess ('NoneType' object has no attribute 'kernel'), so the daemon cannot release
+# the runtime itself. It exits with UNASSIGN_EXIT instead and the [agent] cell -- which
+# runs in the kernel -- performs the actual unassign when it sees that exit code.
+UNASSIGN_EXIT = 86
+
+
+def spec_age_min(spec):
+    """Age of a queued command in minutes, from the utc stamp in its id; None if unparseable."""
     try:
-        from google.colab import runtime
-        runtime.unassign()
-    except Exception as exc:  # keep the daemon alive; heartbeat will show the failure
-        print("unassign failed:", exc, flush=True)
-        return f"unassign failed: {exc}"
-    return "unassign requested"
+        ts = calendar.timegm(time.strptime(str(spec.get("id", ""))[:15], "%Y%m%d_%H%M%S"))
+    except ValueError:
+        return None
+    return (time.time() - ts) / 60
 
 
 def run_command(spec):
@@ -178,6 +186,7 @@ def run_command(spec):
 def daemon():
     poll_s = int(os.environ.get("AADP_CMD_POLL_S", "15"))
     idle_max_min = float(os.environ.get("AADP_IDLE_MAX_MIN", "45"))
+    cmd_max_age_min = float(os.environ.get("AADP_CMD_MAX_AGE_MIN", "30"))
     auto_collect = os.environ.get("AADP_AUTO_COLLECT", "1") != "0"
     (CMD / "queue").mkdir(parents=True, exist_ok=True)
     (CMD / "done").mkdir(parents=True, exist_ok=True)
@@ -185,27 +194,53 @@ def daemon():
     last_activity = started
     collected_for = None  # log path of the run already auto-collected
     collect_note = ""
-    print(f"daemon up: poll={poll_s}s idle_max={idle_max_min}min auto_collect={auto_collect}", flush=True)
+    print(f"daemon up: poll={poll_s}s idle_max={idle_max_min}min "
+          f"cmd_max_age={cmd_max_age_min}min auto_collect={auto_collect}", flush=True)
 
     while True:
         stop = False
-        for qf in sorted((CMD / "queue").glob("*.json")):
+        release = False
+        try:
+            queue_files = sorted((CMD / "queue").glob("*.json"))
+        except OSError as exc:  # Drive hiccup; keep looping
+            print("queue scan failed:", exc, flush=True)
+            queue_files = []
+        for qf in queue_files:
             try:
                 spec = json.loads(qf.read_text())
             except (json.JSONDecodeError, OSError):
                 continue  # likely still uploading; retry next loop
-            qf.unlink(missing_ok=True)
+            try:
+                qf.unlink(missing_ok=True)
+            except OSError:
+                continue  # could not claim it; retry next loop
             last_activity = time.time()
-            result = run_command(spec)
-            if spec.get("cmd") == "@unassign":
-                result["output"] = unassign()
-            atomic_write(CMD / "done" / f"{spec['id']}.json", json.dumps(result, indent=2))
+            age_min = spec_age_min(spec)
+            if age_min is not None and age_min > cmd_max_age_min:
+                # a command queued at a dead daemon must not fire on (re)start --
+                # a stale @unassign would release a fresh runtime before collect
+                result = {"id": spec["id"], "cmd": spec.get("cmd", ""), "rc": 125,
+                          "output": f"expired: queued {age_min:.0f} min ago (max {cmd_max_age_min:.0f})",
+                          "duration_s": 0.0,
+                          "finished_utc": time.strftime("%Y%m%d_%H%M%S", time.gmtime())}
+            else:
+                result = run_command(spec)
+                if spec.get("cmd") == "@unassign":
+                    result["output"] = "unassign scheduled: daemon exiting; [agent] cell releases the runtime"
+                    release = True
+                if spec.get("cmd") == "@stop":
+                    stop = True
+            try:
+                atomic_write(CMD / "done" / f"{spec['id']}.json", json.dumps(result, indent=2))
+            except OSError as exc:  # Drive hiccup; keep looping
+                print("done write failed:", exc, flush=True)
             print(f"cmd {spec['id']} rc={result['rc']}: {spec.get('cmd', '')[:120]}", flush=True)
-            if spec.get("cmd") == "@stop":
-                stop = True
+        if release:
+            print("daemon exiting for kernel-side unassign", flush=True)
+            return UNASSIGN_EXIT
         if stop:
             print("daemon stopping on @stop", flush=True)
-            return
+            return 0
 
         run, alive = training_status()
         if alive:
@@ -241,9 +276,8 @@ def daemon():
                 atomic_write(CMD / "heartbeat.json", json.dumps(hb, indent=2))
             except OSError:
                 pass
-            print(unassign(), flush=True)
-            time.sleep(60)  # give the control plane time; VM dies here on success
-            last_activity = time.time()  # failed: reset so we do not spin on unassign
+            print("idle limit reached; daemon exiting for kernel-side unassign", flush=True)
+            return UNASSIGN_EXIT
 
         time.sleep(poll_s)
 
@@ -261,7 +295,7 @@ def main():
                            help="extra WORK-relative dir to ship (e.g. model_out_final)")
     args = parser.parse_args()
     if args.command == "daemon":
-        daemon()
+        sys.exit(daemon())
     elif args.command == "launch":
         launch(args.script, args.args)
     elif args.command == "status":

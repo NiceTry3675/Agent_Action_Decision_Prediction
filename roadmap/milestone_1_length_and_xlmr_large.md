@@ -1,8 +1,22 @@
 # Milestone 1 — Length ablation + xlm-r-large scouting
 
-**Dates**: 07-03 → 07-05. **Status**: detailed, ready to execute.
+**Dates**: 07-03 → 07-05. **Status**: completed 2026-07-03.
 See `README.md` for context (key findings, guardrails, dead ends) — not
 repeated here.
+
+## Outcome
+
+- Track A Phase 0 adopted a small OOF-only improvement: rule regrid
+  `0.740149` plus current_v1 sparse SVC weight `2.5` reached OOF
+  `0.743183` (`20260703_sparse_weight_wide_regrid_after_rule_regrid`).
+  compact_events (`0.742709`) and Markov prior (`0.740259`) did not beat it.
+- Track A length ablation failed the fixed-session gate: len256 raw
+  `0.728402`, len320 raw `0.735856`, both below the required `0.742664`
+  and without the required weak-class gains. No length OOF was run.
+- Track B stopped as package-size blocked: fp16 xlm-roberta-large HF model
+  plus tokenizer measured `1089.108 MB`; the attempted quick-val run was
+  lost with a stale Colab daemon and produced no collected result.
+- No Dacon submission was made.
 
 Two tracks run concurrently: **Track A** (main line, current_v1 length
 ablation on XLM-R-base) and **Track B** (xlm-roberta-large early scouting,

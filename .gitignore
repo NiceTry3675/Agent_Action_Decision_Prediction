@@ -19,3 +19,4 @@ checkpoints/
 *.safetensors
 *.joblib
 *.pkl
+.claude/settings.local.json

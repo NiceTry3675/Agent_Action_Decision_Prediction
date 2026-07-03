@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--pattern", required=True)
     parser.add_argument("--experiment-id", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--no-research-log", action="store_true")
     args = parser.parse_args()
 
     paths = sorted(Path(".").glob(args.pattern))
@@ -124,8 +125,9 @@ def main():
         f"- Decision: {args.notes or 'compare against fixed-session and public calibration before final refit'}",
         "",
     ]
-    with Path("research_log.md").open("a", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    if not args.no_research_log:
+        with Path("research_log.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     print(f"raw_oof_macro_f1={raw_metrics['macro_f1']:.6f}")
     print(f"old_tuned_oof_macro_f1={old_tuned_metrics['macro_f1']:.6f}")

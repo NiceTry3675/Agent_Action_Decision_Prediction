@@ -242,6 +242,7 @@ def main():
     parser.add_argument("--weights", default="0,0.05,0.1,0.15,0.2,0.3,0.4,0.5,0.7,1.0")
     parser.add_argument("--tune-bias", action="store_true")
     parser.add_argument("--notes", default="")
+    parser.add_argument("--no-research-log", action="store_true")
     args = parser.parse_args()
 
     artifact, payloads = load_oof_payloads(args.oof_artifact)
@@ -324,8 +325,9 @@ def main():
         f"- Decision: {args.notes or 'compare against rule-boost baseline before integration'}",
         "",
     ]
-    with Path("research_log.md").open("a", encoding="utf-8") as f:
-        f.write("\n".join(lines))
+    if not args.no_research_log:
+        with Path("research_log.md").open("a", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
     print(f"best_prior_weight={best['prior_weight']:.3f}")
     print(f"best_macro_f1={best['macro_f1']:.6f}")

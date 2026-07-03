@@ -5,6 +5,7 @@ Usage:
     python colab/cloud_sync.py list            # list collected runs on Drive
     python colab/cloud_sync.py pull RUN_NAME   # download a run and merge results/artifacts
     python colab/cloud_sync.py cmd "SHELL"     # run a shell command on the VM via the daemon
+    python colab/cloud_sync.py launch SCRIPT -- ARGS...   # start a training run, no hand quoting
     python colab/cloud_sync.py hb              # read the VM daemon heartbeat (cheap poll)
     python colab/cloud_sync.py unassign        # release the Colab runtime (stop CU burn)
 
@@ -19,6 +20,7 @@ import argparse
 import csv
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -137,6 +139,20 @@ def pull(run_name):
     print(f"raw copy kept at {dest} (extra/ contents such as model dirs stay there for manual placement)")
 
 
+def build_launch_cmd(script, run_args):
+    """argv list -> the exact `vm_agent.py launch` shell string, quoting handled here.
+
+    vm_agent.launch shlex.split()s its args string, so shlex.join() round-trips the
+    argv exactly -- spaces in --notes, leading-dash values, etc. survive untouched.
+    """
+    if run_args[:1] == ["--"]:  # argparse.REMAINDER keeps the separator on some versions
+        run_args = run_args[1:]
+    if not run_args:
+        sys.exit("no run args; usage: cloud_sync.py launch SCRIPT -- --device cuda ...")
+    return (f"python colab/vm_agent.py launch {shlex.quote(script)} "
+            f"{shlex.quote(shlex.join(run_args))}")
+
+
 def send_cmd(command, timeout, wait):
     cmd_id = time.strftime("%Y%m%d_%H%M%S", time.gmtime()) + "_" + os.urandom(3).hex()
     spec = json.dumps({"id": cmd_id, "cmd": command, "timeout": timeout})
@@ -146,6 +162,7 @@ def send_cmd(command, timeout, wait):
     if wait <= 0:
         return
     deadline = time.time() + wait
+    claimed = False
     while time.time() < deadline:
         out = subprocess.run(["rclone", "cat", f"{EXCHANGE}/cmd/done/{cmd_id}.json"],
                              text=True, capture_output=True)
@@ -154,8 +171,32 @@ def send_cmd(command, timeout, wait):
             print(f"rc={result['rc']} duration_s={result['duration_s']}")
             print(result["output"])
             sys.exit(0 if result["rc"] == 0 else 1)
+        if not claimed:
+            q = subprocess.run(["rclone", "lsf", f"{EXCHANGE}/cmd/queue/{cmd_id}.json"],
+                               text=True, capture_output=True)
+            if (q.returncode == 0 and not q.stdout.strip()) or "not found" in q.stderr:
+                claimed = True
+                print("claimed by daemon -- executing, or result still propagating")
         time.sleep(10)
-    sys.exit(f"no result after {wait}s -- daemon down or Drive lag; check: python colab/cloud_sync.py hb")
+    age = hb_age()
+    age_note = f"heartbeat age {age:.0f}s" if age is not None else "no heartbeat"
+    if claimed:
+        sys.exit(f"no result after {wait}s, but the daemon CLAIMED the command ({age_note}) -- "
+                 f"likely still executing or Drive lag; re-check later:\n"
+                 f"  rclone cat {EXCHANGE}/cmd/done/{cmd_id}.json")
+    sys.exit(f"no result after {wait}s and the command is STILL QUEUED ({age_note}) -- "
+             f"the daemon has not seen it; check: python colab/cloud_sync.py hb")
+
+
+def hb_age():
+    out = subprocess.run(["rclone", "cat", f"{EXCHANGE}/cmd/heartbeat.json"],
+                         text=True, capture_output=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    try:
+        return time.time() - json.loads(out.stdout)["ts"]
+    except (json.JSONDecodeError, KeyError):
+        return None
 
 
 def heartbeat():
@@ -165,8 +206,13 @@ def heartbeat():
         sys.exit("no heartbeat on Drive -- daemon not started this runtime? (run the [agent] cell)")
     hb = json.loads(out.stdout)
     age = time.time() - hb["ts"]
-    stale = " (STALE -- daemon or VM likely gone)" if age > 180 else ""
-    print(f"heartbeat age: {age:.0f}s{stale}")
+    if age > 300:
+        note = " (STALE -- daemon or VM gone: recycled, [agent] cell stopped, or unassigned)"
+    elif age > 90:
+        note = " (stale-ish -- could be Drive propagation lag; retry in ~60s before concluding)"
+    else:
+        note = ""
+    print(f"heartbeat age: {age:.0f}s{note}")
     print(out.stdout.strip())
 
 
@@ -183,6 +229,13 @@ def main():
     p_cmd.add_argument("--timeout", type=int, default=600, help="VM-side exec timeout (s)")
     p_cmd.add_argument("--wait", type=int, default=300, help="how long to poll for the result (s)")
     p_cmd.add_argument("--no-wait", action="store_true", help="queue and return immediately")
+    p_vml = sub.add_parser("launch", help="start a training run on the VM; put run args after "
+                                          "-- so nothing needs hand quoting")
+    p_vml.add_argument("--timeout", type=int, default=60, help="VM-side exec timeout (s)")
+    p_vml.add_argument("--wait", type=int, default=300, help="how long to poll for the result (s)")
+    p_vml.add_argument("script")
+    p_vml.add_argument("run_args", nargs=argparse.REMAINDER,
+                       help="training args, after a -- separator")
     sub.add_parser("hb", help="read the VM daemon heartbeat")
     sub.add_parser("unassign", help="release the Colab runtime via the daemon")
     args = parser.parse_args()
@@ -195,6 +248,8 @@ def main():
         pull(args.run_name)
     elif args.command == "cmd":
         send_cmd(args.shell_command, args.timeout, 0 if args.no_wait else args.wait)
+    elif args.command == "launch":
+        send_cmd(build_launch_cmd(args.script, args.run_args), args.timeout, args.wait)
     elif args.command == "hb":
         heartbeat()
     else:
