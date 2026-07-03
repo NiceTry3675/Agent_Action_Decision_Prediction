@@ -411,6 +411,12 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
                     label_smoothing=args.label_smoothing,
                     reduction="none",
                 )
+                if args.loss == "focal":
+                    # focal factor from the unsmoothed target probability; class
+                    # weights and label smoothing stay inside the CE term so
+                    # ce -> focal changes exactly one thing
+                    pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
+                    loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -981,6 +987,8 @@ def parse_args():
     parser.add_argument("--weight-decay", type=float, default=0.01)
     parser.add_argument("--warmup-ratio", type=float, default=0.06)
     parser.add_argument("--label-smoothing", type=float, default=0.02)
+    parser.add_argument("--loss", choices=["ce", "focal"], default="ce")
+    parser.add_argument("--focal-gamma", type=float, default=2.0)
     parser.add_argument("--class-weight-power", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
