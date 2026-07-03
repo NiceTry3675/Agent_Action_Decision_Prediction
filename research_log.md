@@ -145,6 +145,13 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - Evidence: qv600 screen rerun macro-F1 `0.714846` vs XLM-R-base same-recipe screen `0.688651` (+0.026); weak-class cluster improves (read_file 0.475→0.533, plan_task 0.548→0.617). Codec measured on the base checkpoint: 556→280 MB (50.3%), argmax agreement 99.61% on 1024 serializer-real samples, mean relative weight error 0.65%; projected large int8 ~546 MB + sparse SVC fits the 1 GB cap.
 - Decision: Reopen Track B conditionally with the int8-codec package plan; supersede the package-size stop of the earlier entry.
 - Next action: fixed-session xlm-r-large run, gated on per-epoch Drive checkpointing or an A100 short-wall-clock run; codec gate 2 = OOF Macro-F1 delta measured on the trained large checkpoint.
+### 2026-07-04 - Stacker and sparse-hyperparameter headroom ruled out on the ensemble line
+
+- Why: Idle local compute probed whether a learned meta-model or sparse retune could add to the base+large ensemble chain without new GPU runs.
+- Evidence: fold-aware stacker (LogReg/HistGB on base+large log-probs + sparse scores) best `0.741618` after bias tuning — below the linear chain `0.746763` and even the base baseline; per-class bias search optimizes macro-F1 directly, which likelihood-based meta-learners do not. Sparse screens at w=2: C=0.02 `-0.0004`, C=0.15 `-0.0013`, char 400k identical to current (min_df=2 vocab never reaches the 220k cap). Artifacts: `20260704_oof_stacker_probe_base_large_sparse.json` + 3 screen rows (commit e46f0fe).
+- Decision: Keep the linear blend + rules + sparse SVC (C=0.05) chain as-is; no stacker. This line's remaining headroom is ~0 after the 2.7x OOF-optimism correction — spend idle local time elsewhere (e.g. re-evaluating the ensemble pool when the teammate's focal OOF logits arrive).
+- Next action: none on this line; length x focal screens are the active lane.
+
 ### 2026-07-04 - Priority pivot: length x focal first, ensemble packaging deferred
 
 - Why: Teammate Slack update (노진산 07-03): focal-γ2.0 single transformer hit Public `0.7477` (their OOF 0.7350; focal line runs OOF→Public +0.013 conservative), +12 rules `0.7499`; their 5-way explorer specialist failed (read_file 0.57 / list_directory 0.51 even alone) — evidence the explorer confusion (~60% of all errors) is missing information at len192, not a modeling problem. Their measured seed variance is ±0.011 (fixed single runs, 0.7249–0.7463).
