@@ -132,6 +132,13 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - Decision: `script.py` loads `hf_model/model.int8.safetensors` (inline dequant loader, fail-loud on mismatch) when present; the fp16 path and the submitted package are untouched.
 - Next action: Codec gate 2 unchanged — measure the OOF Macro-F1 delta on the trained large checkpoint before packaging.
 
+### 2026-07-03 - Track B fixed gate passed, with a weak-class caveat
+
+- Why: The A100 fixed-session run was the go/no-go for spending OOF compute on xlm-r-large.
+- Evidence: large fixed raw `0.743910` vs base `0.739664` (+0.0042); 2-stage `0.750671` vs `0.744625`. But the exploration cluster regressed on the same split (list_directory 0.505→0.464, read_file 0.604→0.564, grep_search 0.610→0.593) — the screen's read_file gain did not replicate; the aggregate gain comes from other classes. Run: 86 min on A100 (loss stable, no large-model divergence at lr2e-5/batch8).
+- Decision: Proceed to 3-fold session OOF with the identical recipe on the already-up A100; promotion is judged only there, where bias/rule/SVC retuning addresses the weak-class mix.
+- Next action: aggregate_oof + retune on large OOF logits; then codec gate 2 (OOF delta int8 vs fp16) on a trained large checkpoint.
+
 ### 2026-07-03 - Track B gate 1 passed: xlm-r-large screen beats base
 
 - Why: Track B was package-size blocked; the int8 storage codec (`quantize_checkpoint.py`) reopens it only if large actually beats base.
