@@ -39,9 +39,17 @@ BASE_ARGS = [
 ]
 
 
-def read_hb():
-    out = subprocess.run(["rclone", "cat", REMOTE], capture_output=True, text=True, timeout=90)
-    return json.loads(out.stdout)
+def read_hb(retries=0):
+    """One heartbeat read; with retries > 0, survive transient rclone hangs (e.g. token refresh)."""
+    for attempt in range(retries + 1):
+        try:
+            out = subprocess.run(["rclone", "cat", REMOTE], capture_output=True, text=True, timeout=90)
+            return json.loads(out.stdout)
+        except Exception as exc:
+            if attempt == retries:
+                raise
+            print(f"hb read failed ({exc}); retrying", flush=True)
+            time.sleep(20)
 
 
 def wait_collect(floor, deadline):
@@ -97,7 +105,7 @@ def main():
 
     floor = args.floor
     if floor is None:
-        run = read_hb().get("run") or {}
+        run = read_hb(retries=4).get("run") or {}
         match = re.match(r"run_(\d{8}_\d{6})\.log$", run.get("log") or "")
         if run.get("alive") and match:
             floor = match.group(1)
