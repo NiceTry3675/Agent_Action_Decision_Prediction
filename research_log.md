@@ -55,6 +55,13 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - Decision: Deprioritize alternative encoder search until a concrete ensemble-diversity need appears.
 - Next action: Keep mBERT as the only near-term diversity candidate; leave mDeBERTa as a long-shot.
 
+### 2026-07-03 - state_v2 length extension did not clear fixed gate
+
+- Why: state_v2 needed to beat the current fixed-session replay baseline before spending OOF runs.
+- Evidence: len384 fixed raw `0.727378` and len256 fixed raw `0.712615`, both below the `0.7457` G1 gate and current_v1 len192 fixed raw `0.739664`.
+- Decision: Do not promote state_v2 len256/384 to 3-fold OOF.
+- Next action: Shift near-term work back to OOF-safe ensembling/stacker diagnostics or a new one-variable serializer ablation.
+
 ## Operating Rules
 
 - Human-facing docs stay short: `final_summary.md`, `leaderboard_calibration.md`, and this decision log.
