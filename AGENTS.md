@@ -7,7 +7,8 @@ Current score, target, and in-flight state live in the docs below, not here.
 `final_summary.md` (submitted package — source of truth) →
 `leaderboard_calibration.md` (local↔Public mapping) → `research_log.md`
 (decision log) → `experiments/results.csv` (all runs; the `train_command` column
-holds the exact command per run). Cloud GPU work: `colab/COLAB.md`.
+holds the exact command per run). Cloud GPU work: `colab/COLAB.md`. Active
+research plan / milestones toward the current target: `roadmap/README.md`.
 
 ## Task and evaluation environment
 
