@@ -62,6 +62,9 @@ channel below.
      (args go after `--` as plain argv; quoting — spaces in `--notes`, leading-dash
      values — is handled by the tool. The old `cmd "python colab/vm_agent.py launch ..."`
      form still works.)
+   - multi-fold OOF chains: `python colab/chain_oof_folds.py --folds 1 2` waits for
+     the in-flight run's collect, then launches each fold in turn (local process —
+     it dies with the machine; safe to restart, see its docstring).
    - poll (cheap, no VM roundtrip): `python colab/cloud_sync.py hb` — the heartbeat
      carries run pid/state, a 5-line log tail, GPU util, and idle countdown
    - deeper look: `python colab/cloud_sync.py cmd "python colab/vm_agent.py status"`
