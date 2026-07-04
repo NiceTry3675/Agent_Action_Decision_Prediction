@@ -36,6 +36,7 @@ score lands.
 | Date | Candidate (experiment id / package) | Local fixed | Public | Gap | Note |
 | --- | --- | ---: | ---: | ---: | --- |
 | 2026-07-02 | baseline: XLM-R replay + rules + sparse w4 (`submit.zip`) | 0.751733 | 0.743 | -0.008733 | pre-ledger; anchor row repeated from above |
+| 2026-07-04 | len448 focal g2.0 encoder-only val-model, seed42 (`submit_m3_focal_len448.zip`, `...m3_focal_len448_ep5_replay_last1_seed42_valmodel`) | 0.748091 | pending | | first Public-gated loop; same-seed rerun of m2 len448 (0.755278) — run-to-run noise ±0.007-0.009 demonstrated |
 
 ## Notes
 
