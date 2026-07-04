@@ -37,8 +37,9 @@ OOF rule boosts + sparse SVC ensemble (weight 4.0). Target: **Public ≥ 0.77**
 (+0.027), fast, with liberal Colab GPU use.
 
 Hard constraints not in `AGENTS.md` but binding on this whole roadmap:
-- **Deadline 2026-07-15** (`rule.md`). Max 10 submissions/day — never
-  binding given OOF-gated promotion; submissions are for calibration only.
+- **Deadline 2026-07-15** (`rule.md`). Max 10 submissions/day — since the
+  2026-07-04 protocol change this budget IS the validation channel
+  (Public-gated promotion; ledger in `leaderboard_calibration.md`).
 
 ### Why the weak classes are weak
 

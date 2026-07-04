@@ -81,6 +81,15 @@ channel below.
      (args go after `--` as plain argv; quoting — spaces in `--notes`, leading-dash
      values — is handled by the tool. The old `cmd "python colab/vm_agent.py launch ..."`
      form still works.)
+   - screen runs must leave submittable weights (2026-07-04 protocol): add
+     `--save-val-model --save-fp16 --output-dir
+     /content/drive/MyDrive/<exchange folder>/models/<experiment-suffix>`.
+     The artifact (hf_model/ + hf_meta.json, ~556 MB fp16 for base) is written
+     straight to Drive at run end — survives VM recycling, no collect step.
+     Lane B writes under its own exchange folder.
+   - fetch weights locally: `python colab/cloud_sync.py pull-model <name>` →
+     `experiments/incoming/models/<name>`; then
+     `python package_submission.py --hf-dir experiments/incoming/models/<name> --no-sparse`.
    - multi-fold OOF chains: `python colab/chain_oof_folds.py --folds 1 2` waits for
      the in-flight run's collect, then launches each fold in turn (local process —
      it dies with the machine; safe to restart, see its docstring).
@@ -93,8 +102,8 @@ channel below.
 6. Locally `python colab/cloud_sync.py pull <run_name>`. The pull merges new rows into
    `experiments/results.csv` deduped by experiment_id and places logits/artifacts.
 7. Done with the VM? `python colab/cloud_sync.py unassign` — do not leave it idling.
-8. Continue with the normal validation funnel (`aggregate_oof.py`, OOF promotion).
-   Never hand-edit `results.csv` with cloud numbers.
+8. Continue with the promotion funnel in `AGENTS.md` (Public-gated since
+   2026-07-04). Never hand-edit `results.csv` with cloud numbers.
 
 The notebook `[args]`/`[launch]`/`[poll]`/`[collect]` cells remain as the manual
 fallback when the daemon is down (each needs a Quick Pick approval).

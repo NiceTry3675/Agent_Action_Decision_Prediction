@@ -619,6 +619,8 @@ def run(args):
     run_start = time.perf_counter()
     if args.final_model and args.split == "session_oof":
         raise ValueError("Use --split session, not session_oof, for final refit.")
+    if args.save_val_model and args.output_dir == "model":
+        raise ValueError("--save-val-model needs an explicit --output-dir; refusing to overwrite the packaged model/")
     if args.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
     device = torch.device(args.device if args.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -884,6 +886,10 @@ def run(args):
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, metrics)
         artifact_size = dir_size_mb(args.output_dir)
         print(f"saved HF artifact: {args.output_dir}")
+    elif args.save_val_model:
+        save_hf_artifact(model, tokenizer, args.output_dir, bias, args, metrics)
+        artifact_size = dir_size_mb(args.output_dir)
+        print(f"saved val-split HF artifact: {args.output_dir}")
     elif Path(args.output_dir).exists():
         artifact_size = dir_size_mb(args.output_dir)
 
@@ -997,6 +1003,8 @@ def parse_args():
     parser.add_argument("--tune-bias", action="store_true")
     parser.add_argument("--final-model", action="store_true")
     parser.add_argument("--final-only", action="store_true")
+    parser.add_argument("--save-val-model", action="store_true",
+                        help="save the val-split-trained model (no refit) as a submittable HF artifact")
     parser.add_argument("--save-fp16", action="store_true")
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--rule-boosts-path", default="")

@@ -4,6 +4,8 @@ Usage:
     python colab/cloud_sync.py push [--data]   # code bundle (+ one-time data tarball) -> Drive
     python colab/cloud_sync.py list            # list collected runs on Drive
     python colab/cloud_sync.py pull RUN_NAME   # download a run and merge results/artifacts
+    python colab/cloud_sync.py pull-model NAME # download saved weights from Drive models/
+                                               # (list names: rclone lsd gdrive:AADP_exchange/models)
     python colab/cloud_sync.py cmd "SHELL"     # run a shell command on the VM via the daemon
     python colab/cloud_sync.py launch SCRIPT -- ARGS...   # start a training run, no hand quoting
     python colab/cloud_sync.py hb              # read the VM daemon heartbeat (cheap poll)
@@ -144,6 +146,17 @@ def pull(run_name):
     print(f"raw copy kept at {dest} (extra/ contents such as model dirs stay there for manual placement)")
 
 
+def pull_model(name):
+    dest = REPO / "experiments/incoming/models" / name
+    dest.mkdir(parents=True, exist_ok=True)
+    sh(["rclone", "copy", f"{EXCHANGE}/models/{name}", str(dest)])
+    files = [f for f in dest.rglob("*") if f.is_file()]
+    if not files:
+        sys.exit(f"nothing at {EXCHANGE}/models/{name} -- check `rclone lsd {EXCHANGE}/models`")
+    size_mb = sum(f.stat().st_size for f in files) / 1e6
+    print(f"pulled model {name} -> {dest} ({len(files)} files, {size_mb:.0f} MB)")
+
+
 def build_launch_cmd(script, run_args):
     """argv list -> the exact `vm_agent.py launch` shell string, quoting handled here.
 
@@ -229,6 +242,8 @@ def main():
     sub.add_parser("list", help="list collected runs on Drive")
     p_pull = sub.add_parser("pull", help="download a collected run and merge results")
     p_pull.add_argument("run_name")
+    p_pm = sub.add_parser("pull-model", help="download saved model weights from Drive models/")
+    p_pm.add_argument("model_name")
     p_cmd = sub.add_parser("cmd", help="run a shell command on the VM via the daemon")
     p_cmd.add_argument("shell_command")
     p_cmd.add_argument("--timeout", type=int, default=600, help="VM-side exec timeout (s)")
@@ -251,6 +266,8 @@ def main():
         list_runs()
     elif args.command == "pull":
         pull(args.run_name)
+    elif args.command == "pull-model":
+        pull_model(args.model_name)
     elif args.command == "cmd":
         send_cmd(args.shell_command, args.timeout, 0 if args.no_wait else args.wait)
     elif args.command == "launch":

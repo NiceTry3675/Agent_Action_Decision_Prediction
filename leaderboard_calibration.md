@@ -19,12 +19,23 @@ Experiment details live in `experiments/results.csv`.
 - Fixed split `0.751733` was optimistic and should not be used for finalist selection.
 - The Public `0.743` result clears the `0.74` target.
 
-## Promotion Rule
+## Promotion Rule (2026-07-04: Public-gated)
 
 - Quick screen: reject bad ideas only.
-- Fixed-session: sanity check and weak-class inspection.
-- OOF: finalist selection, bias tuning, rule tuning, and ensemble tuning.
-- Public: final calibration anchor after packaging and smoke checks.
+- Fixed-session full run (`--save-val-model`): sanity, weak-class inspection,
+  and submittable weights.
+- Public: the decision metric — package, smoke, submit (10/day budget).
+  Deltas < 0.002 are noise; one variable per submission.
+- OOF: tool for ensemble construction and bias/rule tuning, not a gate.
+
+## Submission Ledger
+
+Every Dacon submission gets one row, at submission time; fill Public when the
+score lands.
+
+| Date | Candidate (experiment id / package) | Local fixed | Public | Gap | Note |
+| --- | --- | ---: | ---: | ---: | --- |
+| 2026-07-02 | baseline: XLM-R replay + rules + sparse w4 (`submit.zip`) | 0.751733 | 0.743 | -0.008733 | pre-ledger; anchor row repeated from above |
 
 ## Notes
 

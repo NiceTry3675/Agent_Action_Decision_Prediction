@@ -1,0 +1,152 @@
+"""Build and smoke-test submit.zip from a model directory.
+
+Usage:
+    .venv/bin/python package_submission.py                                  # repackage ./model (baseline stack)
+    .venv/bin/python package_submission.py \
+        --hf-dir experiments/incoming/models/NAME --no-sparse --out submit_NAME.zip
+
+Assembles the submission contract (script.py, requirements.txt, model/) into a
+zip with exactly those three root entries, then smoke-tests a clean extraction:
+data/ -> symlink to open/data, TRANSFORMERS_OFFLINE=1 python script.py, and
+validates submission.csv (columns id,action; ID order == sample_submission.csv;
+labels within the model's classes). Reports zip size and inference wall time.
+
+--hf-dir needs hf_model/ + hf_meta.json (what --save-val-model / --final-model
+write). Sparse SVC files ride along from --sparse-dir unless --no-sparse; the
+sparse blend weight is tuned against a specific transformer's logit scale, so
+pair them only if they were tuned together (new encoders: --no-sparse).
+"""
+import argparse
+import csv
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent
+ZIP_LIMIT_MB = 1024
+VALID_ROOT = {"script.py", "requirements.txt", "model"}
+
+
+def fail(msg):
+    sys.exit(f"package_submission: {msg}")
+
+
+def stage(hf_dir, sparse_dir, staging):
+    hf_dir = Path(hf_dir)
+    if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
+        fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
+    shutil.copy2(REPO / "script.py", staging / "script.py")
+    shutil.copy2(REPO / "requirements.txt", staging / "requirements.txt")
+    model_dir = staging / "model"
+    model_dir.mkdir()
+    shutil.copytree(hf_dir / "hf_model", model_dir / "hf_model")
+    shutil.copy2(hf_dir / "hf_meta.json", model_dir / "hf_meta.json")
+    if sparse_dir is not None:
+        sparse_dir = Path(sparse_dir)
+        for name in ("sparse_svc.pkl", "sparse_meta.json"):
+            if not (sparse_dir / name).is_file():
+                fail(f"{sparse_dir}/{name} missing; use --no-sparse for an encoder-only package")
+            shutil.copy2(sparse_dir / name, model_dir / name)
+        if sparse_dir.resolve() != hf_dir.resolve():
+            print(f"WARNING: sparse files from {sparse_dir} but transformer from {hf_dir} -- "
+                  "the blend weight is only valid if they were tuned together")
+    meta = json.loads((model_dir / "hf_meta.json").read_text(encoding="utf-8"))
+    print(f"staged: base={meta.get('base_model')} max_length={meta.get('max_length')} "
+          f"final_refit={meta.get('final_refit')} fp16={meta.get('saved_fp16')} "
+          f"sparse={'yes' if sparse_dir is not None else 'no'} "
+          f"rule_boosts={len(meta.get('rule_boosts') or [])}")
+    return meta
+
+
+def build_zip(staging, out_path):
+    tmp_zip = out_path.with_suffix(".zip.tmp")
+    with zipfile.ZipFile(tmp_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+        for path in sorted(staging.rglob("*")):
+            zf.write(path, path.relative_to(staging))
+    tmp_zip.replace(out_path)
+    with zipfile.ZipFile(out_path) as zf:
+        roots = {name.split("/")[0] for name in zf.namelist()}
+    if roots != VALID_ROOT:
+        fail(f"zip root entries {sorted(roots)} != {sorted(VALID_ROOT)}")
+    size_mb = out_path.stat().st_size / 1e6
+    print(f"built {out_path} ({size_mb:.0f} MB, root entries OK)")
+    if size_mb > ZIP_LIMIT_MB:
+        fail(f"zip exceeds the {ZIP_LIMIT_MB} MB submission limit")
+    return size_mb
+
+
+def smoke(out_path, meta, python_bin, force_cpu):
+    with tempfile.TemporaryDirectory(prefix="aadp_smoke_") as td:
+        workdir = Path(td)
+        with zipfile.ZipFile(out_path) as zf:
+            zf.extractall(workdir)
+        (workdir / "data").symlink_to(REPO / "open/data")
+        env = dict(os.environ, TRANSFORMERS_OFFLINE="1", HF_DATASETS_OFFLINE="1")
+        if force_cpu:
+            env["CUDA_VISIBLE_DEVICES"] = ""
+        start = time.perf_counter()
+        run = subprocess.run([python_bin, "script.py"], cwd=workdir, env=env,
+                             capture_output=True, text=True)
+        elapsed = time.perf_counter() - start
+        print(run.stdout.strip())
+        if run.returncode != 0:
+            print(run.stderr, file=sys.stderr)
+            fail(f"smoke run failed (rc={run.returncode})")
+
+        sub_path = workdir / "output/submission.csv"
+        if not sub_path.is_file():
+            fail("smoke run produced no output/submission.csv")
+        with sub_path.open(newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            rows = list(reader)
+        if header != ["id", "action"]:
+            fail(f"submission columns {header} != ['id', 'action']")
+        with (REPO / "open/data/sample_submission.csv").open(newline="", encoding="utf-8") as f:
+            sample_ids = [row["id"] for row in csv.DictReader(f)]
+        if [row[0] for row in rows] != sample_ids:
+            fail("submission ID order does not match sample_submission.csv")
+        bad = sorted({row[1] for row in rows} - set(meta["classes"]))
+        if bad:
+            fail(f"invalid labels in submission: {bad}")
+        n = len(rows)
+        print(f"smoke OK: {n} rows, columns/ID-order/labels valid, "
+              f"wall {elapsed:.1f}s ({elapsed / max(1, n):.2f}s/row incl. model load; "
+              f"local stub test set -- server timing needs the real 10-min budget check)")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--hf-dir", default="model",
+                        help="dir with hf_model/ + hf_meta.json (default: model)")
+    parser.add_argument("--sparse-dir", default="model",
+                        help="dir with sparse_svc.pkl + sparse_meta.json (default: model)")
+    parser.add_argument("--no-sparse", action="store_true", help="encoder-only package")
+    parser.add_argument("--out", default="submit.zip")
+    parser.add_argument("--skip-smoke", action="store_true")
+    parser.add_argument("--cpu", action="store_true", help="smoke with CUDA_VISIBLE_DEVICES=''")
+    parser.add_argument("--python", default=str(REPO / ".venv/bin/python"))
+    args = parser.parse_args()
+
+    out_path = Path(args.out)
+    if not out_path.is_absolute():
+        out_path = REPO / out_path
+    with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
+        staging = Path(td)
+        meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging)
+        build_zip(staging, out_path)
+    if args.skip_smoke:
+        print("smoke skipped (--skip-smoke)")
+        return
+    smoke(out_path, meta, args.python, args.cpu)
+
+
+if __name__ == "__main__":
+    main()

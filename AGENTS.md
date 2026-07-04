@@ -29,26 +29,34 @@ pip install ≤ 10 min, `submit.zip` ≤ 1 GB.
 - Label names and class order must not change unless all artifacts are
   regenerated together.
 
-## Validation and promotion
+## Validation and promotion (2026-07-04 protocol: Public-gated)
 
-1. Quick screen (`--quick-val-size 600`, 1 epoch) — cheap rejection.
-2. Fixed session split (`--split session`) — sanity + weak-class check.
-   Empirically optimistic; never promote from this alone.
-3. Session OOF (`--split session_oof --fold-id 0|1|2` + `aggregate_oof.py`) —
-   the finalist metric; tune class bias, rules, and ensembles here.
-4. Public — calibration only, after packaging and smoke.
+1. Quick screen (`--quick-val-size 600`, 1 epoch) — optional cheap rejection.
+2. Fixed session split (`--split session`) full run, launched with
+   `--save-val-model --save-fp16 --output-dir <run-specific dir>` so every
+   screen leaves submittable weights — sanity + weak-class check. Fixed is
+   optimistic vs Public by ~0.009-0.016 and single-seed deltas inside ±0.005
+   are seed noise; don't decide from this step alone.
+3. **Public — the decision metric.** `package_submission.py` (new encoders:
+   `--no-sparse`) → offline smoke → submit. Budget 10/day; log every
+   submission in `leaderboard_calibration.md`. One variable per submission;
+   Public deltas < 0.002 are noise.
+4. Winner consolidation: `--final-model` full refit → repackage → resubmit.
+   Session OOF (`--split session_oof` + `aggregate_oof.py`) is demoted to a
+   tool — ensemble construction, bias/rule tuning, near-tie calls — not a
+   promotion gate.
 
-One variable per experiment. No submission unless the candidate beats the
-current baseline OOF (`final_summary.md`). Report the weak classes, not just the
-aggregate: `list_directory`, `read_file`, `grep_search`, `glob_pattern`,
-`web_search`, `lint_or_typecheck`, `run_tests` vs `run_bash`.
+One variable per experiment. The `final_summary.md` baseline changes only on a
+Public improvement. Report the weak classes, not just the aggregate:
+`list_directory`, `read_file`, `grep_search`, `glob_pattern`, `web_search`,
+`lint_or_typecheck`, `run_tests` vs `run_bash`.
 
 ## Replay and leakage
 
 Validation-session examples must never enter training via replay; use only the
 fold-aware replay in `train_transformer.py`. Proven setting: `--replay-mode
 last1 --max-replay-samples 10000 --replay-sample-weight 0.5`. Do not expand
-unless OOF or weak-class F1 improves.
+unless Public or weak-class F1 improves.
 
 ## Where results go
 
