@@ -847,17 +847,20 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     samples = load_jsonl(test_path)
     ids = [safe_text(sample.get("id", "")) for sample in samples]
 
+    # The lookup file is the switch for ALL override tiers (incl. positional/
+    # aligned): the 07-04 probe scored Public 0.710 vs the identical stack's
+    # 0.743, so overrides must never run unless explicitly packaged back in.
     leak_overrides = {}
     try:
         train_lookup = load_leak_lookup(model_dir)
-        leak_overrides, leak_stats = compute_leak_overrides(
-            samples, train_lookup=train_lookup, valid_classes=meta["classes"]
-        )
-        tier_text = " ".join(f"{tier}={count}" for tier, count in leak_stats.items())
-        print(
-            f"Leak overrides: total={len(leak_overrides)}/{len(samples)} {tier_text} "
-            f"(train lookup {'loaded' if train_lookup else 'absent'})"
-        )
+        if train_lookup is not None:
+            leak_overrides, leak_stats = compute_leak_overrides(
+                samples, train_lookup=train_lookup, valid_classes=meta["classes"]
+            )
+            tier_text = " ".join(f"{tier}={count}" for tier, count in leak_stats.items())
+            print(f"Leak overrides: total={len(leak_overrides)}/{len(samples)} {tier_text}")
+        else:
+            print("Leak overrides disabled (no lookup file packaged)")
     except Exception:
         print("Leak override computation failed; falling back to model-only predictions")
         traceback.print_exc()

@@ -37,7 +37,7 @@ priority order — hyperparameters are frozen at the proven recipe everywhere
 
 | Lane | What | Command sketch | Gate |
 |---|---|---|---|
-| **G — leak probe** | Cross-row label leakage: later rows' histories pin earlier rows' labels (train: 86.5% coverage, 0 wrong; see `verify_leak_train.py`). Overrides + fallback already wired into `script.py`; lookup auto-staged by `package_submission.py`. | `.venv/bin/python verify_leak_train.py --mode full` then `.venv/bin/python package_submission.py --out leak_probe_0705.zip` (baseline `model/`), offline smoke, **submit 07-05 slot 1** | Public ≥ 0.753 → works (jump ≈ coverage); +0.02~0.04 → lookup tiers only; no jump → one-row-per-session test, drop for good |
+| ~~G — leak probe~~ | Cross-row label leakage: later rows' histories pin earlier rows' labels (train: 86.5% coverage, 0 wrong; see `verify_leak_train.py`). | probe submitted 07-04 (`leak_probe_0705.zip`) | **DEAD 07-04: Public 0.710 (-0.033)** — overrides actively wrong on the server; the public test lacks the train dump's cross-row structure. All tiers off unless `--leak-lookup` repackages the lookup file. Dropped for good |
 | **L — len448 full stack** | Finish seeds 44/45 best-of-N (in flight), take best fixed instance, retune bias/rules/sparse on its val logits (`make_val_tune_artifact.py` → tune chain), package, submit | per ledger protocol; expected Public +0.005~0.010 | fixed ≥ ~0.755 before submitting (transfer ×1.6) |
 | **A — int8 base+large ensemble** | Per the 07-04 Track B entry: int8 both encoders (~883 MB with sparse), 2-encoder softmax averaging in `script.py`, ens-chain artifacts | `quantize_checkpoint.py` quantize+verify → `inject_stack_meta.py` → package | verify argmax agreement ≥ 99.5%; expected Public ~+0.004 |
 | **B — `current_v2` serializer @ len448** | Registered in `script.py`/`train_transformer.py`: priority-ordered fields, all user utterances kept (newest first) so truncation eats the oldest pairs | 20260703_170302 train_command with `--serializer current_v2` only (one variable), fixed screen → OOF full chain if ≥ baseline−noise | full-chain OOF ≥ 0.745 by 07-07, else drop; expected +0~0.010 |
@@ -46,9 +46,8 @@ priority order — hyperparameters are frozen at the proven recipe everywhere
 Dropped by this plan: M2 resweep, Qwen-0.5B decoder (FLOPs put 30k rows at
 10-20 min on the T4 — cap violation), multi-seed packaging (below measured
 heterogeneous-ensemble EV), any new post-processing (OOF gains deflate ~2.7x
-to Public). If G lands, later lanes re-read as fallback-quality work; if G
-dies, the arithmetic is 0.743 + L + A + B ≈ 0.754~0.771 and 0.77 needs L's
-upper end plus B landing.
+to Public). G died 07-04 (Public 0.710, -0.033): the arithmetic is
+0.743 + L + A + B ≈ 0.754~0.771 and 0.77 needs L's upper end plus B landing.
 
 ## Context
 

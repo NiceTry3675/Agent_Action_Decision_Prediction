@@ -40,7 +40,7 @@ def fail(msg):
     sys.exit(f"package_submission: {msg}")
 
 
-def stage(hf_dir, sparse_dir, staging, leak_lookup=True):
+def stage(hf_dir, sparse_dir, staging, leak_lookup=False):
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
         fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
@@ -152,8 +152,9 @@ def main():
     parser.add_argument("--sparse-dir", default="model",
                         help="dir with sparse_svc.pkl + sparse_meta.json (default: model)")
     parser.add_argument("--no-sparse", action="store_true", help="encoder-only package")
-    parser.add_argument("--no-leak-lookup", action="store_true",
-                        help="exclude model/leak_lookup.json.gz (leak-override train lookup)")
+    parser.add_argument("--leak-lookup", action="store_true",
+                        help="include model/leak_lookup.json.gz, which re-enables ALL leak-override "
+                             "tiers in script.py (07-04 probe: Public 0.710 vs 0.743 — off by default)")
     parser.add_argument("--out", default=None,
                         help="zip filename, ≤30 chars (default: <hf-dir name>.zip); "
                              "relative paths land in submissions/")
@@ -171,7 +172,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)
         meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging,
-                     leak_lookup=not args.no_leak_lookup)
+                     leak_lookup=args.leak_lookup)
         build_zip(staging, out_path)
     if args.skip_smoke:
         print("smoke skipped (--skip-smoke)")
