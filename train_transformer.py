@@ -436,7 +436,11 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             torch.cuda.synchronize()
         print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}")
         if args.epoch_checkpoint_dir:
-            save_epoch_checkpoint(model, tokenizer, args.epoch_checkpoint_dir, epoch)
+            try:
+                save_epoch_checkpoint(model, tokenizer, args.epoch_checkpoint_dir, epoch)
+            except Exception as exc:
+                # checkpoint is insurance only — a Drive-mount hiccup must not kill the run
+                print(f"  epoch checkpoint FAILED (continuing): {exc}")
     return model
 
 
