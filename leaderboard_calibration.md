@@ -37,7 +37,7 @@ score lands.
 | --- | --- | ---: | ---: | ---: | --- |
 | 2026-07-02 | baseline: XLM-R replay + rules + sparse w4 (`submit.zip`) | 0.751733 | 0.743 | -0.008733 | pre-ledger; anchor row repeated from above |
 | 2026-07-04 | len448 focal g2.0 encoder-only val-model, seed42 (`submit_m3_focal_len448.zip`, `...m3_focal_len448_ep5_replay_last1_seed42_valmodel`) | 0.748091 | 0.735 | -0.013091 | first Public-gated loop; -0.008 vs baseline Public, but confounded: encoder-only (no rules/sparse), 80% train data (val-model), and a weak instance draw (same-seed rerun of m2 len448 0.755278 — run-to-run noise ±0.007-0.009). seed43 + len192-focal pair will deconfound |
-| 2026-07-04 | len448 focal g2.0 encoder-only val-model, seed43 (`submit_m3_focal_len448_seed43.zip`, `...m3_focal_len448_ep5_replay_last1_seed43_valmodel`) | 0.735075 | pending | | transfer-coefficient probe: fixed is -0.013 below the seed42 arm; if Public co-moves, fixed screens rank candidates despite optimism — if not, fixed deltas are meaningless for Public. len448 fixed spread across 3 instances now 0.735-0.755 |
+| 2026-07-04 | len448 focal g2.0 encoder-only val-model, seed43 (`submit_m3_focal_len448_seed43.zip`, `...m3_focal_len448_ep5_replay_last1_seed43_valmodel`) | 0.735075 | 0.714 | -0.020925 | transfer-coefficient probe RESULT: fixed delta -0.013 → Public delta -0.021 (transfer ≈ 1.6x, co-moving). Fixed DOES rank same-recipe instances; weak draws are genuinely weak models. Gap for this recipe class -0.013 to -0.021 (grows for weaker instances). Instance selection by fixed score is a valid lever |
 
 ## Notes
 
