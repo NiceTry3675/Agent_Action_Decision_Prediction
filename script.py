@@ -828,12 +828,11 @@ def load_hf_model(hf_dir, device):
     return AutoModelForSequenceClassification.from_pretrained(hf_dir, local_files_only=True).to(device)
 
 
-def run_hf_inference(model_dir, data_dir, output_path, device):
+def encoder_probs(model_dir, spec, texts, device):
+    """Sequentially run one ensemble encoder; return CPU softmax probs [N, C]."""
     from transformers import AutoTokenizer
 
-    hf_dir = os.path.join(model_dir, "hf_model")
-    with open(os.path.join(model_dir, "hf_meta.json"), encoding="utf-8") as f:
-        meta = json.load(f)
+    hf_dir = os.path.join(model_dir, spec["hf_dir"])
     tokenizer = AutoTokenizer.from_pretrained(hf_dir, local_files_only=True)
     model = load_hf_model(hf_dir, device)
     if device.type == "cuda":
@@ -841,6 +840,44 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     else:
         model.float()
     model.eval()
+    max_length = int(spec.get("max_length", 192))
+    batch_size = int(spec.get("batch_size", 32))
+    chunks = []
+    with torch.inference_mode():
+        for start in range(0, len(texts), batch_size):
+            encoded = tokenizer(
+                texts[start:start + batch_size],
+                padding=True,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            encoded = {key: value.to(device) for key, value in encoded.items()}
+            chunks.append(torch.softmax(model(**encoded).logits.float(), dim=-1).cpu())
+    del model
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    print(f"Encoder {spec['hf_dir']} done ({len(texts)} rows)")
+    return torch.cat(chunks, dim=0)
+
+
+def run_hf_inference(model_dir, data_dir, output_path, device):
+    from transformers import AutoTokenizer
+
+    hf_dir = os.path.join(model_dir, "hf_model")
+    with open(os.path.join(model_dir, "hf_meta.json"), encoding="utf-8") as f:
+        meta = json.load(f)
+    encoders = meta.get("encoders")
+    tokenizer = None
+    model = None
+    if not encoders:
+        tokenizer = AutoTokenizer.from_pretrained(hf_dir, local_files_only=True)
+        model = load_hf_model(hf_dir, device)
+        if device.type == "cuda":
+            model.half()
+        else:
+            model.float()
+        model.eval()
 
     test_path = os.path.join(data_dir, "test.jsonl")
     sample_submission_path = os.path.join(data_dir, "sample_submission.csv")
@@ -885,21 +922,34 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         )
         print(f"Loaded sparse SVC ensemble weight={sparse_weight}")
 
+    ensemble_scores = None
+    if encoders:
+        # sequential encoders -> softmax average; the tuned chain (bias/rules/
+        # sparse) operates on log-average-probs, matching how it was tuned
+        probs = None
+        for spec in encoders:
+            enc = encoder_probs(model_dir, spec, texts, device)
+            probs = enc if probs is None else probs + enc
+        ensemble_scores = torch.log((probs / len(encoders)).clamp_min(1e-12))
+
     preds = []
     batch_size = int(meta.get("batch_size", 32))
     max_length = int(meta.get("max_length", 192))
     with torch.inference_mode():
         for start in range(0, len(texts), batch_size):
             batch_texts = texts[start:start + batch_size]
-            encoded = tokenizer(
-                batch_texts,
-                padding=True,
-                truncation=True,
-                max_length=max_length,
-                return_tensors="pt",
-            )
-            encoded = {key: value.to(device) for key, value in encoded.items()}
-            logits = model(**encoded).logits.float() + class_bias
+            if ensemble_scores is not None:
+                logits = ensemble_scores[start:start + len(batch_texts)].to(device) + class_bias
+            else:
+                encoded = tokenizer(
+                    batch_texts,
+                    padding=True,
+                    truncation=True,
+                    max_length=max_length,
+                    return_tensors="pt",
+                )
+                encoded = {key: value.to(device) for key, value in encoded.items()}
+                logits = model(**encoded).logits.float() + class_bias
             logits = apply_rule_boosts_to_logits(logits, samples[start:start + batch_size], rule_boosts, meta["classes"])
             if sparse_scores is not None:
                 sparse_batch = sparse_scores[start:start + len(batch_texts)].to(device)

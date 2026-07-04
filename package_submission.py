@@ -48,7 +48,9 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False):
     shutil.copy2(REPO / "requirements.txt", staging / "requirements.txt")
     model_dir = staging / "model"
     model_dir.mkdir()
-    shutil.copytree(hf_dir / "hf_model", model_dir / "hf_model")
+    for enc_dir in sorted(hf_dir.glob("hf_model*")):
+        if enc_dir.is_dir():
+            shutil.copytree(enc_dir, model_dir / enc_dir.name)
     shutil.copy2(hf_dir / "hf_meta.json", model_dir / "hf_meta.json")
     if sparse_dir is not None:
         sparse_dir = Path(sparse_dir)
