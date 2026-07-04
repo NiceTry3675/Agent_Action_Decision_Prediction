@@ -43,6 +43,8 @@ score lands.
 | 2026-07-04 | M4: xlm-r-large len448 focal, int8 + 12 val-tuned rules, no sparse (`m4_large448_s42.zip`, `...m4_large_len448_focal_ep5_replay_last1_s42_valmo`) | 0.767660 | 0.741 | -0.026660 |
 | 2026-07-04 | M5a: 2-encoder ens (large448+base448 s42 val-models, both int8) + ens-tuned bias/12 rules (`m5a_ens448_s42.zip`) | 0.771038 | pending | | ensemble lever isolated vs M4 (same large leg + same tuning method; adds base leg + ens tuning): ens val 2stage 0.760109 (+0.0034 over large alone) + rules → 0.771038. M4 gap -0.027 applied naively → ~0.744; refit legs come next (M5b) | | LARGE VERDICT: -0.002 vs baseline despite the best fixed to date. Decomposed: val-tuned rules delivered ~+0.002 (val showed +0.011 — ~5x discount, worse than OOF's 2.7x); the large encoder itself sits ~-0.010 BELOW the base-derived transfer line (encoder-only implied ~0.739 vs predicted 0.749) — large's fixed advantage does not transfer, echoing its len192 OOF result (+0.006 fixed → +0.0013 OOF). Large ≠ a Public lever in this family |
 
+| 2026-07-04 | M6: Qwen2.5-0.5B decoder, epoch-3/5 salvage, int8 encoder-only (`m6_qwen05b_ep3.zip`) | 0.774220 | pending | | DECODER FAMILY PROBE: fixed 2stage +0.0175 over the champion large448 despite 2 fewer epochs (raw 0.747 = band top; weak classes broadly improved, list_directory 0.504). Caveat: 2stage bias gain unusually large (+0.027); encoder-only val-model gap band was -0.013~-0.021 |
+
 ## Notes
 
 - Server inference wall time: every submission to date finished in under 1
