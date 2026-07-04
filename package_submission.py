@@ -40,12 +40,12 @@ def fail(msg):
     sys.exit(f"package_submission: {msg}")
 
 
-def stage(hf_dir, sparse_dir, staging, leak_lookup=False):
+def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
         fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
     shutil.copy2(REPO / "script.py", staging / "script.py")
-    shutil.copy2(REPO / "requirements.txt", staging / "requirements.txt")
+    shutil.copy2(requirements or (REPO / "requirements.txt"), staging / "requirements.txt")
     model_dir = staging / "model"
     model_dir.mkdir()
     for enc_dir in sorted(hf_dir.glob("hf_model*")):
@@ -163,6 +163,8 @@ def main():
     parser.add_argument("--skip-smoke", action="store_true")
     parser.add_argument("--cpu", action="store_true", help="smoke with CUDA_VISIBLE_DEVICES=''")
     parser.add_argument("--python", default=str(REPO / ".venv/bin/python"))
+    parser.add_argument("--requirements", default=str(REPO / "requirements.txt"),
+                        help="requirements.txt variant to ship (e.g. transformers 4.51 for Qwen3 packs)")
     args = parser.parse_args()
 
     out_path = Path(args.out or Path(args.hf_dir).resolve().name + ".zip")
@@ -174,7 +176,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)
         meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging,
-                     leak_lookup=args.leak_lookup)
+                     leak_lookup=args.leak_lookup, requirements=args.requirements)
         build_zip(staging, out_path)
     if args.skip_smoke:
         print("smoke skipped (--skip-smoke)")

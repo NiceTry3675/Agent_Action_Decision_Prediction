@@ -14,10 +14,19 @@ Experiment details live in `experiments/results.csv`.
 
 ## Current Baseline
 
-- Package: XLM-R 5ep replay_last1 cap10000 + OOF rule boosts + sparse SVC weight `4.0`.
-- Main signal: OOF 2-stage `0.741881` -> reported Public `0.743`.
-- Fixed split `0.751733` was optimistic and should not be used for finalist selection.
-- The Public `0.743` result clears the `0.74` target.
+- Package: Qwen3-0.6B (decoder, len416 focal) ep3 FULL-DATA refit + 3-fold OOF class bias
+  (2-stage) + 12 OOF rule boosts, int8 encoder-only, `requirements_qwen3.txt`
+  (transformers>=4.51,<4.52 override) — `m7_qwen3_refit.zip`.
+- Main signal: OOF 2-stage `0.758499` -> +12 rules `0.767129` -> Public `0.780`.
+- Superseded: XLM-R 5ep replay_last1 cap10000 + OOF rule boosts + sparse SVC weight `4.0`
+  (Public `0.743`).
+- ⚠ inference 8:50/10:00 — tightest margin to date; no further legroom for an ensemble
+  leg on this pack without optimizing further (sorted-batch inference already applied).
+
+## Notes
+
+- The largest recurring errors remain around `grep_search`, `read_file`, `list_directory`, and `glob_pattern`.
+- Alternative encoder notes are summarized in `final_summary.md`; full rows stay in `experiments/results.csv`.
 
 ## Promotion Rule (2026-07-04: Public-gated)
 
@@ -45,12 +54,6 @@ score lands.
 
 | 2026-07-04 | M6: Qwen2.5-0.5B decoder, epoch-3/5 salvage, int8 encoder-only (`m6_qwen05b_ep3.zip`) | 0.774220 | not submitted | | shelved (2 slots left today; the full 5-epoch pack is the stronger probe). DECODER FAMILY PROBE: fixed 2stage +0.0175 over the champion large448 despite 2 fewer epochs (raw 0.747 = band top; weak classes broadly improved, list_directory 0.504). Caveat: 2stage bias gain unusually large (+0.027); encoder-only val-model gap band was -0.013~-0.021 |
 
-## Notes
+| 2026-07-04 | M6: Qwen2.5-0.5B ep3 FULL-DATA refit, int8 encoder-only (`m6_qwen05b_refit.zip`) | n/a (refit unscreenable; ep3 val instances raw 0.7474/0.7509, 2stage 0.7597/0.7742) | **0.770** | +0.010~+0.023 vs ep3 val 2stage | DECODER LINE CONFIRMED: +0.027 over our old baseline in one day, -0.003 vs team best 0.7733, -0.002 vs the cut. Refit lever flipped the gap positive on decoders too (teammate pattern replicated). ⚠ inference 8:31/10:00 — only 1:29 margin: no ensemble legroom until optimized (max_length 416 covers Qwen p100=409; eval batch 64) |
+| 2026-07-05 | M7: Qwen3-0.6B ep3 len416 FULL-DATA refit + proper 3-fold OOF bias/12 rules, int8 encoder-only, transformers 4.51 override (`m7_qwen3_refit.zip`) | n/a (refit unscreenable; OOF raw 0.755929 -> 2stage 0.758499 -> +12 rules 0.767129) | **0.780** | +0.013~+0.024 vs OOF tiers | NEW BASELINE, first categorical (0.02+) jump of the competition: +0.010 vs M6 decoder, +0.037 vs the old encoder baseline 0.743. First submission with a genuine OOF-based bias/rule tune (not val-tuned) feeding a refit pack. ⚠ inference 8:50/10:00 — only 1:10 margin (worse than M6's 8:31 despite sorted-batch inference; transformers>=4.51 override installed clean, no submission-slot cost) |
 
-- Server inference wall time: every submission to date finished in under 1
-  minute on the eval T4 (user-observed, 2026-07-04). The 10-min cap is not a
-  binding constraint — len448 single-encoder projects ~2-3 min, a two-encoder
-  base+large package ~4-5 min.
-
-- The largest recurring errors remain around `grep_search`, `read_file`, `list_directory`, and `glob_pattern`.
-- Alternative encoder notes are summarized in `final_summary.md`; full rows stay in `experiments/results.csv`.
