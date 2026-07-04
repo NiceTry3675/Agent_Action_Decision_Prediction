@@ -388,16 +388,28 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    total_steps = math.ceil(len(train_idx) / args.batch_size) * args.epochs
+    accum = max(1, args.grad_accum_steps)
+    batches_per_epoch = math.ceil(len(train_idx) / args.batch_size)
+    total_steps = math.ceil(batches_per_epoch / accum) * args.epochs
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
     scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     rng = random.Random(args.seed)
 
+    def optimizer_step():
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        scaler.step(optimizer)
+        scaler.update()
+        scheduler.step()
+        optimizer.zero_grad(set_to_none=True)
+
+    optimizer.zero_grad(set_to_none=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
         seen = 0
+        step = 0
         for step, batch_idx in enumerate(
             make_batches(train_idx, args.batch_size, rng, lengths, args.bucket_multiplier),
             1,
@@ -405,7 +417,6 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             labels = torch.tensor([y[i] for i in batch_idx], dtype=torch.long, device=device)
             weights_for_samples = torch.tensor([sample_weights[i] for i in batch_idx], dtype=torch.float32, device=device)
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
-            optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.float16):
                 logits = model(**encoded).logits
                 loss_values = F.cross_entropy(
@@ -422,16 +433,15 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
                     pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
                     loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
-            scheduler.step()
+            scaler.scale(loss / accum).backward()
+            if step % accum == 0:
+                optimizer_step()
             total_loss += float(loss.detach().cpu()) * len(batch_idx)
             seen += len(batch_idx)
             if args.log_every and step % args.log_every == 0:
                 print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}")
+        if step % accum != 0:
+            optimizer_step()
         if device.type == "cuda":
             torch.cuda.synchronize()
         print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}")
@@ -1039,6 +1049,8 @@ def parse_args():
                         help="save the val-split-trained model (no refit) as a submittable HF artifact")
     parser.add_argument("--epoch-checkpoint-dir", default="",
                         help="overwrite this dir with an fp16 snapshot after every epoch (crash insurance; use a Drive path on Colab)")
+    parser.add_argument("--grad-accum-steps", type=int, default=1,
+                        help="optimizer step every N batches (effective batch = batch-size x N); matches teammate recipe batch4 x accum4")
     parser.add_argument("--save-fp16", action="store_true")
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--rule-boosts-path", default="")
