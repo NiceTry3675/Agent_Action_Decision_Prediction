@@ -1,9 +1,12 @@
 """Build and smoke-test submit.zip from a model directory.
 
 Usage:
-    .venv/bin/python package_submission.py                                  # repackage ./model (baseline stack)
+    .venv/bin/python package_submission.py --out baseline_0702.zip          # repackage ./model (baseline stack)
     .venv/bin/python package_submission.py \
-        --hf-dir experiments/incoming/models/NAME --no-sparse --out submit_NAME.zip
+        --hf-dir experiments/incoming/models/NAME --no-sparse --out m3_len448_s42.zip
+
+Zips land in submissions/ (gitignored). Naming rule: filename ≤ 30 chars, no
+"submit" prefix — e.g. m3_len448_s42.zip.
 
 Assembles the submission contract (script.py, requirements.txt, model/) into a
 zip with exactly those three root entries, then smoke-tests a clean extraction:
@@ -129,15 +132,20 @@ def main():
     parser.add_argument("--sparse-dir", default="model",
                         help="dir with sparse_svc.pkl + sparse_meta.json (default: model)")
     parser.add_argument("--no-sparse", action="store_true", help="encoder-only package")
-    parser.add_argument("--out", default="submit.zip")
+    parser.add_argument("--out", default=None,
+                        help="zip filename, ≤30 chars (default: <hf-dir name>.zip); "
+                             "relative paths land in submissions/")
     parser.add_argument("--skip-smoke", action="store_true")
     parser.add_argument("--cpu", action="store_true", help="smoke with CUDA_VISIBLE_DEVICES=''")
     parser.add_argument("--python", default=str(REPO / ".venv/bin/python"))
     args = parser.parse_args()
 
-    out_path = Path(args.out)
+    out_path = Path(args.out or Path(args.hf_dir).resolve().name + ".zip")
     if not out_path.is_absolute():
-        out_path = REPO / out_path
+        out_path = REPO / "submissions" / out_path
+    if len(out_path.name) > 30:
+        fail(f"zip filename '{out_path.name}' is over the 30-char naming rule; pass a shorter --out")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)
         meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging)

@@ -3,7 +3,7 @@
 ## Current Public Baseline
 
 - Public Macro-F1: `0.743`
-- Package: `submit.zip`
+- Package: `submissions/baseline_0702.zip` (formerly `submit.zip`)
 - Model path: `script.py` + `model/`
 - Baseline stack: XLM-R 5ep replay_last1 cap10000 + OOF rule boosts + sparse SVC weight `4.0`
 - Main validation signal: OOF 2-stage Macro-F1 `0.741881`

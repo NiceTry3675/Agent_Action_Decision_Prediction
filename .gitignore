@@ -6,7 +6,7 @@ experiments/incoming/
 output/
 data/
 model/
-submit.zip
+submissions/
 .cache/
 .ipynb_checkpoints/
 runs/

@@ -16,7 +16,7 @@ Dacon 236694: predict the next coding-agent action (14 classes) from
 `current_prompt`/`history`/`session_meta`; metric Macro-F1. The server runs
 `python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min
 (not binding in practice — every submission to date ran < 1 min), pip install
-≤ 10 min, `submit.zip` ≤ 1 GB.
+≤ 10 min, submission zip ≤ 1 GB.
 
 ## Submission contract
 
@@ -24,7 +24,9 @@ Dacon 236694: predict the next coding-agent action (14 classes) from
   everything from `./model/` — fail loudly if missing, no silent fallback to
   stale artifacts — writes `./output/submission.csv` with columns exactly
   `id,action`, only the 14 valid labels, no network calls.
-- `submit.zip` root: exactly `script.py`, `requirements.txt`, `model/`.
+- Submission zip root: exactly `script.py`, `requirements.txt`, `model/`.
+  Zips live in `submissions/` (gitignored); filenames ≤ 30 chars, no `submit`
+  prefix (e.g. `m3_len448_s42.zip`) — `package_submission.py` enforces both.
 - `requirements.txt` is the eval-server install list (torch preinstalled there);
   training deps live in `.venv` only.
 - Label names and class order must not change unless all artifacts are
