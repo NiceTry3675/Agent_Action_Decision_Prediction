@@ -39,5 +39,10 @@ score lands.
 
 ## Notes
 
+- Server inference wall time: every submission to date finished in under 1
+  minute on the eval T4 (user-observed, 2026-07-04). The 10-min cap is not a
+  binding constraint — len448 single-encoder projects ~2-3 min, a two-encoder
+  base+large package ~4-5 min.
+
 - The largest recurring errors remain around `grep_search`, `read_file`, `list_directory`, and `glob_pattern`.
 - Alternative encoder notes are summarized in `final_summary.md`; full rows stay in `experiments/results.csv`.

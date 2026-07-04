@@ -14,8 +14,9 @@ research plan / milestones toward the current target: `roadmap/README.md`.
 
 Dacon 236694: predict the next coding-agent action (14 classes) from
 `current_prompt`/`history`/`session_meta`; metric Macro-F1. The server runs
-`python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min,
-pip install ≤ 10 min, `submit.zip` ≤ 1 GB.
+`python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min
+(not binding in practice — every submission to date ran < 1 min), pip install
+≤ 10 min, `submit.zip` ≤ 1 GB.
 
 ## Submission contract
 
