@@ -43,7 +43,7 @@ def read_hb(retries=0):
             time.sleep(20)
 
 
-def wait_collect(floor, deadline):
+def wait_collect(floor, deadline, stale_note=""):
     while time.time() < deadline:
         time.sleep(240)
         try:
@@ -60,7 +60,8 @@ def wait_collect(floor, deadline):
         if note.startswith("collected:") and note[10:25] > floor:
             print("COLLECTED:", note[10:], flush=True)
             return
-        if note.startswith(("collect_error", "collect_skipped")):
+        # collect notes persist in the heartbeat across runs; only a NEW error/skip is fatal
+        if note.startswith(("collect_error", "collect_skipped")) and note != stale_note:
             sys.exit(4)
         if age > 400:
             print(f"HEARTBEAT STALE ({age:.0f}s)", flush=True)
@@ -89,13 +90,15 @@ def main():
     plan = json.loads(Path(args.plan).read_text())
     deadline = time.time() + args.max_minutes * 60
 
-    run = read_hb(retries=4).get("run") or {}
+    hb0 = read_hb(retries=4)
+    stale_note = hb0.get("collect_note", "")
+    run = hb0.get("run") or {}
     match = re.match(r"run_(\d{8}_\d{6})\.log$", run.get("log") or "")
     if run.get("alive") and match:
         print(f"waiting on live run {run['log']}", flush=True)
-        wait_collect(match.group(1), deadline)
+        wait_collect(match.group(1), deadline, stale_note)
     for index, spec in enumerate(plan):
-        wait_collect(launch(spec, index), deadline)
+        wait_collect(launch(spec, index), deadline, stale_note)
     print("ALL RUNS COLLECTED", flush=True)
 
 
