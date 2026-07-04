@@ -431,7 +431,27 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         if device.type == "cuda":
             torch.cuda.synchronize()
         print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}")
+        if args.epoch_checkpoint_dir:
+            save_epoch_checkpoint(model, tokenizer, args.epoch_checkpoint_dir, epoch)
     return model
+
+
+def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch):
+    """Crash insurance for preemptible runtimes: overwrite ckpt_dir with an
+    fp16 copy of the last completed epoch (point it at a Drive path)."""
+    import copy
+
+    start = time.perf_counter()
+    ckpt_dir = Path(ckpt_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = copy.deepcopy(model).half().cpu()
+    snapshot.save_pretrained(ckpt_dir, safe_serialization=True)
+    del snapshot
+    if epoch == 1:
+        tokenizer.save_pretrained(ckpt_dir)
+    (ckpt_dir / "checkpoint_state.json").write_text(
+        json.dumps({"last_completed_epoch": epoch}), encoding="utf-8")
+    print(f"  epoch checkpoint -> {ckpt_dir} (epoch={epoch}, {time.perf_counter() - start:.0f}s)")
 
 
 def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
@@ -1005,6 +1025,8 @@ def parse_args():
     parser.add_argument("--final-only", action="store_true")
     parser.add_argument("--save-val-model", action="store_true",
                         help="save the val-split-trained model (no refit) as a submittable HF artifact")
+    parser.add_argument("--epoch-checkpoint-dir", default="",
+                        help="overwrite this dir with an fp16 snapshot after every epoch (crash insurance; use a Drive path on Colab)")
     parser.add_argument("--save-fp16", action="store_true")
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--rule-boosts-path", default="")
