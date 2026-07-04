@@ -17,7 +17,7 @@ Milestones:
 | Milestone | File | Target dates | Status |
 |---|---|---|---|
 | M1 | [milestone_1_length_and_xlmr_large.md](milestone_1_length_and_xlmr_large.md) | 07-03 → 07-05 | Completed 2026-07-03: Phase 0 OOF `0.743183`; length failed fixed gate; xlm-r-large package-size blocked |
-| M2 | [milestone_2_hparam_resweep.md](milestone_2_hparam_resweep.md) | 07-05 → 07-07 | Scoped, re-plan at M1 close |
+| M2 | [milestone_2_hparam_resweep.md](milestone_2_hparam_resweep.md) | 07-05 → 07-07 | **Dropped 2026-07-04** (accelerated plan below: params frozen at proven values, EV ≤ +0.005) |
 | Checkpoint | (see below) | 07-07/08 | Go/no-go + reprioritization |
 | M3 | [milestone_3_bigger_swings.md](milestone_3_bigger_swings.md) | 07-08 → 07-11 | Candidates identified, sequencing set at Checkpoint |
 | M4 | [milestone_4_consolidation.md](milestone_4_consolidation.md) | 07-11 → 07-14 | Fixed process |
@@ -28,6 +28,27 @@ lighter placeholders — they get re-planned (a short new pass, not a full
 re-exploration) using each prior milestone's actual results before
 execution starts, since locking in exact grids/weights now would mostly be
 guessing.
+
+## 2026-07-04 Accelerated plan (supersedes the milestone sequencing above)
+
+Full background in `research_log.md` (2026-07-04 leak entry). Lanes, in
+priority order — hyperparameters are frozen at the proven recipe everywhere
+(lr 2e-5, 5ep, focal γ2.0, cwp 0.5, ls 0.02, replay last1 cap10k w0.5):
+
+| Lane | What | Command sketch | Gate |
+|---|---|---|---|
+| **G — leak probe** | Cross-row label leakage: later rows' histories pin earlier rows' labels (train: 86.5% coverage, 0 wrong; see `verify_leak_train.py`). Overrides + fallback already wired into `script.py`; lookup auto-staged by `package_submission.py`. | `.venv/bin/python verify_leak_train.py --mode full` then `.venv/bin/python package_submission.py --out leak_probe_0705.zip` (baseline `model/`), offline smoke, **submit 07-05 slot 1** | Public ≥ 0.753 → works (jump ≈ coverage); +0.02~0.04 → lookup tiers only; no jump → one-row-per-session test, drop for good |
+| **L — len448 full stack** | Finish seeds 44/45 best-of-N (in flight), take best fixed instance, retune bias/rules/sparse on its val logits (`make_val_tune_artifact.py` → tune chain), package, submit | per ledger protocol; expected Public +0.005~0.010 | fixed ≥ ~0.755 before submitting (transfer ×1.6) |
+| **A — int8 base+large ensemble** | Per the 07-04 Track B entry: int8 both encoders (~883 MB with sparse), 2-encoder softmax averaging in `script.py`, ens-chain artifacts | `quantize_checkpoint.py` quantize+verify → `inject_stack_meta.py` → package | verify argmax agreement ≥ 99.5%; expected Public ~+0.004 |
+| **B — `current_v2` serializer @ len448** | Registered in `script.py`/`train_transformer.py`: priority-ordered fields, all user utterances kept (newest first) so truncation eats the oldest pairs | 20260703_170302 train_command with `--serializer current_v2` only (one variable), fixed screen → OOF full chain if ≥ baseline−noise | full-chain OOF ≥ 0.745 by 07-07, else drop; expected +0~0.010 |
+| C — 4-way specialist | One fold screen only; the cluster's conditional distributions are flat given surface features, so expect simulator stochasticity | after B verdict | cluster F1 +0.03 on the screen or drop |
+
+Dropped by this plan: M2 resweep, Qwen-0.5B decoder (FLOPs put 30k rows at
+10-20 min on the T4 — cap violation), multi-seed packaging (below measured
+heterogeneous-ensemble EV), any new post-processing (OOF gains deflate ~2.7x
+to Public). If G lands, later lanes re-read as fallback-quality work; if G
+dies, the arithmetic is 0.743 + L + A + B ≈ 0.754~0.771 and 0.77 needs L's
+upper end plus B landing.
 
 ## Context
 

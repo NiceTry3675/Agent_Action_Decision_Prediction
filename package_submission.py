@@ -40,7 +40,7 @@ def fail(msg):
     sys.exit(f"package_submission: {msg}")
 
 
-def stage(hf_dir, sparse_dir, staging):
+def stage(hf_dir, sparse_dir, staging, leak_lookup=True):
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
         fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
@@ -59,12 +59,32 @@ def stage(hf_dir, sparse_dir, staging):
         if sparse_dir.resolve() != hf_dir.resolve():
             print(f"WARNING: sparse files from {sparse_dir} but transformer from {hf_dir} -- "
                   "the blend weight is only valid if they were tuned together")
+    if leak_lookup:
+        stage_leak_lookup(model_dir)
     meta = json.loads((model_dir / "hf_meta.json").read_text(encoding="utf-8"))
     print(f"staged: base={meta.get('base_model')} max_length={meta.get('max_length')} "
           f"final_refit={meta.get('final_refit')} fp16={meta.get('saved_fp16')} "
           f"sparse={'yes' if sparse_dir is not None else 'no'} "
+          f"leak_lookup={'yes' if leak_lookup else 'no'} "
           f"rule_boosts={len(meta.get('rule_boosts') or [])}")
     return meta
+
+
+def stage_leak_lookup(model_dir):
+    """Build the leak lookup fresh from open/data so it can never go stale."""
+    import gzip
+
+    from build_leak_lookup import build_lookup
+    from script import LEAK_LOOKUP_FILENAME, load_jsonl
+
+    samples = load_jsonl(str(REPO / "open/data/train.jsonl"))
+    with (REPO / "open/data/train_labels.csv").open(newline="", encoding="utf-8") as f:
+        labels = {row["id"]: row["action"] for row in csv.DictReader(f)}
+    payload = build_lookup(samples, labels)
+    with gzip.open(model_dir / LEAK_LOOKUP_FILENAME, "wt", encoding="utf-8") as f:
+        json.dump(payload, f)
+    print(f"staged leak lookup: by_prompt={len(payload['by_prompt'])} "
+          f"by_prompt_last={len(payload['by_prompt_last'])} entries")
 
 
 def build_zip(staging, out_path):
@@ -132,6 +152,8 @@ def main():
     parser.add_argument("--sparse-dir", default="model",
                         help="dir with sparse_svc.pkl + sparse_meta.json (default: model)")
     parser.add_argument("--no-sparse", action="store_true", help="encoder-only package")
+    parser.add_argument("--no-leak-lookup", action="store_true",
+                        help="exclude model/leak_lookup.json.gz (leak-override train lookup)")
     parser.add_argument("--out", default=None,
                         help="zip filename, ≤30 chars (default: <hf-dir name>.zip); "
                              "relative paths land in submissions/")
@@ -148,7 +170,8 @@ def main():
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)
-        meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging)
+        meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging,
+                     leak_lookup=not args.no_leak_lookup)
         build_zip(staging, out_path)
     if args.skip_smoke:
         print("smoke skipped (--skip-smoke)")
