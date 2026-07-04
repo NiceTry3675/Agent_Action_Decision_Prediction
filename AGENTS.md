@@ -43,7 +43,9 @@ Dacon 236694: predict the next coding-agent action (14 classes) from
 3. **Public — the decision metric.** `package_submission.py` (new encoders:
    `--no-sparse`) → offline smoke → submit. Budget 10/day; log every
    submission in `leaderboard_calibration.md`. One variable per submission;
-   Public deltas < 0.002 are noise.
+   Public deltas < 0.002 are measurement noise, and deltas under ~0.02 are
+   not directional evidence (2026-07-04 doctrine: instance draws alone swing
+   that much — sub-0.02 levers are consolidation garnish, not research lanes).
 4. Winner consolidation: `--final-model` full refit → repackage → resubmit.
    Session OOF (`--split session_oof` + `aggregate_oof.py`) is demoted to a
    tool — ensemble construction, bias/rule tuning, near-tie calls — not a
