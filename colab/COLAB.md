@@ -47,8 +47,9 @@ One exchange folder = one runtime. Two daemons on the same folder fight over
 `cmd/queue/` and overwrite each other's heartbeat — never attach two runtimes to
 one exchange. To run a second runtime in parallel:
 
-- VM side: attach the second runtime to `colab/colab_runner_b.ipynb` (pins
-  `AADP_EXCHANGE_DIR=AADP_exchange_b` in its `[mount]` cell) and run
+- VM side: attach each extra runtime to its own lane notebook —
+  `colab_runner_b.ipynb` / `_c.ipynb` / `_d.ipynb` (each pins
+  `AADP_EXCHANGE_DIR=AADP_exchange_{b,c,d}` in its `[mount]` cell) — and run
   `[mount]→[bootstrap]→[agent]` there as usual.
 - Local side: prefix every `cloud_sync.py` / `chain_oof_folds.py` call for that
   lane with `AADP_EXCHANGE_DIR=AADP_exchange_b`. Unprefixed calls keep talking

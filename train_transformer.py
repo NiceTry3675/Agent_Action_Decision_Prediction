@@ -379,6 +379,10 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         id2label={i: label for i, label in enumerate(ALL_CLASSES)},
         label2id={label: i for i, label in enumerate(ALL_CLASSES)},
     ).to(device)
+    if model.config.pad_token_id is None:
+        # decoder classifiers (Qwen2ForSequenceClassification) refuse batch>1 without it;
+        # persisted into config.json by save_pretrained for inference/quantize
+        model.config.pad_token_id = tokenizer.pad_token_id
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
@@ -504,12 +508,16 @@ def summarize_weak_classes(metrics, count=5):
 
 def load_tokenizer_for_args(args):
     try:
-        return AutoTokenizer.from_pretrained(args.base_model, use_fast=not args.slow_tokenizer)
+        tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=not args.slow_tokenizer)
     except ImportError:
         if args.slow_tokenizer:
             raise
         print(f"fast tokenizer unavailable for {args.base_model}; falling back to slow tokenizer")
-        return AutoTokenizer.from_pretrained(args.base_model, use_fast=False)
+        tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=False)
+    if tokenizer.pad_token is None:
+        # decoder checkpoints (Qwen etc.) ship without a pad token; tokenizer.pad() needs one
+        tokenizer.pad_token = tokenizer.eos_token
+    return tokenizer
 
 
 def load_class_bias_artifact(path):
