@@ -227,3 +227,11 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - Caveat: server inference measured at 8:50/10:00 — tighter than M6's 8:31 despite the length-sorted batching optimization (len416 vs len448 is a wash; Qwen3's architecture appears marginally slower per token than Qwen2.5 at this size). No ensemble legroom on this pack without further inference optimization (e.g. wider synthetic-batch tuning, or dropping to a shorter max_length) before adding a second encoder leg.
 - Decision: `final_summary.md`, `leaderboard_calibration.md` baseline updated to this pack (0.780). Decoder-family line is now the working baseline, superseding the encoder-only XLM-R line entirely.
 - Next action: lane A released (idle, no immediate follow-up queued); lane B continues the teammate's P2 request (xlm-r-large len384 3-fold OOF) independently. Future decoder-line work (scale-up size wall at int8 ~1GB cap, generative-head redesign) parked per the 2026-07-04 advisor discussion, not scheduled.
+
+### 2026-07-05 - P2 (팀 요청) 완료: large len384 3-fold OOF 집계 + rules 재튜닝
+
+- Why: `ROADMAP_0704.md`의 팀 요청(P2) — 팀 우승 레시피(xlm-roberta-large, len384, focal g2.0, batch4×grad-accum4, replay last1)를 3-fold session_oof로 재학습해 rules/bias/블렌드 재튜닝용 로짓을 제공. 우리 레인 B(A100)에서 kf-deberta 재검증 뒤 이어서 실행.
+- Evidence: 폴드별 fixed 2stage 0.757733 / 0.733937 / 0.728930 — 팀이 보고한 시드분산 ±0.011(0.762~0.784 범위)과 같은 크기의 폴드간 편차(±0.014) 확인. 3폴드 합산 OOF: raw 0.740118 → 2stage bias 0.742941/0.743679(fine) → +12 rules 0.749623 (`experiments/artifacts/p2_oof_large384_focal_ep5_oof_metrics.json`, `..._rules_rule_boosts.json`).
+- 참고: sparse SVC 재튜닝은 생략 — 팀이 자체 분해실험에서 이미 "SVC 기여 사실상 0 (+33초 낭비)"로 결론지었고, 로컬 WSL 메모리가 빠듯해(무거운 로컬 작업 금지 정책) 불필요한 재검증을 피함.
+- Decision: OOF 로짓 + rule_boosts 아티팩트를 팀에 전달(공유 산출물, Dacon 제출과 무관). 우리 레인 자체 파이프라인에는 반영하지 않음 — 이 레시피는 팀 소유 recipe이고 우리는 별도 디코더 라인(M7 Qwen3-0.6B, Public 0.780)을 메인으로 유지.
+- Next action: 레인 B는 이 체인으로 완료, 추가 요청 없으면 유휴 전환 대기.
