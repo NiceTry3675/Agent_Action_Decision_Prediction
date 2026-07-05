@@ -305,3 +305,45 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - Evidence (train 70k, Qwen3.5 토크나이저, `experiments/artifacts/20260705_fe_v5_design_measurements.json`): (a) 팀원의 "len384 절단 10.6%"는 xlm-r 기준 — Qwen에선 current_v1 len400 절단 0% → 절단 회복 메커니즘 부재. (b) marginal MI: tier/lang_pref 0.0%H, budget/loc 0.2%, elapsed 1.7%지만 turn 조건부 순증 +0.008 nats로 중복 → 구간화 아닌 제거. (c) turn 레짐 전수탐색: 경계 (1,2,4,6) 5구간이 exact turn MI의 97%, 분위수 대비 +14%; turn 7+는 라벨분포 평평(인접 JS~0.001). (d) lang top-2가 top-1 대비 MI +43%(무게이트가 게이트보다 우수). (e) v5 토큰: mean 216.0→170.3 (-21.2%), max 353, 절단 0.
 - Decision: `current_v5` = v1 보존 + meta/workspace 라인만 디노이즈(tier/lang_pref/budget/elapsed/loc 제거, turn→start/early/mid/late/long, langs float→top-2 이름). 스펙·근거·실행계획은 `fe_current_v5_spec.md`로 동결. 채택 심사는 conditional MI 스크린 표준화(v3 실패 사전 차단). 구현: script.py v5 serializer+디스패치, train_transformer.py choices — 스모크 통과. 알려진 근사: replay 샘플 turn off-by-one(v1 베이스라인과 동일, 비교성 보존). 체인 결합: v5 채택 시 OOF~rules 전부 재생산(기존 rules 이식 불가).
 - Next action: Colab 레인 확보 시 quick screen → 3-fold OOF vs m8_qwen35_oof_len400_ep3(0.7678/0.7740). GPU-free 2차 레인(rule 튜너 어휘 업그레이드: turn 빈 [1,2,4,6]화, trigram 조건, lang pair)은 기존 M8 OOF 로짓에서 즉시 가능.
+
+### 2026-07-05 - M8 maxpack 최종 실측: compile+캐시 스택 검증 완료, 현 스택 기준 서버 예산 ~2배 — 레버 사냥 계속
+
+- Why: 사용자 결정("한 번은 Public 제출, 최대한 최적화")에 따라 마지막 남은 레버 전부를 서버 복제 스택(콜랩 T4, py3.11 venv, torch 2.7.1+cu128, transformers 5.13)에서 실측. T4 회수 2회(레인 C)를 거쳐 레인 B 브라우저 세션에서 완주.
+- Evidence (`experiments/artifacts/m8_qwen35_maxpack*.json`, 미러: `AADP_exchange_b/runs/maxpack_mirror/`):
+  - config A(len336, 버킷{192,256,336}, batch128): ratio 1.907, 환산 추론 1010.8s, 정합성 100%, 콜드 컴파일 2418.9s. **len336+batch128이 오히려 악화** — 최적은 여전히 1차 프로브의 len400/버킷{256,400}/batch64 (ratio 1.733, 환산 918s).
+  - warm 재기동(캐시 동봉 시나리오): megacache 193MB 로드 성공, 웜 컴파일 193.9s, 기동 합계 225.4s — **캐시 동봉 메커니즘 자체는 작동 확인** (콜드 2419s → 웜 194s).
+  - 최종 서버 투영(최적 조합): 추론 918s + 웜업 ~150-194s + 로드 오버헤드 ≈ **~19분 vs 하드리밋 10분 — 약 2배 초과.** 동일 GPU(T4)·동일 스택 실측이라 콜랩↔서버 편차(±10-20%)로 뒤집힐 수 없는 격차.
+- Decision (사용자, 2026-07-05): **레인 계속.** 현 스택(v1 직렬화 + compile/캐시)의 실측 한계는 확정이지만 이것이 레인 종료가 아니라 미탐색 레버의 조직적 사냥으로 전환 — "종반에는 시간이 없어 못 한다, 지금 뚫는다". 제출 슬롯은 어느 경로든 산수가 600s 안으로 닫히기 전까지 보존. 이번 레인의 부산물은 전 경로 재사용: (a) script.py compile opt-in 경로 + 캐시 동봉 메커니즘(웜 194s 실측), (b) py3.11 서버 복제 환경 레시피, (c) 0.8B 품질 신호(OOF rules 0.774046)와 FULL refit(A100, 내일 새벽 완료).
+- Next action (레버 사냥 순서):
+  1. **Tier-1 (레인 B, in flight)**: M7 팩 서버비용 분해(고정비 항 실측 — 투영의 보수성 교정), DeltaNet 폴백 소스 덤프(청크 크기 64→128/256 패치 설계), eager op-level 프로파일(다음 타격 지점 결정: 청크 vs int8 연산화 vs 기타).
+  2. **vLLM GDN 커널 프로브**: fla와 별개 구현 — "미탐색 커널" 가설의 최대 후보. 별도 venv 격리.
+  3. **v5 체인** (모든 경로의 공통 관문, 토큰 -21%): screen → OOF → refit. 품질 목적으로도 필수.
+  4. 산수가 닿는 조합 경로: **캐스케이드**(v5-0.6B 전량 + 저신뢰 10-15%만 v5-0.8B eager 재채점 ≈ 560-620s; 걸림돌 zip 1GB → 0.8B int4 코덱 필요), **깊이 절단**(0.8B를 13-16층 + 1ep 재적합 + v5 ≈ 500-600s권; 품질 보존 도박).
+  5. 병행: A100 refit 완주(teacher/팩 재료), 증류는 대안 경로로 상시 대기.
+
+### 2026-07-05 - M8 서버 프로브 2건 판정: 둘 다 10분 타임아웃 — "훨씬 빠르다"(≥1.85x)만 닫힘, 상한 확보
+
+- Why: 자정 만료 슬롯 7개 중 2개로 서버 속도 가설의 확정 답을 구매하기로 결정(만료 슬롯 = 비용 0). 프로브 A(`m8_ep3_probe.zip`, eager, 완주 문턱 ~2.2x)와 프로브 B(`m8_ep3_cc.zip`, compile+캐시 동봉, 문턱 ~1.85x)를 순차 제출.
+- Evidence: 둘 다 추론 10:00 타임아웃. 구매한 정보: (a) **transformers 5.13이 서버 torch 2.7.1에 클린 설치** — 설치 단계는 통과했으므로 향후 모든 5.x 팩의 관문 통과 확인. (b) **서버 속도 상한: s < ~1.85x 복제환경** (프로브 B의 완주 문턱). 사용자 교정(정확함): 닫힌 것은 "훨씬 빠르다"뿐 — s ∈ (~1, 1.85) 구간은 열려 있고, M7 앵커(530s)는 미지의 test 행수 N과 s가 맞물려 단독으로는 분해 불가. 향후 한계선 팩이 완주하면 그 실측 시간이 두 번째 방정식이 되어 s와 N을 동시 추정 가능. (c) 패키징 부산물: transformers 5.x의 허브호환 중첩 키(model.language_model.*)와 int8 raw 로더의 불일치 발견·수정(플랫 리네임) — refit 팩에도 동일 처리 필수.
+- 동시 판정 (tier-2 eager): solve_triangular 패치는 eager 경로에서 효과 0 (202.9s vs 스톡 202.3s, 청크 그리드 32/64/128 완전 평평). 원인 해석: eager의 launch 비용은 커맨드 큐 오버랩에 이미 은닉 — 실제 벽은 fp32 변환 복사(29%)+elementwise 볼륨(~40%). 패치의 잔여 가치는 compiled 콜드 컴파일 시간 단축(그래프 축소, 물류 개선)뿐. tier-2 compiled 측정은 진행 중.
+- Decision: v1 직렬화 기반 0.8B 직접 배포(복제 918s+)는 어떤 그럴듯한 s에서도 불가 — 이 형태만 최종 종결. 한계선 경로는 s 창 안에 생존: 캐스케이드(~680s 복제 투영, s≥~1.13이면 통과), 깊이 절단(~650s, s≥~1.08), 증류(서버 안전, s 무관). 전부 v5 관문 뒤. 한계선 팩 제출은 그 자체가 s 측정을 겸함(타임아웃도 하한 정보). 만료 슬롯 정보 구매는 설계대로 작동 — 실손실 0.
+- Next action: ① tier-2 compiled 결과 수거, ② A100 refit 완주(teacher), ③ v5 체인 착수(품질+타이밍 이중 목적)가 내일의 크리티컬 패스. 직접 배포 재시도는 v5+캐스케이드/절단의 복제환경 실측이 600s 미만으로 나올 때만.
+
+### 2026-07-05 - M8 tier-1/tier-2 레버 사냥 실측 총정리: 벽의 정체는 메모리 볼륨 — 커널 레버 소진, 남은 건 볼륨 레버
+
+- Why: 사용자 지시("설득 말고 탐색")에 따라 미탐색 레버 전수 조사. tier-1(진단 3종) → tier-2(패치 커널 실측)를 레인 B 서버 복제 스택에서 완주. 아티팩트: `experiments/artifacts/m8_tier1_levers.json`, `m8_tier2_patched_kernel.json`.
+- Tier-1 발견:
+  - **앵커 교정**: M7 팩 분해 실측 — 로드 52.3s + 추론 89.9s@4096행 → 서버 530s = 로드 ~52 + **추론 ~478s**. 기존 투영(530 전체에 비율 적용)은 ~10% 보수적이었음. 이후 모든 투영은 478s 앵커 사용.
+  - **폴백 병목의 정체** (op-level 프로파일): fp32 변환 복사 28.9% + elementwise ~40% + "Command Buffer Full"(큐 포화) — GEMM은 20%뿐, conv1d 3.3%. 즉 연산이 아니라 **메모리 볼륨 바운드**.
+  - 폴백 소스 덤프: `torch_chunk_gated_delta_rule`의 63-스텝 순차 삼각치환 루프 발견, 배치 `solve_triangular`와 수학적 등가 증명(로컬, max diff 1.2e-7). `chunk_size=64`도 kwarg로 패치 가능 확인.
+- Tier-2 실측 (패치 커널):
+  - 정합성 **완벽**: 스톡 폴백과 비트 동일(max diff 0.0, argmax 100%), compiled 경로도 100%.
+  - **eager 효과 0**: 패치 202.9s vs 스톡 202.3s (ratio 2.31 동일). 청크 그리드 {32,64,128} 완전 평평(51.1s@1024행). 해석: 순차 런치 비용은 커맨드 큐 오버랩에 이미 은닉 — 벽은 tier-1이 지목한 볼륨 항.
+  - **compiled 효과도 런타임은 0**: 패치+compile ratio 1.726 vs 무패치 1.733 (동일). compile이 이미 elementwise를 융합했고, 잔여 1.73x는 융합 불가능한 볼륨.
+  - **유일한 실효**: 콜드 컴파일 2418.9s → 949.9s (그래프 축소 2.5x) — 캐시 굽기 물류 개선. 웜 캐시 동봉이 여전히 배포 전제.
+- Decision: **커널/컴파일 레버는 소진 — 정직한 종착**. solve_triangular 패치는 품질 무손실이므로 향후 0.8B 캐시 굽기 시간 단축용으로만 유지. 서버 시간을 더 깎는 길은 볼륨 자체를 줄이는 것뿐: 토큰(v5, -21%), 행수(캐스케이드), 레이어(깊이 절단), 또는 fp32 변환 제거(fp16 DeltaNet 수치 — 미검증 도박).
+- 교정 앵커 기준 최신 산수 (s=서버/복제 속도비, 프로브로 s<1.85 확인, 1~1.85 열림):
+  - 0.8B 단독 compiled+v5: 825×0.79≈652 + 로드 80 + 웜 150-190 ≈ **880-920s** → s≥~1.5 필요(창 안이지만 상단 — 비추천).
+  - **캐스케이드(최유력)**: 0.6B-v5 전량(478×0.79≈378s) + 저신뢰 15%만 0.8B-v5 eager 재채점(≈131s) + 이중 로드 ~110s ≈ **~620s** → **s≥~1.03이면 통과**. compile/캐시 불필요(0.8B가 15% 행만 처리)라 실패 모드도 단순.
+  - 깊이 절단(+v5): ~650s권 → s≥~1.08. 품질 보존 미검증.
+- Next action: ① v5 체인이 유일 관문(screen→OOF→refit; 품질+타이밍 이중 목적) — 최우선. ② refit 완주 후 0.8B-v5 3-fold OOF로 캐스케이드의 신뢰도 임계값·라우팅 비율을 OOF에서 튜닝. ③ 캐스케이드 팩 복제 실측 → 620s±이면 제출(= s 측정 겸용). tier-2 잔여 산출물(패치 코드)은 colab/m8_tier2_patched_kernel.py에 보존.
