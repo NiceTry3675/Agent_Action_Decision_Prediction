@@ -235,3 +235,66 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - 참고: sparse SVC 재튜닝은 생략 — 팀이 자체 분해실험에서 이미 "SVC 기여 사실상 0 (+33초 낭비)"로 결론지었고, 로컬 WSL 메모리가 빠듯해(무거운 로컬 작업 금지 정책) 불필요한 재검증을 피함.
 - Decision: OOF 로짓 + rule_boosts 아티팩트를 팀에 전달(공유 산출물, Dacon 제출과 무관). 우리 레인 자체 파이프라인에는 반영하지 않음 — 이 레시피는 팀 소유 recipe이고 우리는 별도 디코더 라인(M7 Qwen3-0.6B, Public 0.780)을 메인으로 유지.
 - Next action: 레인 B는 이 체인으로 완료, 추가 요청 없으면 유휴 전환 대기.
+
+### 2026-07-05 - M8 Qwen3.5 T4 timing probe: fallback path is very slow; keep G4 screen through Public probe
+
+- Why: `qwen-gleaming-waterfall.md` requires a same-T4 timing ratio before refit/package because Qwen3-0.6B already used 8:50/10:00 on the server and Qwen3.5's DeltaNet path may fall back to slow PyTorch kernels without `fla`/`causal_conv1d`.
+- Evidence: On a Tesla T4, same 4,096-row train sample, same `current_v1` serializer, sorted-batch inference, fp16 random sequence-classification heads: Qwen3-0.6B len416 batch64 infer `76.42s`; Qwen3.5-0.8B len400 batch64 infer `200.78s` (`2.63x`, server-time projection `~23.2 min`). Batch/length rescue grid did not recover it: best measured Qwen3.5 setting was len336 batch64, infer `182.24s` (`2.38x`, projection `~21.1 min`). Artifacts: `experiments/artifacts/m8_qwen35_t4_timing_probe.json`, `experiments/artifacts/m8_qwen35_t4_batch_grid.json`.
+- Interpretation: The slowdown is not token length (Qwen3.5 averaged fewer tokens than Qwen3 on the probe). The likely cause is the transformers warning that the Qwen3.5 fast path is unavailable and the model is using the PyTorch fallback for the hybrid/DeltaNet blocks.
+- Decision: Timing gate is red as a local risk signal, but do **not** kill the lane solely from the probe. User call: keep the G4 screen running and only let actual packaging/Public behavior decide whether this community conversion is usable. Treat timing as a required warning to revisit before final refit/package, not as a hard stop for the current screen.
+- Next action: Finish the in-flight G4 fixed screen (`m8_qwen35_08b_screen`, len400, 5ep with ep3 checkpoint preserved), compare ep3 vs ep5 fixed metrics, then decide whether to spend OOF/refit/submit effort despite the timing risk.
+
+### 2026-07-05 - M8 fla-core T4 reprobe: correctness passes, fast path still unavailable, timing remains RED
+
+- Why: The first M8 T4 probe was red because Qwen3.5 used the slow PyTorch fallback. `m8_fla_t4_reprobe_spec.md` asked for a free T4 reprobe with `fla-core` installed before deciding whether the packaging timing risk is intrinsic or just missing optional kernels.
+- Evidence: `fla-core` installed cleanly in `3.3s` (`0.5.1`, Triton `3.6.0`), but `flash-linear-attention` was still absent and transformers kept printing the same fast-path-unavailable warning. Fixed-head fallback-vs-post-install logits on 256 rows were numerically close enough for the spec gate: argmax agreement `1.000`, max|diff| `0.0264`. Timing did not improve: same-session Qwen3.5/Qwen3 tokenize+infer ratio `3.59x`, projected server time `~31.7 min`; verdict `RED_timing_failed`. Artifact: `experiments/artifacts/m8_qwen35_t4_fla_reprobe.json`.
+- Decision: Do not modify `requirements_qwen35.txt`; `fla-core` alone is not a viable packaging dependency for this model on T4. The package remains timing-blocked unless a different kernel package/version path is explicitly chosen later. Per user instruction, the in-flight G4 screen still continues and its model-quality signal will be collected.
+- Next action: Keep main G4 run alive through epoch 5, use the preserved ep3 checkpoint (`m8_qwen35_08b_ep3_ckpt`) plus final ep5 artifact for fixed-score comparison, then decide whether any Public probe is worth the known timing risk.
+
+### 2026-07-05 - M8 causal-conv1d T4 probe: no usable wheel in Colab/server-like env
+
+- Why: User asked whether `causal-conv1d` was worth trying after `fla-core` alone left the fast-path warning unchanged. The question matters because Qwen3.5's warning names both optional packages, but source builds are risky under the server's 10-minute pip-install cap.
+- Evidence: On the same Colab T4 lane, `pip install causal-conv1d` attempted a source build and failed after `148s` with wheel-build failure. A follow-up `--only-binary=:all:` dry-run over versions `1.6.2.post1`, `1.6.1`, `1.6.0`, `1.5.3.post1`, `1.5.2`, `1.5.0.post8`, and `1.4.0` found no matching binary wheels for the runtime. Artifacts: `experiments/artifacts/m8_qwen35_t4_causal_reprobe.json`, `experiments/artifacts/m8_causal_conv1d_wheel_probe.json`.
+- Decision: `causal-conv1d` is not a viable packaging dependency in the current Python 3.12 / torch 2.11 Colab-T4 environment. Do not add it to `requirements_qwen35.txt`; any future attempt would need a different runtime/package source and should be treated as a separate infra gamble, not a quick M8 unlock.
+- Next action: No more b-lane timing probes unless the user supplies a concrete alternate wheel/index/version. Continue collecting the G4 screen quality signal.
+
+### 2026-07-05 - M8 Qwen3.5 fixed screen: ep3 passes quality gate, ep5 overfits; OOF starts at E=3
+
+- Why: Phase 1 required a fixed-session screen of Qwen3.5-0.8B, with ep3 vs ep5 compared before spending OOF/refit compute.
+- Evidence: G4 fixed screen at len400, champion decoder recipe, seed42: ep5 raw `0.746547` / old-bias `0.753819` / 2stage `0.755271`, below the Qwen3-0.6B gate band. The preserved ep3 checkpoint evaluated on the same fixed split scored raw `0.769643` / old-bias `0.779071` / 2stage `0.780427`, clearing the `~0.771` gate. Weak classes at ep3: `list_directory 0.5179`, `grep_search 0.6144`, `read_file 0.6213`, `glob_pattern 0.6418`, `ask_user 0.6765`. Artifacts: `experiments/artifacts/20260705_044047_gpu_transformer_session_current_v1_len400_replay-last1_m8_qwen35_08b_screen_metrics.json`, `experiments/artifacts/20260705_044826_gpu_transformer_session_current_v1_len400_replay-last1_m8_qwen35_08b_ep3_eval_metrics.json`.
+- Decision: Select epoch `E=3`; ep5 is rejected as overfit. Despite the T4 timing RED, quality gate is green, so continue the pre-registered M7-style OOF tool step before deciding whether any Public probe is worth the packaging risk.
+- Next action: Run 3-fold session OOF at ep3/len400; fold0 launched on the G4 lane.
+
+### 2026-07-05 - M8 server-stack fla+causal T4 replica probe: imports pass, Triton compile fails
+
+- Why: `m8_fla_t4_reprobe_spec.md` v2 re-opened the timing question after rule.md clarified the server stack: T4, Python 3.11, torch 2.7.1+cu128, transformers override allowed, and a causal-conv1d prebuilt wheel exists. The goal was to distinguish "missing optional packages" from "FLA kernels unusable on T4/server stack".
+- Evidence: Lane C reproduced the stack closely on Colab T4 with Python 3.12, torch `2.7.1+cu128`, Triton `3.3.1`, transformers `5.13.0`, `causal_conv1d 1.6.2.post1`, and `fla-core` candidates `0.5.1`, `0.5.0`, `0.4.0`. Harness retries: r1 had a repo-root import bug, r2 exposed stale Colab `torchvision` after torch downgrade, and r3 showed why `fla-core --force-reinstall` must use `--no-deps` (it upgraded torch to 2.12). The corrected r4 kept torch fixed and verified `import fla, causal_conv1d` succeeds, but every `fla-core` candidate failed on the first Qwen3.5 fast-path forward inside `fla.ops.gated_delta_rule` Triton compilation with `RuntimeError: PassManager::run failed`. Artifact: `experiments/artifacts/m8_qwen35_t4_replica_probe.json` (r4 mirrored; raw r4 at `..._r4.json`).
+- Decision: RED at fast-path compile/setup, before correctness or timing. Do not add `fla-core` or `causal-conv1d` to `requirements_qwen35.txt`; direct Qwen3.5 deployment remains timing-blocked. Further T4 kernel work needs a concrete FLA/Triton workaround, not another blind version probe.
+- Next action: Release lane C. Continue the G4 OOF quality run only as a model-quality read; packaging/Public remains blocked unless a new inference path is approved.
+
+### 2026-07-05 - 독트린 개정: sub-0.02 레버를 1급 레인으로 승격 (상황 변화 반영)
+
+- Why: 2026-07-04 독트린("sub-0.02은 consolidation garnish, research lane 아님")은 0.743에서 범주적 도약만이 컷 도달 경로였던 시점의 자원배분 규칙. 현재 Public 0.780으로 9등 — 예선 통과 기준에 도달했고 +0.01이면 1등과 동률. 작은 점수의 한계 가치가 구조적으로 바뀜 (사용자 판단 2026-07-05).
+- 유지되는 것: 통계 코어는 불변 — Public 단발 델타 <0.002는 측정 노이즈, ~0.02 미만은 단독으로 방향 증거가 아님(인스턴스 드로우 스윙). 리더보드가 덜 노이즈해진 것이 아니라 목표 구조가 바뀐 것.
+- 개정되는 것: (a) sub-0.02 레버(+0.005~0.02)는 1급 레인 — 더 이상 장식으로 강등하지 않음. (b) 소레버의 레시피 채택 판정은 OOF(70k행) 기준 — 단발 Public 델타로는 레시피 효과와 인스턴스 드로우를 분리할 수 없고 슬롯도 소모됨. (c) 검증된 소레버는 스택해 통합 팩으로 제출. (d) 범주적 레버(0.02+)는 여전히 최우선 탐색 대상.
+- 실무 영향: M8 Qwen3.5(현재 증거 +0.01급, 약클래스 집중)는 garnish가 아닌 우선 레인 — 타이밍 벽 인프라 투자(서버 복제 프로브, 필요시 compile/캐시 동봉)의 기대값이 정당화됨. 직접 배포가 막히면 증류(0.8B teacher → 0.6B student, +0.005~0.01급)도 추진 가치. 파킹됐던 앙상블 다양성 레그(mbert, deberta-v3 EN)와 0.6B 추론 가속(앙상블 언락의 전제)도 재개 후보로 복귀.
+- 같은 날 추가 확인 (사용자): **Public = 최종 점수 100%, private 홀드아웃 없음** (rule.md에 없음 → leaderboard_calibration.md에 기록). "public 과적합" 논거는 소멸 — Public은 추정치가 아니라 타깃 자체. 귀결: **best-of-N 인스턴스 선택이 정당 전략으로 승격** — 같은 레시피 멀티시드 refit 중 Public 최고 인스턴스를 최종 제출로 선택하면 인스턴스 분산(±0.01급)을 순서통계로 회수(3시드 best는 평균 대비 대략 +0.008~0.012 기대). 제약은 슬롯 예산(10/day)뿐이며, OOF/fixed는 슬롯을 쓸 후보를 거르는 사전 필터.
+- Next action: AGENTS.md 승격 규칙 3항 문구 갱신 완료(public=final 반영). M8 OOF + 서버 복제 프로브 결과가 나오면 새 독트린 하에서 경로 확정.
+- 우선순위 (사용자, 마감 9일 전 시점): best-of-N 시드 하베스트는 **종반 전략으로 보류** — 미확인 대형 레버가 남아 있는 동안은 탐색이 우선. 활성 레인: (1) M8 Qwen3.5, (2) 팀원 할당 피처 엔지니어링 — 학습 기반 피처 셀렉션 + 수치 메타 구간화(예: `elapsed_session_sec` raw 초 → 범주 토큰). 참고: 구간화 선례가 script.py sparse 경로에 이미 존재(`bin_numeric` elapsed fresh/short/mid/long, L447)하나 챔피언 current_v1 직렬화(L171)는 raw 초를 그대로 사용 — 트랜스포머 입력 표현에는 미적용 상태.
+
+### 2026-07-05 - M8 Qwen3.5 OOF quality lands, but direct deployment remains blocked
+
+- Why: After the fixed screen selected Qwen3.5 ep3, the M7-style 3-fold OOF step was needed to decide whether the model-quality signal is real enough to justify downstream work.
+- Evidence: 3-fold session OOF at len400/ep3 was stable across folds: fold0 2stage `0.770064`, fold1 `0.769374`, fold2 `0.768901`. Aggregate OOF: raw `0.766602` -> 2stage `0.767849`; OOF rule boosts reached `0.774046` with 12 rules. Weak classes after rules: `list_directory 0.5124`, `read_file 0.6104`, `grep_search 0.6194`, `ask_user 0.6600`, `glob_pattern 0.6650`. Artifacts: `experiments/artifacts/m8_qwen35_oof_len400_ep3_oof_metrics.json`, `experiments/artifacts/m8_qwen35_oof_len400_ep3_rules_rule_boosts.json`.
+- Interpretation: Quality is real and above the M7 Qwen3 OOF/rules reference (`0.767129`), but the C-lane server-stack kernel probe failed before correctness/timing: `fla`+`causal_conv1d` imports work, yet the first Qwen3.5 fast-path forward fails Triton compilation on T4. The old fallback path is far over the 10-minute server budget.
+- Decision: Do not refit/package Qwen3.5 for direct Public submission under the current inference path. Keep Qwen3.5 as a teacher/quality source; next viable routes are distillation into Qwen3-0.6B or a concrete FLA/Triton workaround, not another direct T4 package attempt.
+- Next action: Release G4. Resume with either distillation design or the separate feature-engineering lane, depending on user priority.
+
+### 2026-07-05 - M8 compile 레인 개시: torch.compile 폴백 가속 프로브 런치 (레인 C)
+
+- Why: fla fast path는 SM75에서 컴파일 단계 사망 확정(PassManager::run failed, 전 버전) — 남은 직접 배포 경로는 PyTorch 폴백 자체의 가속뿐. 사용자 판단: "종반에는 시간이 없어 못 한다, 1등 하려면 지금 뚫어야 한다" — compile 레인 즉시 개시, 이번 집도는 메인 세션이 직접.
+- 설계: `colab/m8_qwen35_compile_probe.py` — 서버 복제 스택(torch 2.7.1+cu128, transformers 5.13, **fla/causal-conv1d 명시적 제거**)에서 폴백 경로를 torch.compile로 가속. 변형 3종: `cudagraph_buckets`(reduce-overhead + 버킷 패딩 {256,400} — 주력, 폴백의 커널런치 오버헤드를 CUDA graphs로 제거), `default_buckets`, `dynamic`. 각 변형을 별도 서브프로세스로 격리, 콜드 컴파일 시간 명시 측정, 최고 변형은 동일 인덕터 캐시로 재실행해 캐시 동봉 시나리오(warm) 실측.
+- 게이트: projected = ratio×530 + compile_wall. GREEN ≤510s(서버에서 콜드 컴파일해도 통과), YELLOW ≤600s(캐시 동봉 트릭 검토), RED >600s(직접 배포 최종 차단 → 증류 경로만 잔존). 정합성 게이트(폴백 eager 로짓과 argmax 일치 ≥99.5%)를 타이밍보다 먼저 통과해야 유효.
+- 실행: 레인 C 신규 T4, 런치 pid 3341 (`run_20260705_062813.log`). 아티팩트: `experiments/artifacts/m8_qwen35_compile_probe*.json` (자동 collect → pull).
+- Next action: 프로브 완료 시 판정 기록. GREEN/YELLOW면 script.py compile 통합 + 캐시 동봉 설계로 진행, RED면 증류 스펙 착수.
+

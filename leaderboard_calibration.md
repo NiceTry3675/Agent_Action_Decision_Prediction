@@ -30,6 +30,11 @@ Experiment details live in `experiments/results.csv`.
 
 ## Promotion Rule (2026-07-04: Public-gated)
 
+- Public = final score, 100% — no private holdout (user-confirmed 2026-07-05;
+  not stated in rule.md). Chasing Public is chasing the target itself:
+  best-of-N instance selection across seed refits is legitimate and directly
+  rewarded. Binding constraint: the 10/day slot budget. Recipe judgments
+  still belong to OOF (instance draws confound single Public deltas).
 - Quick screen: reject bad ideas only.
 - Fixed-session full run (`--save-val-model`): sanity, weak-class inspection,
   and submittable weights.

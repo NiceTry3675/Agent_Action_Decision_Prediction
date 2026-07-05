@@ -847,6 +847,64 @@ def model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
     return torch.stack(out, dim=0)
 
 
+def model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, device):
+    """torch.compile(mode=reduce-overhead) + bucket-padded fixed-size batches.
+
+    Opt-in via hf_meta.json {"compile": {"buckets": [...], "batch_size": N}} —
+    only used for architectures whose eager fallback is too slow for the server
+    budget (Qwen3.5 DeltaNet). Shipped inductor/triton caches under
+    model/compile_cache cut the cold compile; the first batch of each bucket
+    shape compiles (or cache-hits) inline. Any failure raises so the caller
+    falls back to eager sorted batching.
+    """
+    cache_root = os.path.join(model_dir, compile_meta.get("cache_dir", "compile_cache"))
+    for env_key, sub in (("TORCHINDUCTOR_CACHE_DIR", "venv311_inductor_cache"),
+                         ("TRITON_CACHE_DIR", "venv311_triton_cache")):
+        cand = os.path.join(cache_root, sub)
+        if os.path.isdir(cand):
+            os.environ.setdefault(env_key, os.path.abspath(cand))
+    mega = os.path.join(cache_root, "megacache.bin")
+    if os.path.exists(mega):
+        try:
+            with open(mega, "rb") as f:
+                torch.compiler.load_cache_artifacts(f.read())
+            print("Loaded compile megacache")
+        except Exception:
+            traceback.print_exc()
+    torch._dynamo.config.cache_size_limit = 64
+    compiled = torch.compile(model, mode=compile_meta.get("mode", "reduce-overhead"))
+
+    buckets = sorted(int(b) for b in compile_meta["buckets"])
+    batch_size = int(compile_meta.get("batch_size", 128))
+    max_length = buckets[-1]
+    encoded_all = tokenizer(texts, padding=False, truncation=True, max_length=max_length)
+    keys = list(encoded_all.keys())
+    feats = [{key: encoded_all[key][i] for key in keys} for i in range(len(texts))]
+    lengths = [len(feats[i]["input_ids"]) for i in range(len(feats))]
+    order = sorted(range(len(feats)), key=lambda i: lengths[i])
+    out = [None] * len(feats)
+    with torch.no_grad():
+        for start in range(0, len(order), batch_size):
+            chunk = order[start:start + batch_size]
+            need = max(lengths[i] for i in chunk)
+            bucket = next((b for b in buckets if b >= need), buckets[-1])
+            feats_batch = [feats[i] for i in chunk]
+            fill = batch_size - len(feats_batch)
+            if fill:
+                feats_batch = feats_batch + [feats_batch[-1]] * fill
+            batch = tokenizer.pad(feats_batch, padding="max_length", max_length=bucket,
+                                  return_tensors="pt")
+            batch = {key: value.to(device) for key, value in batch.items()}
+            with torch.amp.autocast(device_type="cuda", dtype=torch.float16):
+                logits = compiled(**batch).logits.float().cpu()
+            if fill:
+                logits = logits[:len(chunk)]
+            for row, i in enumerate(chunk):
+                out[i] = logits[row]
+    print(f"Compiled inference done (buckets={buckets}, batch={batch_size})")
+    return torch.stack(out, dim=0)
+
+
 def encoder_probs(model_dir, spec, texts, device):
     """Sequentially run one ensemble encoder; return CPU softmax probs [N, C]."""
     from transformers import AutoTokenizer
@@ -941,7 +999,17 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
             probs = enc if probs is None else probs + enc
         base_scores = torch.log((probs / len(encoders)).clamp_min(1e-12))
     else:
-        base_scores = model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
+        compile_meta = meta.get("compile") if device.type == "cuda" else None
+        base_scores = None
+        if compile_meta:
+            try:
+                base_scores = model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, device)
+            except Exception:
+                print("Compiled inference failed; falling back to eager sorted batching")
+                traceback.print_exc()
+                base_scores = None
+        if base_scores is None:
+            base_scores = model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
 
     preds = []
     with torch.inference_mode():
