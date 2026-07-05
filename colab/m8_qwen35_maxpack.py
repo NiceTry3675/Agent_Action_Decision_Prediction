@@ -181,6 +181,16 @@ def measure_stage(args):
                 compiled, tokenizer, t_features, t_batches, cfg["batch_size"], cfg["buckets"], device
             )
             entry["compile_wall_sec"] = time.perf_counter() - t0
+            # cache is the most valuable artifact: persist+mirror right after
+            # compile, before timing, so a reclaimed VM cannot take it away
+            payload["cache_artifacts"] = save_caches(EXPERIMENT_ID)
+            payload["configs"][key] = entry
+            write_json(art_path("measure"), payload)
+            mirror_to_drive(
+                art_path("measure"),
+                Path("experiments/artifacts") / f"{EXPERIMENT_ID}_megacache.bin",
+                Path("experiments/artifacts") / f"{EXPERIMENT_ID}_cachedirs.tar.gz",
+            )
 
             _, c_texts, _ = selected_samples(args.correctness_rows)
             c_features, c_lengths, _ = tokenize_features(tokenizer, c_texts, cfg["max_length"])

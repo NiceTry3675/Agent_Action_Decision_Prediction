@@ -181,6 +181,73 @@ def serialize_transformer_sample_current(sample):
     return "\n".join(parts)
 
 
+TURN_BIN_EDGES = (1, 2, 4, 6)
+TURN_BIN_NAMES = ("start", "early", "mid", "late", "long")
+
+
+def turn_bin_token(turn_value):
+    try:
+        turn = int(float(turn_value))
+    except (TypeError, ValueError):
+        return "na"
+    return TURN_BIN_NAMES[sum(1 for edge in TURN_BIN_EDGES if turn > edge)]
+
+
+def top_language_pair(ws):
+    language_mix = ws.get("language_mix") or {}
+    if not (isinstance(language_mix, dict) and language_mix):
+        return "na"
+    ranked = sorted(language_mix.items(), key=lambda kv: (-float(kv[1]), safe_text(kv[0])))
+    names = [safe_text(k).lower() for k, _ in ranked[:2] if safe_text(k)]
+    return "+".join(names) if names else "na"
+
+
+def serialize_transformer_sample_current_v5(sample):
+    """current_v1 with denoised meta/workspace lines (fe_current_v5_spec.md):
+    tier/lang_pref/budget/elapsed/loc dropped, turn_index binned to regime
+    tokens (edges fixed from train quantile-free regime analysis 2026-07-05),
+    language_mix floats replaced by top-2 language names. All other lines are
+    byte-identical to current_v1."""
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_names = []
+    last_user = ""
+    result_bits = []
+    arg_bits = []
+    for event in history:
+        if event.get("role") == "user":
+            last_user = safe_text(event.get("content", ""))
+        elif event.get("role") == "assistant_action":
+            name = safe_text(event.get("name"))
+            action_names.append(name)
+            result = safe_text(event.get("result_summary"))
+            if result:
+                result_bits.append(f"{name}:{result[:120]}")
+            args = event.get("args") or {}
+            if isinstance(args, dict):
+                for key, value in list(args.items())[:4]:
+                    arg_bits.append(f"{name}.{safe_text(key)}={safe_text(value)[:80]}")
+
+    open_files = ws.get("open_files") or []
+
+    parts = [
+        f"current: {prompt}",
+        f"meta: turn={turn_bin_token(sm.get('turn_index'))}",
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"lang={top_language_pair(ws)} open={' | '.join(safe_text(x) for x in open_files[:6])}",
+        f"actions: {' > '.join(action_names[-8:]) if action_names else 'none'}",
+    ]
+    if last_user:
+        parts.append(f"last_user: {last_user}")
+    if arg_bits:
+        parts.append(f"args: {' | '.join(arg_bits[-10:])}")
+    if result_bits:
+        parts.append(f"results: {' | '.join(result_bits[-8:])}")
+    return "\n".join(parts)
+
+
 def serialize_transformer_sample_current_v2(sample):
     """Priority-ordered rewrite of current_v1: highest-signal fields first so
     right-truncation drops the oldest history pairs instead of args/results,
@@ -472,6 +539,8 @@ def serialize_transformer_sample(sample, serializer_name="current_v1"):
         return serialize_transformer_sample_current(sample)
     if serializer_name == "current_v2":
         return serialize_transformer_sample_current_v2(sample)
+    if serializer_name == "current_v5":
+        return serialize_transformer_sample_current_v5(sample)
     if serializer_name == "state_v2":
         return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":

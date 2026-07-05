@@ -298,3 +298,10 @@ belong in `experiments/results.csv` and `experiments/artifacts/*.json`.
 - 실행: 레인 C 신규 T4, 런치 pid 3341 (`run_20260705_062813.log`). 아티팩트: `experiments/artifacts/m8_qwen35_compile_probe*.json` (자동 collect → pull).
 - Next action: 프로브 완료 시 판정 기록. GREEN/YELLOW면 script.py compile 통합 + 캐시 동봉 설계로 진행, RED면 증류 스펙 착수.
 
+
+### 2026-07-05 - FE 레인 인수: current_v5 직렬화 설계·구현 (GPU A/B는 레인 확보 시)
+
+- Why: 팀원 FE 레인 중단(추가 실험 보고 없음). Qwen 라인 전용 FE를 직접 설계 — 무신호 메타 제거 + 수치 구간화. 설계 전 로컬 측정으로 전제부터 재검증.
+- Evidence (train 70k, Qwen3.5 토크나이저, `experiments/artifacts/20260705_fe_v5_design_measurements.json`): (a) 팀원의 "len384 절단 10.6%"는 xlm-r 기준 — Qwen에선 current_v1 len400 절단 0% → 절단 회복 메커니즘 부재. (b) marginal MI: tier/lang_pref 0.0%H, budget/loc 0.2%, elapsed 1.7%지만 turn 조건부 순증 +0.008 nats로 중복 → 구간화 아닌 제거. (c) turn 레짐 전수탐색: 경계 (1,2,4,6) 5구간이 exact turn MI의 97%, 분위수 대비 +14%; turn 7+는 라벨분포 평평(인접 JS~0.001). (d) lang top-2가 top-1 대비 MI +43%(무게이트가 게이트보다 우수). (e) v5 토큰: mean 216.0→170.3 (-21.2%), max 353, 절단 0.
+- Decision: `current_v5` = v1 보존 + meta/workspace 라인만 디노이즈(tier/lang_pref/budget/elapsed/loc 제거, turn→start/early/mid/late/long, langs float→top-2 이름). 스펙·근거·실행계획은 `fe_current_v5_spec.md`로 동결. 채택 심사는 conditional MI 스크린 표준화(v3 실패 사전 차단). 구현: script.py v5 serializer+디스패치, train_transformer.py choices — 스모크 통과. 알려진 근사: replay 샘플 turn off-by-one(v1 베이스라인과 동일, 비교성 보존). 체인 결합: v5 채택 시 OOF~rules 전부 재생산(기존 rules 이식 불가).
+- Next action: Colab 레인 확보 시 quick screen → 3-fold OOF vs m8_qwen35_oof_len400_ep3(0.7678/0.7740). GPU-free 2차 레인(rule 튜너 어휘 업그레이드: turn 빈 [1,2,4,6]화, trigram 조건, lang pair)은 기존 M8 OOF 로짓에서 즉시 가능.
