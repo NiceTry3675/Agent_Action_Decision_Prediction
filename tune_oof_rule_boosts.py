@@ -125,6 +125,142 @@ def path_like_tokens(text):
     return tokens
 
 
+# Opt-in (--extended-meta-flags): rule flags for the session_meta/workspace
+# fields the current_v5 serializer dropped from the model input (tier,
+# language_pref, budget, elapsed, loc). Bin edges = train.jsonl quartiles
+# (q90 tail split for elapsed), measured 2026-07-06.
+EXTENDED_META = False
+EXTENDED_META_BINS = {
+    "budget": [("q1", 43753), ("q2", 94450), ("q3", 137138)],
+    "elapsed": [("q1", 327), ("q2", 498), ("q3", 669), ("q4", 838)],
+    "loc": [("q1", 9340), ("q2", 18059), ("q3", 30578)],
+}
+
+
+def extended_meta_flags(sm, ws):
+    flags = {
+        f"tier:{safe_text(sm.get('user_tier', 'missing')).lower()}",
+        f"lang_pref:{safe_text(sm.get('language_pref', 'missing')).lower()}",
+        bin_numeric_flag("budget", sm.get("budget_tokens_remaining"), EXTENDED_META_BINS["budget"]),
+        bin_numeric_flag("elapsed", sm.get("elapsed_session_sec"), EXTENDED_META_BINS["elapsed"]),
+        bin_numeric_flag("loc", ws.get("loc"), EXTENDED_META_BINS["loc"]),
+    }
+    return flags
+
+
+# Opt-in (--struct-flags): structural state tokens from fe_raw_data_review.md /
+# fe_current_v6_spec.md — probe them at the rule layer before promoting the
+# winners into the current_v6 serializer. result_summary parsing relies on the
+# strong templates observed in train.jsonl; anything unmatched -> unknown.
+STRUCT = False
+
+_RES_COUNT_RE = re.compile(r"^(\d+)\s+(?:matches|files matched|entries)")
+
+
+def result_semantic(name, rs):
+    rs_l = safe_text(rs).lower()
+    if not rs_l:
+        return "unknown", "unknown"
+    m = _RES_COUNT_RE.match(rs_l)
+    if m or rs_l.startswith("no matches"):
+        n = int(m.group(1)) if m else 0
+        count = "zero" if n == 0 else "one" if n == 1 else "few" if n <= 5 else "many"
+        return ("none" if n == 0 else "found"), count
+    if rs_l.startswith("error") or "failed" in rs_l or "conflict" in rs_l:
+        return "fail", "unknown"
+    if rs_l.startswith("ok; read"):
+        return "read", "one"
+    if rs_l.startswith(("ok; applied", "ok; patched", "ok; modified", "ok; new file")):
+        return "applied", "unknown"
+    if rs_l.startswith("ok") or "no issues" in rs_l or "clean" in rs_l or "passed" in rs_l:
+        return "pass", "unknown"
+    if rs_l.startswith("plan with"):
+        return "plan", "unknown"
+    if "question" in rs_l:
+        return "ask", "unknown"
+    return "unknown", "unknown"
+
+
+_PRONOUN_RE = re.compile(r"\b(that|it|this one|there|those)\b|그거|거기|그 파일|그 함수|아까|방금")
+_SYMBOL_RE = re.compile(r"\b[a-z_][a-z0-9_]*_[a-z0-9_]+\b|\b[a-z]+[A-Z][A-Za-z0-9]+\b")
+
+
+def path_specificity(prompt):
+    p = safe_text(prompt)
+    p_l = p.lower()
+    has_ext = re.search(r"\b[\w.-]+\.[a-z0-9]{1,6}\b", p_l)
+    if re.search(r"[*?\[]", p_l) and has_ext:
+        return "glob"
+    if has_ext and "/" in (has_ext.group(0) if False else p_l):
+        if re.search(r"\b[\w./-]+/[\w.-]+\.[a-z0-9]{1,6}\b", p_l):
+            return "exact"
+    if has_ext:
+        return "basename"
+    if re.search(r"\b(folder|directory|dir)\b|폴더|디렉토리|디렉터리", p_l):
+        return "dir"
+    if _SYMBOL_RE.search(p):
+        return "symbol"
+    if _PRONOUN_RE.search(p_l):
+        return "pronoun"
+    return "none"
+
+
+def struct_state_flags(sample):
+    prompt = safe_text(sample.get("current_prompt", ""))
+    prompt_l = prompt.lower()
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    actions = [e for e in history if e.get("role") == "assistant_action"]
+    flags = set()
+
+    # exact turn (the v5 binning suspect) + trigram
+    try:
+        flags.add(f"turn_x:{min(int(sm.get('turn_index')), 14):02d}")
+    except (TypeError, ValueError):
+        flags.add("turn_x:missing")
+    names = [safe_text(e.get("name")) for e in actions]
+    if len(names) >= 3:
+        flags.add(f"tri:{names[-3]}>{names[-2]}>{names[-1]}")
+
+    # last result semantic + count, candidate state
+    res, count = ("unknown", "unknown")
+    if actions:
+        res, count = result_semantic(names[-1], actions[-1].get("result_summary"))
+    flags.add(f"res:{res}")
+    flags.add(f"res_n:{count}")
+    search_like = {"grep_search", "glob_pattern", "list_directory"}
+    if actions and names[-1] in search_like:
+        cand = {"zero": "none", "one": "single", "few": "few", "many": "many"}.get(count, "unknown")
+    elif actions and names[-1] == "read_file":
+        cand = "single"
+    else:
+        cand = "unknown"
+    flags.add(f"cand:{cand}")
+
+    # prompt path specificity + continuity with open files / last args
+    flags.add(f"path:{path_specificity(prompt)}")
+    open_files = ws.get("open_files") or []
+    open_hit = any(
+        base and base in prompt_l
+        for base in (safe_text(p).lower().rsplit("/", 1)[-1] for p in open_files[:6])
+    )
+    arg_hit = False
+    if actions:
+        args = actions[-1].get("args") or {}
+        if isinstance(args, dict):
+            for v in args.values():
+                base = safe_text(v).lower().rsplit("/", 1)[-1]
+                if base and len(base) >= 4 and base in prompt_l:
+                    arg_hit = True
+                    break
+    overlap = "both" if (open_hit and arg_hit) else "open" if open_hit else "last_arg" if arg_hit else "none"
+    flags.add(f"overlap:{overlap}")
+    n_open = len(open_files)
+    flags.add(f"open_n:{'many' if n_open > 2 else n_open}")
+    return flags
+
+
 def base_feature_flags(sample):
     prompt = safe_text(sample.get("current_prompt", ""))
     prompt_l = prompt.lower()
@@ -207,6 +343,10 @@ def base_feature_flags(sample):
         for path in open_files[:6]:
             for token in path_like_tokens(path):
                 flags.add(f"open_{token}")
+    if EXTENDED_META:
+        flags |= extended_meta_flags(sm, ws)
+    if STRUCT:
+        flags |= struct_state_flags(sample)
     return flags
 
 
@@ -224,10 +364,12 @@ def feature_flags(sample, base_scores_row):
     for threshold in (0.25, 0.50, 1.00):
         if margin <= threshold:
             logit_flags.add(f"margin_le:{threshold:.2f}")
-    composite_sources = [
-        flag for flag in flags
-        if flag.startswith(("prompt_", "last_action:", "recent_action:", "last_pair:", "arg_", "open_arg_", "top_lang:", "result_"))
-    ]
+    composite_prefixes = ("prompt_", "last_action:", "recent_action:", "last_pair:", "arg_", "open_arg_", "top_lang:", "result_")
+    if EXTENDED_META:
+        composite_prefixes += ("tier:", "lang_pref:", "budget:", "elapsed:", "loc:")
+    if STRUCT:
+        composite_prefixes += ("tri:", "res:", "res_n:", "cand:", "path:", "overlap:", "open_n:", "turn_x:")
+    composite_sources = [flag for flag in flags if flag.startswith(composite_prefixes)]
     composite_flags = set()
     for flag in composite_sources:
         composite_flags.add(f"{flag}|top:{top}")
@@ -376,9 +518,22 @@ def main():
     parser.add_argument("--max-features", type=int, default=1200)
     parser.add_argument("--min-gain", type=float, default=0.00005)
     parser.add_argument("--boost-values", default="-0.60,-0.40,-0.20,0.20,0.40,0.60")
+    parser.add_argument("--extended-meta-flags", action="store_true",
+                        help="add tier/lang_pref/budget/elapsed/loc rule flags (v5-dropped fields)")
+    parser.add_argument("--struct-flags", action="store_true",
+                        help="add v6-candidate structural state flags (turn_x/tri/res/cand/path/overlap/open_n)")
     parser.add_argument("--notes", default="")
     parser.add_argument("--no-research-log", action="store_true")
     args = parser.parse_args()
+
+    if args.extended_meta_flags:
+        global EXTENDED_META
+        EXTENDED_META = True
+        print("extended meta flags: ON (tier/lang_pref/budget/elapsed/loc)", flush=True)
+    if args.struct_flags:
+        global STRUCT
+        STRUCT = True
+        print("struct flags: ON (turn_x/tri/res/cand/path/overlap/open_n)", flush=True)
 
     artifact = json.loads(Path(args.oof_artifact).read_text(encoding="utf-8"))
     fold_paths = [Path(path) for path in artifact["fold_logits"]]
