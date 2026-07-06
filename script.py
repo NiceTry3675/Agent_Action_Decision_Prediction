@@ -241,6 +241,164 @@ def top_language_dominance_pair(ws):
     return f"{top1}{sep}{top2}"
 
 
+PATH_MENTION_RE = re.compile(
+    r"(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+|"
+    r"\*\.[A-Za-z0-9]{1,8}|"
+    r"\b[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,8}\b"
+)
+
+COMMON_CODE_DIRS = {
+    "app", "api", "cmd", "components", "config", "configs", "docs", "internal",
+    "k8s", "lib", "models", "pages", "plugins", "routes", "scripts", "server",
+    "src", "utils",
+}
+
+OVERLAP_STOPWORDS = {
+    "about", "after", "again", "also", "and", "before", "check", "code", "file",
+    "files", "from", "into", "just", "look", "open", "please", "read", "show",
+    "that", "the", "this", "with", "좀", "한번", "그", "그거", "파일", "보고",
+    "열어", "확인",
+}
+
+
+def path_specificity_token(prompt):
+    text = safe_text(prompt)
+    lower = text.lower()
+    if "*" in lower or re.search(r"\b(glob|pattern|matching)\b", lower):
+        return "glob"
+    mentions = PATH_MENTION_RE.findall(text)
+    if any("/" in mention.replace("\\", "/") for mention in mentions):
+        return "exact"
+    if mentions:
+        return "basename"
+    if re.search(r"\b(that file|this file|same file|first one|second one|there)\b", lower):
+        return "pronoun"
+    if re.search(r"\b(open|show|read|inspect|pull up)\s+it\b", lower):
+        return "pronoun"
+    if re.search(r"그\s*파일|그거|거기|방금|첫\s*번째", lower):
+        return "pronoun"
+    tokens = TOKEN_RE.findall(text)
+    normalized = [token.strip(".,;:()[]{}'\"").lower() for token in tokens]
+    if any(
+        "_" in token or re.search(r"[a-z][A-Z]", token) or re.search(r"\w+\(\)", token)
+        for token in tokens
+    ):
+        return "symbol"
+    if any(token in COMMON_CODE_DIRS for token in normalized):
+        return "dir"
+    return "none"
+
+
+def path_overlap_terms(value):
+    text = safe_text(value)
+    terms = set()
+    for mention in PATH_MENTION_RE.findall(text):
+        cleaned = mention.replace("\\", "/").strip(".,;:()[]{}'\"").lower()
+        if not cleaned:
+            continue
+        base = cleaned.rsplit("/", 1)[-1]
+        terms.add(cleaned)
+        terms.add(base)
+        if "." in base:
+            terms.add(base.rsplit(".", 1)[0])
+    for token in TOKEN_RE.findall(text):
+        stripped = token.strip(".,;:()[]{}'\"")
+        lower = stripped.lower()
+        if not lower or lower in OVERLAP_STOPWORDS:
+            continue
+        if (
+            "/" in lower
+            or "." in lower
+            or "_" in lower
+            or "-" in lower
+            or re.search(r"[a-z][A-Z]", stripped)
+            or lower in COMMON_CODE_DIRS
+        ):
+            terms.add(lower)
+    return {term for term in terms if len(term) >= 2}
+
+
+def last_action_event(history):
+    for event in reversed(history or []):
+        if event.get("role") == "assistant_action":
+            return event
+    return None
+
+
+def struct_overlap_token(prompt, ws, last_event):
+    prompt_terms = path_overlap_terms(prompt)
+    if not prompt_terms:
+        return "none"
+    hits = []
+    open_terms = set()
+    for path in (ws.get("open_files") or [])[:6]:
+        open_terms |= path_overlap_terms(path)
+    if prompt_terms & open_terms:
+        hits.append("open")
+
+    arg_terms = set()
+    if last_event:
+        args = last_event.get("args") or {}
+        if isinstance(args, dict):
+            for value in args.values():
+                arg_terms |= path_overlap_terms(value)
+    if prompt_terms & arg_terms:
+        hits.append("last_arg")
+
+    result_terms = path_overlap_terms(last_event.get("result_summary", "")) if last_event else set()
+    if prompt_terms & result_terms:
+        hits.append("result")
+    return "+".join(hits) if hits else "none"
+
+
+def numeric_count_from_text(text):
+    match = re.search(r"\b(\d{1,4})\b", safe_text(text))
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def count_bucket(value):
+    if value is None:
+        return "unknown"
+    if value <= 0:
+        return "none"
+    if value == 1:
+        return "single"
+    if value <= 3:
+        return "few"
+    return "many"
+
+
+def candidate_state_token(last_event):
+    if not last_event:
+        return "none"
+    name = safe_text(last_event.get("name"))
+    result = safe_text(last_event.get("result_summary"))
+    lower = result.lower()
+    if re.search(r"\b(no matches?|not found|0 matches?|0 files?|empty|no results?)\b", lower):
+        return "none"
+    if re.search(r"\b(error|failed|failure|traceback|exception|timed out|timeout)\b", lower):
+        return "unknown"
+    if name == "read_file":
+        return "single"
+    if name in ("grep_search", "glob_pattern", "list_directory"):
+        return count_bucket(numeric_count_from_text(lower))
+    return "unknown"
+
+
+def explorer_struct_line(prompt, ws, history):
+    last_event = last_action_event(history)
+    return (
+        f"struct: path={path_specificity_token(prompt)} "
+        f"overlap={struct_overlap_token(prompt, ws, last_event)} "
+        f"cand={candidate_state_token(last_event)}"
+    )
+
+
 def serialize_transformer_sample_current_v5(sample):
     """current_v1 with denoised meta/workspace lines (fe_current_v5_spec.md):
     tier/lang_pref/budget/elapsed/loc dropped, turn_index binned to regime
@@ -327,6 +485,53 @@ def serialize_transformer_sample_current_v6(sample):
         parts.append(f"args: {' | '.join(arg_bits[-10:])}")
     if result_bits:
         parts.append(f"results: {' | '.join(result_bits[-8:])}")
+    return "\n".join(parts)
+
+
+def serialize_transformer_sample_current_v6e(sample):
+    """current_v5 plus exact turn and explorer evidence tokens.
+
+    This intentionally keeps v5's top-2 language names instead of v6's
+    dominance marker; the added evidence targets read/list/grep/glob
+    candidate-state ambiguity."""
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_names = []
+    last_user = ""
+    result_bits = []
+    arg_bits = []
+    for event in history:
+        if event.get("role") == "user":
+            last_user = safe_text(event.get("content"))
+        elif event.get("role") == "assistant_action":
+            name = safe_text(event.get("name"))
+            action_names.append(name)
+            result = safe_text(event.get("result_summary"))
+            if result:
+                result_bits.append(f"{name}:{result[:120]}")
+            args = event.get("args") or {}
+            if isinstance(args, dict):
+                for key, value in list(args.items())[:4]:
+                    arg_bits.append(f"{name}.{safe_text(key)}={safe_text(value)[:80]}")
+
+    open_files = ws.get("open_files") or []
+
+    parts = [
+        f"current: {prompt}",
+        f"meta: turn={turn_v6_token(sm.get('turn_index'))}",
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"lang={top_language_pair(ws)} open={' | '.join(safe_text(x) for x in open_files[:6])}",
+        f"actions: {' > '.join(action_names[-8:]) if action_names else 'none'}",
+    ]
+    if last_user:
+        parts.append(f"last_user: {last_user}")
+    if arg_bits:
+        parts.append(f"args: {' | '.join(arg_bits[-10:])}")
+    if result_bits:
+        parts.append(f"results: {' | '.join(result_bits[-8:])}")
+    parts.append(explorer_struct_line(prompt, ws, history))
     return "\n".join(parts)
 
 
@@ -625,6 +830,8 @@ def serialize_transformer_sample(sample, serializer_name="current_v1"):
         return serialize_transformer_sample_current_v5(sample)
     if serializer_name == "current_v6":
         return serialize_transformer_sample_current_v6(sample)
+    if serializer_name == "current_v6e":
+        return serialize_transformer_sample_current_v6e(sample)
     if serializer_name == "state_v2":
         return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":
@@ -964,21 +1171,45 @@ def load_int8_state_dict(path, dtype=torch.float32):
     return state
 
 
+def disable_decoder_cache(model):
+    """Sequence classification never reuses KV/cache; force it off for decoder
+    configs whose library version may otherwise default to config.use_cache."""
+    config = getattr(model, "config", None)
+    if config is not None and hasattr(config, "use_cache"):
+        config.use_cache = False
+    base = getattr(model, "model", None)
+    base_config = getattr(base, "config", None)
+    if base_config is not None and hasattr(base_config, "use_cache"):
+        base_config.use_cache = False
+
+
 def load_hf_model(hf_dir, device):
     from transformers import AutoConfig, AutoModelForSequenceClassification
 
+    dtype = torch.float16 if device.type == "cuda" else torch.float32
     int8_path = os.path.join(hf_dir, "model.int8.safetensors")
     if os.path.exists(int8_path):
         config = AutoConfig.from_pretrained(hf_dir, local_files_only=True)
+        if dtype == torch.float16:
+            config.torch_dtype = torch.float16
         model = AutoModelForSequenceClassification.from_config(config)
-        state = load_int8_state_dict(int8_path)
+        if dtype == torch.float16:
+            model.half()
+        else:
+            model.float()
+        state = load_int8_state_dict(int8_path, dtype=dtype)
         missing, unexpected = model.load_state_dict(state, strict=False)
         missing = [k for k in missing if not k.endswith("position_ids")]
         if missing or unexpected:
             raise RuntimeError(f"int8 checkpoint mismatch: missing={missing} unexpected={unexpected}")
+        disable_decoder_cache(model)
         print(f"Loaded int8-codec checkpoint {os.path.basename(int8_path)}")
         return model.to(device)
-    return AutoModelForSequenceClassification.from_pretrained(hf_dir, local_files_only=True).to(device)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        hf_dir, local_files_only=True, torch_dtype=dtype
+    )
+    disable_decoder_cache(model)
+    return model.to(device)
 
 
 def model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device):

@@ -1022,7 +1022,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
