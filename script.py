@@ -1144,10 +1144,19 @@ def compute_leak_overrides(samples, train_lookup=None, valid_classes=None):
 
 INT8_FORMAT_VERSION = "int8-rowwise-v1"
 INT8_SCALE_SUFFIX = ".__scale__"
+INT8_PATCH_ROWS_SUFFIX = ".__patch_rows__"
+INT8_PATCH_IDX_SUFFIX = ".__patch_idx__"
+INT8_AUX_SUFFIXES = (INT8_SCALE_SUFFIX, INT8_PATCH_ROWS_SUFFIX, INT8_PATCH_IDX_SUFFIX)
 
 
-def load_int8_state_dict(path, dtype=torch.float32):
-    """Reconstruct an fp state_dict from a quantize_checkpoint.py int8 codec file."""
+def load_int8_state_dict(path, dtype=torch.float32, shared_from=None):
+    """Reconstruct an fp state_dict from a quantize_checkpoint.py int8 codec file.
+
+    Tensors listed in the sidecar meta's `shared_tensors` are stored as a donor
+    reference plus a sparse int8 row patch (rows that differ from the donor) and
+    this leg's own scales — reconstruction is bit-exact, so multi-model packs
+    can store near-identical large tensors (e.g. embeddings) once."""
+    from safetensors import safe_open
     from safetensors.torch import load_file
 
     packed = load_file(path)
@@ -1158,7 +1167,7 @@ def load_int8_state_dict(path, dtype=torch.float32):
     quantized = set(meta["quantized"])
     state = {}
     for name, tensor in packed.items():
-        if name.endswith(INT8_SCALE_SUFFIX):
+        if name.endswith(INT8_AUX_SUFFIXES):
             continue
         if name in quantized:
             scale = packed[name + INT8_SCALE_SUFFIX]
@@ -1168,6 +1177,22 @@ def load_int8_state_dict(path, dtype=torch.float32):
             state[name] = tensor.to(dtype)
         else:
             state[name] = tensor
+    shared_names = meta.get("shared_tensors") or []
+    if shared_names:
+        if not shared_from:
+            raise ValueError(f"{path} declares shared_tensors {shared_names} but no donor dir was given")
+        donor_path = os.path.join(shared_from, "model.int8.safetensors")
+        with safe_open(donor_path, framework="pt") as donor:
+            for name in shared_names:
+                q = donor.get_tensor(name).clone()
+                idx = packed.get(name + INT8_PATCH_IDX_SUFFIX)
+                rows = packed.get(name + INT8_PATCH_ROWS_SUFFIX)
+                if idx is not None and rows is not None:
+                    q[idx.long()] = rows
+                scale = packed[name + INT8_SCALE_SUFFIX]
+                shaped = scale.view(-1, *([1] * (q.ndim - 1)))
+                state[name] = (q.float() * shaped).to(dtype)
+        print(f"Reconstructed shared tensors from {donor_path}: {shared_names}")
     return state
 
 
@@ -1183,7 +1208,7 @@ def disable_decoder_cache(model):
         base_config.use_cache = False
 
 
-def load_hf_model(hf_dir, device):
+def load_hf_model(hf_dir, device, shared_from=None):
     from transformers import AutoConfig, AutoModelForSequenceClassification
 
     dtype = torch.float16 if device.type == "cuda" else torch.float32
@@ -1197,7 +1222,7 @@ def load_hf_model(hf_dir, device):
             model.half()
         else:
             model.float()
-        state = load_int8_state_dict(int8_path, dtype=dtype)
+        state = load_int8_state_dict(int8_path, dtype=dtype, shared_from=shared_from)
         missing, unexpected = model.load_state_dict(state, strict=False)
         missing = [k for k in missing if not k.endswith("position_ids")]
         if missing or unexpected:
@@ -1294,8 +1319,13 @@ def encoder_probs(model_dir, spec, texts, device):
     from transformers import AutoTokenizer
 
     hf_dir = os.path.join(model_dir, spec["hf_dir"])
-    tokenizer = AutoTokenizer.from_pretrained(hf_dir, local_files_only=True)
-    model = load_hf_model(hf_dir, device)
+    tokenizer_dir = os.path.join(model_dir, spec.get("tokenizer_dir", spec["hf_dir"]))
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_dir, local_files_only=True)
+    model = load_hf_model(
+        hf_dir,
+        device,
+        shared_from=os.path.join(model_dir, spec["shared_from"]) if spec.get("shared_from") else None,
+    )
     if device.type == "cuda":
         model.half()
     else:
@@ -1311,6 +1341,31 @@ def encoder_probs(model_dir, spec, texts, device):
     return torch.softmax(logits, dim=-1)
 
 
+def cascade_scores(model_dir, cascade, samples, base_texts, device):
+    """Two-leg routed cascade: the base leg scores every row, then the
+    lowest-margin route_fraction of rows are re-scored by the secondary leg
+    (with its own serializer) and prob-blended. Routing is fraction-based
+    (sort by margin, take bottom k) so the inference budget is deterministic
+    regardless of the test margin distribution. The tuned chain (bias/rules)
+    downstream was fit on OOF logits built with exactly this routing."""
+    base_probs = encoder_probs(model_dir, cascade["base"], base_texts, device)
+    top2 = base_probs.topk(2, dim=1).values
+    margin = top2[:, 0] - top2[:, 1]
+    k = int(float(cascade["route_fraction"]) * len(samples))
+    if k > 0:
+        routed = margin.argsort()[:k]
+        secondary = cascade["secondary"]
+        sec_texts = [
+            serialize_transformer_sample(samples[i], secondary.get("serializer_name", "current_v1"))
+            for i in routed.tolist()
+        ]
+        sec_probs = encoder_probs(model_dir, secondary, sec_texts, device)
+        w_base, w_sec = (float(w) for w in cascade.get("blend", [0.5, 0.5]))
+        base_probs[routed] = w_base * base_probs[routed] + w_sec * sec_probs
+        print(f"Cascade: re-scored {k}/{len(samples)} lowest-margin rows via {secondary['hf_dir']}")
+    return torch.log(base_probs.clamp_min(1e-12))
+
+
 def run_hf_inference(model_dir, data_dir, output_path, device):
     from transformers import AutoTokenizer
 
@@ -1318,9 +1373,10 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     with open(os.path.join(model_dir, "hf_meta.json"), encoding="utf-8") as f:
         meta = json.load(f)
     encoders = meta.get("encoders")
+    cascade = meta.get("cascade")
     tokenizer = None
     model = None
-    if not encoders:
+    if not encoders and not cascade:
         tokenizer = AutoTokenizer.from_pretrained(hf_dir, local_files_only=True)
         model = load_hf_model(hf_dir, device)
         if device.type == "cuda":
@@ -1374,7 +1430,11 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
 
     batch_size = int(meta.get("batch_size", 32))
     max_length = int(meta.get("max_length", 192))
-    if encoders:
+    if cascade:
+        # meta serializer_name must be the base leg's serializer, so `texts`
+        # above already holds the base-leg serialization for all rows
+        base_scores = cascade_scores(model_dir, cascade, samples, texts, device)
+    elif encoders:
         # sequential encoders -> softmax average; the tuned chain (bias/rules/
         # sparse) operates on log-average-probs, matching how it was tuned
         probs = None

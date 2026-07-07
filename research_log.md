@@ -249,8 +249,57 @@ Full historical log through 2026-07-06 is archived at
   `experiments/artifacts/20260706_094913_gpu_transformer_session_current_v6e_len400_replay-last1_v6e_qwen3_06b_screen_b8a2_metrics.json`,
   `experiments/logits/20260706_094913_gpu_transformer_session_current_v6e_len400_replay-last1_v6e_qwen3_06b_screen_b8a2_val_logits.pt`.
 
+### 2026-07-06 - OOF-diversity 프로브: 압축 serializer는 대체재가 아니라 앙상블 레그였다
+
+- Why: serializer 압축 레인 종료 조건이 "새 OOF-diversity 가설"이었음. v5/v6가
+  v1의 열화판인지, 다르게 틀리는 전문가인지를 기존 OOF 로짓 4세트(m7v1/v5/v6/
+  m8v1)의 softmax 블렌드로 GPU 없이 판정.
+- Evidence (`experiments/artifacts/20260706_oof_diversity_probe.json`, 블렌드
+  체인은 results.csv `20260706_blend_*` 행): argmax 불일치 10.4-10.9% (vs m7).
+  체인 결과 — **0.6B 트리플(v1+v5+v6) raw 0.7632/2stage 0.7664/rules 0.7724
+  (+0.0053 vs m7 rules 0.7671)**; **m7+m8+v6 트리플 raw 0.7709/2stage 0.7728/
+  rules 0.7782 (+0.0111 vs m7, +0.0041 vs m8 단독 0.7740)**; 2-leg m7+v6
+  2stage 0.7639 (rules는 results.csv에 자동 기록). 이득은 약클래스 집중
+  (rules 후 list 0.5089, read 0.6104). 가중치 강건(0.6B 트리플은 균등가중
+  동급). 마진 라우팅: 하위 25-30%만 두 번째 레그로 보내면 블렌드 이득의
+  86-94% 회수 — 캐스케이드 구조와 정합.
+- Decision: FE 레인은 "v1 대체" 프레임에서 "다양성 레그" 프레임으로 전환.
+  배포 경로 우선순위 — (1) m7+m8 캐스케이드의 품질 상금이 OOF-rules 0.778급
+  으로 정량화됨(타이밍 벽은 기존 그대로, 라우팅 산수에 위 회수율 사용),
+  (2) **KD 증류(타이밍 비용 0)**: `train_transformer.py`에 `--distill-logits/
+  --distill-alpha/--distill-temp`(OOF 교사, replay 행 자동 제외 = 누수 없음)
+  + `--optim adamw8bit` 추가, 2k행 로컬 스모크 통과. (3) 2-leg 직접 탑재는
+  ~635s 초과 예상으로 T4 레플리카 실측 전 비추천.
+- 실행: 로컬 3070 Ti(8GB)에서 KD 스크린 야간런 개시 — Qwen3-0.6B 학생,
+  current_v1 len416 챔피언 레시피 + batch4×accum4 + grad-ckpt + adamw8bit,
+  교사 = m7+m8+v6 블렌드(alpha 0.5, T 2.0), pid 기록
+  `experiments/local_runs/kd_m8blend_qwen3_screen.log`. 게이트: fixed 2stage
+  vs v1 앵커 0.770875 — 단 교사 폴드모델이 스크린 val 세션을 학습에 봤으므로
+  스크린 수치는 약간 낙관 가능성, go/no-go 신호로만 쓰고 판정은 Public.
+- Caveat: 블렌드는 폴드모델 기준 — 배포 팩은 refit 레그라 이득 크기 미검증.
+  serializer-다양성 vs 시드-노이즈 다양성은 동일 serializer 2시드 OOF 없이는
+  분리 불가(배포 가치엔 무영향).
+
 ## Current Next Step
 
-Return to current_v1 cascade/timing work before spending a Public slot. The
-serializer-compression lane is closed unless a new OOF-diversity hypothesis
-appears.
+KD 스크린(로컬 야간런) 판정 대기. 통과 시 KD refit 팩(체인: OOF 교사 재사용,
+rules는 학생 자체 OOF로 재튜닝)이 Public 후보. 병행: m7+m8 캐스케이드 타이밍
+(서버 복제 프로브)이 열리면 0.778급 OOF 체인이 상한. serializer 신규 압축
+변형은 계속 닫힘 — 다양성 레그 프레임에서만 재사용.
+
+### 2026-07-07 - 2-leg 캐스케이드 팩 조립 완료 (casc_v6m7_r20.zip) — 타이밍 프로브 준비
+
+- Why: OOF-diversity 발견의 첫 배포 시도. v6 refit(Drive에 이미 존재)과 m7 refit을 재학습 없이 조립 — 품질보다 **캐스케이드 인프라·서버 타이밍 실측**이 목적 (성공 시 같은 인프라로 m8 leg 교체 = 0.778 체인 후보).
+- 설계: v6 base 전 행(len384, 토큰 -20%) → base 마진 하위 **20% fraction-based 라우팅**(테스트 분포 무관 결정적 예산) → m7 leg(current_v1, len416) 0.5/0.5 확률 블렌드 → r20 분포 재튜닝 bias+12rules. OOF 체인: raw 0.759208 / 2stage 0.761703 / rules **0.767901** (M7 0.767129 +0.0008 = 품질 동급). K=20 선택 근거: 예상 ~555s/600s, K=25는 워스트케이스 타임아웃.
+- 사이즈 해법: 두 int8 leg 원본 zip ~1079MB(한도 초과) → **임베딩 무손실 스파스 패치**: 두 leg의 embed int8 행 93% 동일(드리프트 0.30%) → m7 leg엔 상이한 10,805행 패치+자체 scale만 저장, 로드 시 v6에서 복원. **비트 단위 완전 복원 검증** (앞선 통째-공유 방식은 argmax 99.463%로 게이트 미달 → 폐기). m7 leg 613.9→469.6MB, zip **948.2MB**.
+- 구현: `script.py` — `meta.cascade`(base/secondary/route_fraction/blend), `encoder_probs` tokenizer_dir, `load_int8_state_dict` shared_tensors 패치 복원(`__patch_rows__`/`__patch_idx__`). requirements는 초도 빌드에서 4.46.3 유입 버그 발견 → `requirements_qwen3.txt`(4.51 오버라이드, M7 동일)로 재빌드.
+- 스모크: 클린 추출+CPU 오프라인 — 캐스케이드 전 경로 완주(공유 텐서 복원, 1/5행 라우팅), 컬럼/ID순서/라벨 검증 통과.
+- 운영 교훈(2연속 WSL 사망 반영): 학습·대형 검증은 Colab, 로컬은 zip 조립+스텁 스모크만. fp32 전량 로드 비교 금지(int8 레벨 lazy 비교로 대체), 스테이징은 /tmp 금지(재부팅 소실) repo 디스크 사용.
+- 병행: KD 스크린은 Colab G4에서 재런치되어 진행 중 (teacher=m7+m8+v6 블렌드, gate fixed 2stage vs 0.770875).
+- Next: 사용자 제출 판단 대기. 제출 시 원장(leaderboard_calibration.md)에 기록 — 관측 대상은 (a) 총 추론 시간 vs 600s, (b) Public vs M7 0.780.
+
+### 2026-07-07 - KD 스크린 게이트 통과: 2stage 0.784007 (프로젝트 fixed 최고)
+
+- Evidence: Qwen3-0.6B 학생 + OOF 블렌드 교사(m7+m8+v6, 2stage 0.7728, alpha 0.5 T2.0), 챔피언 v1 레시피 fixed 스크린 — raw `0.780809` / bias `0.783273` / 2stage `0.784007`. v1 앵커 `0.770875` 대비 **+0.0131**, M8 0.8B 스크린(0.7804)도 상회. 약클래스 전반 상승: list 0.5106, read 0.6054, grep 0.6254, ask 0.6875. 행: results.csv `20260706_164744_..._kd_m8blend_qwen3_screen`.
+- Caveat(사전 등록): 교사 폴드모델이 스크린 val 세션을 학습에 봤으므로 수치 일부는 낙관 가능. 학생 OOF도 같은 구조의 경미한 낙관을 공유(교사·학생 폴드 분할 동일) — 3중 중첩 없이 불가피한 표준 스태킹 리스크. 최종 판정은 Public.
+- Decision: 게이트 통과 → 풀체인 진행. KD 학생 3-fold OOF(레인 A, chain_runs.py로 체이닝) → aggregate/rules(로컬 단독) → KD refit(--final-only, 아티팩트 주입) → int8 패키징 → Public. 부수 확인: KD 인프라(teacher OOF 정렬·replay 제외)와 8bit/ckpt 패치가 실전 검증됨.

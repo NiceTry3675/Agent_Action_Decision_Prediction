@@ -372,7 +372,31 @@ def evaluate(model, tokenizer, encoded_features, lengths, y, indices, args, devi
     return logits, y_true, metrics, ordered_indices
 
 
-def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device):
+def build_teacher_targets(samples, args):
+    """Align an OOF teacher payload (ids + log-prob logits) to `samples` by id.
+    Returns (logprobs, mask) CPU tensors or None when --distill-logits is unset.
+    Replay pseudo-samples and unmatched ids get mask 0 (pure hard-label loss),
+    so OOF teachers stay leak-free by construction."""
+    if not getattr(args, "distill_logits", None):
+        return None
+    payload = torch.load(args.distill_logits, map_location="cpu", weights_only=False)
+    teacher_rows = payload["logits"].float()
+    by_id = {safe_text(sample_id): row for sample_id, row in zip(payload["ids"], teacher_rows)}
+    logprobs = torch.zeros(len(samples), teacher_rows.shape[1])
+    mask = torch.zeros(len(samples))
+    for i, sample in enumerate(samples):
+        row = by_id.get(safe_text(sample.get("id")))
+        if row is not None:
+            logprobs[i] = row
+            mask[i] = 1.0
+    print(
+        f"distill: matched {int(mask.sum())}/{len(samples)} rows from {args.distill_logits} "
+        f"(alpha={args.distill_alpha} T={args.distill_temp})"
+    )
+    return logprobs, mask
+
+
+def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device, teacher=None):
     model = AutoModelForSequenceClassification.from_pretrained(
         args.base_model,
         num_labels=len(ALL_CLASSES),
@@ -387,7 +411,12 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         model.gradient_checkpointing_enable()
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    if args.optim == "adamw8bit":
+        import bitsandbytes as bnb
+
+        optimizer = bnb.optim.AdamW8bit(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     accum = max(1, args.grad_accum_steps)
     batches_per_epoch = math.ceil(len(train_idx) / args.batch_size)
     total_steps = math.ceil(batches_per_epoch / accum) * args.epochs
@@ -432,6 +461,14 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
                     # ce -> focal changes exactly one thing
                     pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
                     loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
+                if teacher is not None:
+                    temp = args.distill_temp
+                    teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
+                    student_lp = F.log_softmax(logits.float() / temp, dim=-1)
+                    kd = F.kl_div(student_lp, teacher_p, reduction="none").sum(-1) * (temp * temp)
+                    # per-row alpha: replay/unmatched rows (mask 0) keep the pure hard-label loss
+                    alpha = args.distill_alpha * teacher[1][batch_idx].to(device)
+                    loss_values = (1.0 - alpha) * loss_values + alpha * kd
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
             scaler.scale(loss / accum).backward()
             if step % accum == 0:
@@ -730,6 +767,7 @@ def run(args):
             final_idx,
             args,
             device,
+            teacher=build_teacher_targets(final_samples, args),
         )
         train_sec = time.perf_counter() - train_start
         artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
@@ -839,7 +877,10 @@ def run(args):
         return
 
     train_start = time.perf_counter()
-    model = train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device)
+    model = train_model(
+        tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device,
+        teacher=build_teacher_targets(samples, args),
+    )
     train_sec = time.perf_counter() - train_start
 
     eval_start = time.perf_counter()
@@ -924,6 +965,7 @@ def run(args):
             final_idx,
             args,
             device,
+            teacher=build_teacher_targets(samples if args.replay_mode == "none" else final_samples, args),
         )
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, metrics)
         artifact_size = dir_size_mb(args.output_dir)
@@ -1037,6 +1079,12 @@ def parse_args():
     parser.add_argument("--label-smoothing", type=float, default=0.02)
     parser.add_argument("--loss", choices=["ce", "focal"], default="ce")
     parser.add_argument("--focal-gamma", type=float, default=2.0)
+    parser.add_argument("--distill-logits", default=None,
+                        help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
+    parser.add_argument("--distill-alpha", type=float, default=0.5)
+    parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
+                        help="adamw8bit (bitsandbytes) fits 0.6B training in 8GB VRAM")
     parser.add_argument("--class-weight-power", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
