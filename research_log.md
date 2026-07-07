@@ -332,3 +332,115 @@ rules는 학생 자체 OOF로 재튜닝)이 Public 후보. 병행: m7+m8 캐스�
 - 검증: 클린 추출 CPU 오프라인 스모크 전 항목 통과(컬럼/ID순서/라벨 유효성/int8 로드).
 - Decision: `submissions/hcx05b_refit.zip`이 이제 이 repo가 직접 재현·재검증 가능한 현재 baseline. `final_summary.md`/`leaderboard_calibration.md`를 이 팩 기준으로 갱신(개인·채널 언급은 문서에서 제거, 기술적 내용만 유지 — 원본 handoff 자료는 `handoff_hcx_0707/`에 untracked로 보존).
 - Next: HCX-0.5B 위에 OOF rule-boosts 레이어(M7/KD와 동일 파이프라인) 튜닝이 가장 자연스러운 다음 증분. KD 재시도 시엔 위 KD-fold-leak 룰(matched-seed Public 판정, 또는 교사 OOF를 학생과 다른 fold 분할로) 적용.
+
+### 2026-07-07 - 신기록: kd_hcx_m8 Public 0.789 (M7 이후 최대 단발 도약)
+
+- Evidence: HCX-0.5B student + M8(Qwen3.5-0.8B) 단독 teacher KD — Public **0.789**, 추론 6:32/10:00. 논-KD HCX(0.7852) 대비 +0.0038(노이즈 룰 0.002 초과), M7 돌파(0.780) 이후 최대 단발 도약. 추론시간은 논-KD HCX(6:29)와 사실상 동일 — KD는 학습 손실만 바꾸고 아키텍처/길이는 그대로라 타당. 기본 학습 레시피는 `hcx05b_refit_s42`(current_v1, len384, ep3, lr2e-5, batch16, focal g2.0, replay last1 cap10000, seed42)와 동일 — 여기에 M8 teacher KD만 추가.
+- Interpretation(미확인, 가설): 앞선 m7+m8+v6 블렌드 교사 KD는 Public에서 역전(-0.0025)됐는데, 이번엔 M8 **단독** teacher로 양의 전이. 블렌드 교사가 fold별 OOF 스티칭이라 겪은 누수 메커니즘이 단일 teacher 구성에선 다르게 작용했을 가능성 — 단 정확한 teacher 로짓 출처(OOF fold vs full-refit)·레시피(alpha/temp/rules)를 확보 전엔 확정 아님.
+- Decision: `final_summary.md`(Current Public Baseline → 0.789, `kd_hcx_m8`), `leaderboard_calibration.md`(행 추가) 갱신. 기본 레시피는 위처럼 확정(= hcx05b_refit_s42)이나, **KD 전용 하이퍼파라미터(alpha/temperature)·teacher 로짓 출처·rules 레이어 여부·실물 가중치는 아직 이 repo에 미동기화** — HCX-0.5B 흡수 때처럼 실물 확보 시 동일 절차(bias 주입 확인, 재포장, 독립 스모크)로 흡수 필요. 그 전까지는 Public 점수·추론시간·기본 레시피만 신뢰 가능한 사실이고 KD 세부값은 추정.
+- Next action: 가중치/val 로짓 동기화되면 흡수. 병행: M8 단독-teacher KD 패턴이 유효하면 이 repo가 직접 재현 가능한 Qwen3-0.6B student 라인에도 같은 구성(블렌드 대신 M8 단독) 재시도 가치 있음 — 단 매치드시드 Public 판정 원칙은 유지.
+
+### 2026-07-07 - HCX-0.5B 시드 분산 캘리브레이션: seed777이 seed42보다 -0.0202
+
+- Evidence: `hcx05_s777` — `hcx05b_refit_s42`(non-KD HCX-0.5B)와 레시피 완전 동일, seed만 42→777. Public **0.765** (seed42 대비 -0.0202), 추론 6:27/10:00(seed42의 6:29와 사실상 동일 — 순수 시드 교체 확인).
+- Decision: 베이스라인 변경 아님(kd_hcx_m8 0.789가 최고 유지). 다만 이 델타가 이 repo에서 지금까지 캘리브레이션된 시드 노이즈 밴드(±0.007~0.011, XLM-R/Qwen3-0.6B 라인 기준)의 약 2배 — **HCX-0.5B는 이 레시피에서 시드 분산이 그 라인들보다 실제로 더 클 수 있음.** 향후 HCX 라인의 단발 Public 델타(특히 <0.02)를 레시피 효과로 해석할 때 이 넓어진 밴드를 반영할 것.
+- 부수 함의: Public=최종점수 100%(private 홀드아웃 없음) 하에서 시드 분산이 크다는 건 HCX 라인에 한해 best-of-N 시드 낚시의 기대값이 실질적으로 크다는 뜻 — 단 종반 우선순위 독트린(best-of-N은 대형 레버 소진 후 종반에)과 저울질 필요.
+- `final_summary.md`(Current Public Baseline 절에 캘리브레이션 노트 추가), `leaderboard_calibration.md`(행 추가) 갱신.
+
+### 2026-07-07 - kd_hcx_m8 teacher 출처 확인: M8 full-refit train70k 로짓, fold-OOF 아님
+
+- Evidence: teacher 로짓 파일 `experiments/logits/m8_qwen35_refit_train70k_fp16.pt`(+`.npz`)가 이미 이 repo에 존재 — 직접 로드해 검증: `{ids, logits[70000,14] fp16, classes, y_true, metadata}`, `metadata.source="hf_model_export"`, `metadata.model_dir=".../models/m8_qwen35_refit"`(M8의 **full-refit** 모델), `row_count=70000`. 즉 3-fold OOF 스티칭이 아니라 **M8 full-refit 모델이 자기 학습셋 70000행 전체에 forward pass한 예측**. rules 레이어는 없음, 나머지(base 학습 세팅)는 `hcx05b_refit_s42`와 동일 — 사용자 확인.
+- Decision: `final_summary.md`/`leaderboard_calibration.md`의 "unconfirmed 가설"을 검증된 사실로 갱신 — 앞선 m7+m8+v6 블렌드 KD가 겪은 fold-간 val 누수 경로가 이 teacher 구성엔 구조적으로 없음(단일 full-refit 모델의 train-set 예측이라 fold 경계 자체가 없음). 남은 미확인 항목은 KD alpha/temperature와 실제 HCX student 가중치뿐.
+
+### 2026-07-07 - kd_hcx_m8 레시피 완성: alpha=0.5, temperature=3
+
+- Evidence: KD 하이퍼파라미터 확정 — alpha 0.5, temperature 3. 이로써 `kd_hcx_m8`의 전체 레시피(base=`hcx05b_refit_s42` 그대로, teacher=M8 full-refit train70k 로짓, rules 없음, alpha/T)가 다 확정됨. 유일하게 남은 건 **실제 파인튜닝된 student 가중치 파일** — `naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B`는 공개 사전학습 베이스 체크포인트명일 뿐이고, 이미 흡수한 `hcx05b_refit`(논-KD 파인튜닝 결과물)과는 다른 별도의 파인튜닝 결과물(KD 손실 포함 학습)이라 아직 이 repo에 없음.
+- Decision: 문서(final_summary.md/leaderboard_calibration.md)에 alpha/T 반영, 가중치 미보유 사실 명확화. 실제 가중치 확보 시 HCX 흡수 때와 동일 절차로 흡수.
+
+### 2026-07-07 - R-Drop 스크린 게이트 통과: fixed 2stage +0.0064 vs HCX v1 앵커
+
+- Evidence: `train_transformer.py`에 R-Drop 신규 구현(`--rdrop-alpha`, `--dropout` — 디코더 계열 기본 dropout이 0이라 별도 오버라이드 필요; attention_dropout만 실체 존재·sdpa에서 실제 적용 확인). alpha=1.0, dropout=0.1, HCX-0.5B 챔피언 레시피(v1, len384, focal, replay last1) **동일 seed42, 동일 fixed split**으로 앵커(`20260707_hcx05b_len384_screen_seed42`)와 비교: raw 0.765997→0.773416(+0.0074), bias 0.768743→0.775251(+0.0065), 2stage 0.769796→0.776188(+0.0064). 세 티어 전부 일관 양의 델타 — 학습 seed·split이 동일해 통상적 시드 노이즈 비교보다 깨끗한 대조. 약클래스: ask_user +0.0526(0.6310→0.6836), grep_search +0.0132, glob_pattern +0.0063, list_directory +0.0024, **read_file -0.0092**(유일 역행).
+- Decision: 게이트 통과(+0.0064는 이 repo의 시드 노이즈 밴드 상단 근접이나, 동일 seed·split 대조라 노이즈보다 신호일 가능성이 큼). 다음 실험으로 dropout=0.1만 켜고 rdrop_alpha=0인 대조군을 레인 B에 즉시 런칭 — R-Drop의 KL 항 자체의 기여인지, 단순 dropout 정규화 추가 효과인지 분리 목적(둘 다 이 레시피에 처음 등장하는 변수라 원인 분리 없이는 승격 불가). 대조군이 앵커 수준으로 돌아가면 KL 항이 핵심(정식 R-Drop 채택), 대조군도 오르면 저비용 dropout=0.1 단독 추가가 더 나은 레버(R-Drop의 2배 학습비용 불필요).
+
+### 2026-07-07 - HCX x XLM-R 인코더 블렌드 프로브 (CPU, 무-슬롯): 레인 닫기 권고
+
+- Why: 챔피언(HCX-0.5B 라인)에 인코더(XLM-R) 다양성 레그를 붙일 가치가 있는지,
+  기존 fixed seed42(14001행) val 로짓만으로 GPU/제출 없이 판정.
+- Method: repo 표준 `train.py` 2stage 튜닝 재사용 — 재현 검증: HCX 단독
+  2stage `0.769796`(기록치와 일치), m7 단독 `0.770845`(앵커 0.770875와 3e-5
+  차이). 블렌드는 softmax 확률 가중평균, w는 raw 스윕.
+- Evidence (`experiments/artifacts/20260707_hcx_xlmr_blend_probe.json`,
+  results.csv `20260707_blend_*` 3행): 단독 — xlmr_base448 2stage `0.748091`,
+  xlmr_large448 `0.756718`. 블렌드(vs HCX 단독 2stage) — HCX+base448 w50
+  `+0.0020` / w70(val-튜닝) `+0.0041`; HCX+large448 w50 `+0.0073`;
+  **HCX+m7(Qwen3-0.6B) w50 `+0.0086` / w55 `0.778619` (+0.0088)**.
+- 판정: (1) XLM-R 다양성은 실재하나 **도미네이트** — 동일 방법론에서 Qwen
+  레그가 base/large 모두 상회. (2) 배포 가능한 유일한 XLM-R 레그는 base448
+  (HCX 512MB + int8 ~280MB < 1GB)인데 이득이 fixed 단일시드 노이즈 밴드
+  (±0.005) 안. large448은 사이즈 초과(512+~560MB; 크로스-vocab이라
+  casc_v6m7식 임베딩 패치 공유 불가). (3) **부수 발견**: 동일 방법론 재계산에서
+  HCX+m7 fixed 2stage `0.7784-0.7786` — 기록된 handoff 벤치마크 `0.7725`
+  (+0.0027)보다 +0.006 높음. 기존 벤치마크가 다른 블렌드 방식이었을 가능성;
+  HCX x Qwen 페어의 다양성 상금이 기록보다 클 수 있음. 단 배포 블로커는 동일
+  (합계 1110MB > 1GB, 임베딩 공유 불가, 07-07 워크숍 타이밍 기각 ~924s).
+- Decision(권고): XLM-R 인코더 앙상블 레인은 닫는다 — 유일한 배포 가능 구성이
+  노이즈 밴드 안이고 더 나은 레그(Qwen)에 도미네이트됨. 우선순위 레인
+  (current_v2, soup/SWA, full-refit 멀티티처 KD)은 그대로. HCX+m7 페어의
+  실제 상금 크기 재평가는 별도 논의 사항(사이즈 블로커 해결책 없이는 사장).
+
+### 2026-07-07 - KD가 다양성을 먹었다: kd_hcx_m8 x m7 캐스케이드 레인 닫음
+
+- Why: 전날 프로브(HCX_nonkd x m7 fixed 2stage +0.0086)가 배포 중인 kd_hcx_m8
+  (M8 teacher KD) 위에서도 살아있는지 확인. 배포 인스턴스는 val split이 없어
+  레인 C(GPU)에서 동일 레시피(alpha0.5 T3, M8 full-refit teacher, `--split
+  session` seed42)로 스크린 1런을 돌려 진짜 held-out val 로짓을 확보
+  (`20260707_100521_..._kd_hcx_m8_screen_s42_val_logits.pt`, fixed 2stage
+  `0.787801` — 논-KD HCX 동일시드 `0.769796` 대비 +0.0180, 이 스크린 자체의
+  절대치는 교사가 val을 학습에 본 표준 KD 낙관을 포함하므로 참고치일 뿐 판단
+  근거 아님).
+- Evidence (`experiments/artifacts/20260707_kd_hcx_m8_m7_blend_probe.json`,
+  results.csv `20260707_blend_kd_hcx_m8_m7qwen3_fixed`): 동일 방법론(softmax
+  블렌드, repo 표준 2stage) — **kd_hcx_m8_screen x m7 w50 2stage `0.785075`,
+  KD 학생 단독(`0.787801`) 대비 `-0.002727`**(블렌드가 오히려 하락). 최적 w
+  탐색(w85, 거의 KD 학생 단독)도 `+0.000529`뿐 — 게이트(+0.005) 명확히 미달.
+  대조: 같은 m7 페어링이 논-KD HCX 위에서는 +0.0086(전날 프로브)이었음.
+- Interpretation: M8(Qwen3.5-0.8B) teacher KD가 m7(Qwen3-0.6B)이 제공하던
+  Qwen-계열 디코더 다양성을 이미 흡수 — 둘 다 같은 패밀리라 방향은 합리적.
+  KD가 "의도한 대로" 작동했다는 신호이기도 함.
+- Decision: **kd_hcx_m8 베이스 위에 m7 캐스케이드를 얹는 레인 닫음** — 사이즈/
+  타이밍 문제를 풀 가치가 없음(품질 상금이 애초에 없음). XLM-R 등 완전히
+  다른 아키텍처 패밀리 페어링은 미검증으로 남지만 XLM-R 단독 성능이 약하고
+  (0.743) 사이즈 블로커도 동일해 우선순위 낮음, 재론하지 않음. 가동 중인
+  우선순위 레인(current_v2, soup/SWA, full-refit 멀티티처 KD)에 집중.
+
+### 2026-07-07 - kd_m8_refit 흡수: 팀원 KD 가중치를 repo 재현 가능 팩으로 승격 (Public 0.7891, 새 baseline)
+
+- Why: 팀원 레인에서 학습·제출된 `kd_hcx_m8` 가중치 2종(fp16 원본 + 배포 int8 팩)을 인계받음. 레시피는 hcx05b_refit 챔피언 레시피 + M8 full-refit 교사 KD(`--distill-logits m8_qwen35_refit_train70k_fp16.pt --distill-alpha 0.5 --distill-temp 3.0`, seed42), Public **0.7891** / 추론 6:32.
+- 검증(핵심): fp16 전 텐서를 repo의 int8-rowwise-v1 코덱으로 재양자화해 배포 int8 팩과 대조 — **219/219 텐서 비트 단위 일치**(양자화 170 + passthrough 49, scale 포함). 배포되어 0.7891을 찍은 모델이 정확히 이 fp16 체크포인트임을 직접 증명. 인계 zip 자체(SHA 93afe41b...)는 로컬에 없어(내용물만 전달) zip 해시 대조는 불가 — fp16 sha256 `9e684faa...b1842`를 repo측 앵커로 기록. 팩 동봉 script.py는 커밋 e66fd51 버전과 정확히 일치(CRLF만 차이), 고유 변경 없음.
+- 작업: fp16 → `experiments/incoming/models/kd_m8_refit/`, 배포 int8 → `experiments/incoming/models/kd_m8_refit_int8/` (repo 관례: `<name>`=fp16, `<name>_int8`=int8). `package_submission.py --no-sparse --requirements requirements_qwen3.txt`로 `submissions/kd_m8_refit.zip`(512MB) 재포장, 클린 추출 오프라인 CPU 스모크 통과. class_bias는 전부 0(final refit 미튜닝) — 0.7891 인스턴스 그대로 유지, 바이어스 주입 안 함(주입은 별도 Public 검증 없인 금지). results.csv `20260707_kd_m8_refit` 행, `experiments/artifacts/20260707_kd_m8_refit_metrics.json` 등록. 인계 폴더(`kd_hcx_m8/`, `kd_m8_refit/`) 삭제.
+- Decision: **새 Public baseline 0.7891** — `final_summary.md`/`leaderboard_calibration.md` 갱신 완료. 이 팩이 이제 repo에서 직접 재현·재검증 가능한 최고 성적 팩(이전 hcx05b_refit 0.7852는 non-KD 폴백으로 강등). fp16 원본 보존으로 가중치 공간 레버(seed soup/SWA/best-of-N)가 이 baseline 위에서 즉시 가능해짐.
+- Next: 이 baseline 위 생존 레인은 기존 우선순위 그대로(current_v2 스크린, soup/SWA, full-refit 멀티티처 KD). 같은 날 판정된 kd×m7 캐스케이드 게이트 FAIL(위 엔트리)로 m7 페어링은 닫힘. lane-C 매치드 스크린의 2stage bias(0.787801) 주입은 미검증 마이크로 레버로만 보류 — 적용하려면 슬롯 1개로 Public 판정 필요.
+
+### 2026-07-07 - R-Drop 어블레이션 판정: 이득은 KL 항에서 온다 — KD+R-Drop 스택 스크린 착수
+
+- Evidence: dropout-only 대조군(`20260707_102926_..._dropout_only_hcx05b_screen`, dropout=0.1, rdrop_alpha=0, 그 외 R-Drop 스크린과 완전 동일 seed42/split) — raw 0.765322 / bias 0.767503 / 2stage **0.768854**. 논-KD 앵커(0.769796) 대비 -0.0009로 사실상 동일(노이즈), R-Drop(0.776188) 대비 -0.0073. 즉 **dropout 추가 자체는 무익하고, +0.0064는 R-Drop의 symmetric KL 일관성 항이 만든다** — 동일 seed·동일 split 3자 대조(앵커/dropout-only/R-Drop)로 원인 분리 완료. 부수 관찰: R-Drop 스크린에서 read_file만 -0.009 역행.
+- Decision: R-Drop(alpha 1.0, dropout 0.1)을 검증된 학습 레버로 채택. 다음 게이트는 **KD와의 스택 여부** — 마침 lane-C의 kd_hcx_m8 matched 스크린 앵커(fixed 2stage `0.787801`, seed42, 동일 split·동일 M8 teacher)가 생겨서, KD+R-Drop 스크린을 같은 조건으로 돌리면 스크린끼리의 델타는 teacher-낙관을 양쪽이 공유하므로 유효한 대조가 됨(KD 레시피 '절대치' 판정은 여전히 Public 전용 — 이건 R-Drop 추가분의 상대 대조). 리스크 인지: KD soft target이 이미 일관성 정규화와 유사한 효과를 줄 수 있어 논-KD에서의 +0.0064가 KD 위에서 축소·소멸할 수 있음 — 그래서 리핏/슬롯 전에 스크린 게이트를 둠. 통과 시 `--final-model` 리핏 → Public matched-seed vs **0.7891**(kd_m8_refit).
+- 인프라 노트: M8 teacher 로짓(`m8_qwen35_refit_train70k_fp16.pt`, gitignored)은 rclone으로 `AADP_exchange_b/logits/` 경유 VM에 스테이징(70000×14 로드 검증). R-Drop 구현은 리뷰 가드 포함(`--rdrop-alpha>0`에 `--dropout` 필수) — 기본 경로는 기존과 비트 동일(리뷰 확인).
+
+### 2026-07-07 - 멀티턴 복구(current_v2) 스크린: 널 — 정보-복구 레인 닫음
+
+- Why: current_v1이 74.6% 행에서 이전 user 발화를 버린다는 실측(70k 토큰화 재측정: v1 mean 200.5 → v2 mean 284.9, len448에서 7.1% 행만 절단)에 근거한 "정보 추가 방향" serializer 가설. current_v2는 07-05 Lane B 큐에 있다가 실행되지 않았던 것을 이번에 실행.
+- Evidence (`20260707_120118_..._v2_hcx05b_screen`, HCX-0.5B 챔피언 레시피 len448, 동일 seed42/fixed split): raw 0.765973 / bias 0.767803 / 2stage **0.768813** vs v1 앵커 0.769796 — **-0.0010, 동률(노이즈)**. 약클래스: ask_user +0.0507(0.6310→0.6817)로 크게 개선됐지만 list_directory -0.0185, read_file -0.0185가 상쇄. 탐색 클래스 모호성이 이전 user 턴으로 풀리지 않는다는 데이터-정찰 가설(라벨이 텍스트 밖 시뮬레이터 잠재상태에서 결정됨)과 정합.
+- Decision: **멀티턴 정보-복구 레인 닫음** — 같은 날 R-Drop과 달리 aggregate 개선 없음, len448의 추론시간 비용(~1.4x 토큰)까지 고려하면 배포 근거 전무. v5/v6/v6e 전례대로 널 스크린 후 변형 추격은 하지 않는다. 단 교차 관찰 기록: R-Drop(+0.053)과 v2(+0.051)가 둘 다 ask_user를 크게 올림 — ask_user는 표현/일관성 민감 클래스로 보이며, R-Drop 채택 시 이 클래스 개선은 그쪽에서 이미 확보됨.
+
+### 2026-07-07 - KD+R-Drop 스택 게이트 FAIL: KD 위에서 R-Drop은 역효과 — 챔피언 라인에는 미채택
+
+- Evidence (`20260707_121230_..._kd_rdrop_hcx05b_screen`, kd_hcx_m8 레시피 + rdrop alpha1.0/dropout0.1, 동일 seed42/split/teacher): raw 0.779322 / bias 0.783698 / 2stage **0.784191** vs KD 앵커(`20260707_100521_..._kd_hcx_m8_screen_s42`) raw 0.783852 / bias 0.787077 / 2stage 0.787801 — **전 티어 일관 -0.004 안팎(2stage -0.0036)**. 사전 등록한 리스크 그대로: KD soft target이 이미 일관성 정규화 역할을 하고 있어, 그 위에 R-Drop KL을 얹으면 과잉 정규화로 역행.
+- Decision: **챔피언(KD) 라인에 R-Drop 미채택 — 스택 레인 닫음.** R-Drop의 지위 정리: (1) 논-KD HCX 라인에서는 실증된 +0.0064 레버(어제 어블레이션으로 KL 항 기여 확인), (2) KD 위에서는 -0.0036 역효과, (3) KD 대체재도 아님(논-KD+R-Drop 0.7762 << KD 0.7878). 용처가 있다면 논-KD 다양성 레그/teacher 학습 쪽뿐. alpha를 0.3-0.5로 낮춘 재스택은 기대값 낮아 추격하지 않음(음의 상호작용 확인된 마당에 최선 시나리오가 앵커 동률 수준).
+- 오늘 사용자 지시 2개 테스트 최종 정리: **멀티턴 복구(v2) 널, R-Drop 논-KD 유효/KD 스택 실패** — 둘 다 챔피언 팩을 바꾸지 못함. 남은 고기대값 레인: 가중치 공간(soup/SWA/best-of-N — kd_m8_refit fp16 흡수로 즉시 가능), full-refit 멀티티처 KD(teacher export 필요).
+
+### 2026-07-07 - 진행 중 2건: KD+R-Drop Public 프로브 리핏 + 2-teacher(M8+HCX) KD 결정
+
+- KD+R-Drop 리핏 (레인 B A100, 사용자 결정): 스크린 -0.0036이 노이즈권이므로 Public으로 최종 판정. kd_m8_refit 조건 완전 미러(M8 teacher alpha0.5 T3, seed42, bias/rules 무주입) + R-Drop만 추가한 `--final-model` 리핏 → `kd_rdrop_hcx_s42.zip` 예정, 판정 vs **0.7891**.
+- Teacher export 2건 완료 (레인 A L4, 슬롯 무소모): `m7_qwen3_refit_train70k_fp16.pt`(train acc 0.8352), `hcx05b_refit_train70k_fp16.pt`(0.8188) — 둘 다 full-refit forward 70000×14 fp16, `experiments/logits/`에 로컬 확보. **부수 발견: M8 teacher도 train acc 0.8115로 one-hot 암기가 아님** — "near one-hot이라 dark knowledge 제한" 우려는 과대평가였음.
+- 멀티티처 구성 결정(사용자): **M8+HCX 2-teacher 50/50 softmax 평균** (`teacher_m8hcx_fullrefit_train70k_fp16.pt`, 평균 train acc 0.8160). M7은 제외 — 근거: kd_hcx_m8 학생 x m7 추론 블렌드가 음수(-0.0027, "KD가 다양성을 먹었다" 엔트리)라 교사로 섞어도 희석 우려. 실패했던 m7+m8+v6 블렌드 KD와의 구조적 차이: 그건 OOF-스티치(fold-leak + 2/3-데이터 약체 fold 모델), 이번 건 전부 full-refit forward라 해당 경로 부재. 리스크(사전 등록): HCX teacher가 학생과 동일 seed/레시피/베이스의 born-again 레그라 한계 정보가 작을 수 있고, M8 신호가 50%로 희석됨 — 판정은 matched-seed42 Public 1슬롯, vs 0.7891. kd_rdrop 리핏 종료 후 레인 B에 순차 런칭 예정.

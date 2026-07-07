@@ -12,7 +12,7 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
 from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample
 from train import (
@@ -361,7 +361,7 @@ def evaluate(model, tokenizer, encoded_features, lengths, y, indices, args, devi
             bucket_multiplier=args.eval_bucket_multiplier,
         ):
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
-            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.float16):
+            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
                 logits = model(**encoded).logits.float()
             logits_parts.append(logits.detach().cpu())
             ordered_indices.extend(batch_idx)
@@ -397,12 +397,35 @@ def build_teacher_targets(samples, args):
 
 
 def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device, teacher=None):
-    model = AutoModelForSequenceClassification.from_pretrained(
-        args.base_model,
+    label_kwargs = dict(
         num_labels=len(ALL_CLASSES),
         id2label={i: label for i, label in enumerate(ALL_CLASSES)},
         label2id={label: i for i, label in enumerate(ALL_CLASSES)},
-    ).to(device)
+    )
+    # bf16: no fp32 master copy — halves weight+grad memory (9B: 90GB -> ~54GB
+    # with adamw8bit), the only way 9B-class full FT fits a single 80-96GB GPU
+    dtype_kwargs = {"torch_dtype": torch.bfloat16} if args.bf16 else {}
+    if args.dropout is not None:
+        # decoder configs (Llama/Qwen family) default all dropout to 0.0, which
+        # makes R-Drop's two passes identical — override before weight load
+        config = AutoConfig.from_pretrained(args.base_model, **label_kwargs)
+        touched = []
+        for attr in (
+            "attention_dropout",
+            "hidden_dropout",
+            "hidden_dropout_prob",
+            "attention_probs_dropout_prob",
+            "classifier_dropout",
+            "resid_pdrop",
+            "embd_pdrop",
+        ):
+            if hasattr(config, attr):
+                setattr(config, attr, args.dropout)
+                touched.append(attr)
+        print(f"dropout override={args.dropout} on: {', '.join(touched) if touched else 'NO MATCHING CONFIG ATTRS'}")
+        model = AutoModelForSequenceClassification.from_pretrained(args.base_model, config=config, **dtype_kwargs).to(device)
+    else:
+        model = AutoModelForSequenceClassification.from_pretrained(args.base_model, **label_kwargs, **dtype_kwargs).to(device)
     if model.config.pad_token_id is None:
         # decoder classifiers (Qwen2ForSequenceClassification) refuse batch>1 without it;
         # persisted into config.json by save_pretrained for inference/quantize
@@ -422,7 +445,8 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
     total_steps = math.ceil(batches_per_epoch / accum) * args.epochs
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    # bf16 needs no loss scaling; a disabled scaler passes scale/unscale_/step through
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda" and not args.bf16)
     rng = random.Random(args.seed)
 
     def optimizer_step():
@@ -433,10 +457,35 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
+    def per_row_loss(logits, labels, batch_idx):
+        loss_values = F.cross_entropy(
+            logits.float(),
+            labels,
+            weight=weights,
+            label_smoothing=args.label_smoothing,
+            reduction="none",
+        )
+        if args.loss == "focal":
+            # focal factor from the unsmoothed target probability; class
+            # weights and label smoothing stay inside the CE term so
+            # ce -> focal changes exactly one thing
+            pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
+            loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
+        if teacher is not None:
+            temp = args.distill_temp
+            teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
+            student_lp = F.log_softmax(logits.float() / temp, dim=-1)
+            kd = F.kl_div(student_lp, teacher_p, reduction="none").sum(-1) * (temp * temp)
+            # per-row alpha: replay/unmatched rows (mask 0) keep the pure hard-label loss
+            alpha = args.distill_alpha * teacher[1][batch_idx].to(device)
+            loss_values = (1.0 - alpha) * loss_values + alpha * kd
+        return loss_values
+
     optimizer.zero_grad(set_to_none=True)
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
+        total_kl = 0.0
         seen = 0
         step = 0
         for step, batch_idx in enumerate(
@@ -446,29 +495,21 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             labels = torch.tensor([y[i] for i in batch_idx], dtype=torch.long, device=device)
             weights_for_samples = torch.tensor([sample_weights[i] for i in batch_idx], dtype=torch.float32, device=device)
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
-            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.float16):
+            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
                 logits = model(**encoded).logits
-                loss_values = F.cross_entropy(
-                    logits.float(),
-                    labels,
-                    weight=weights,
-                    label_smoothing=args.label_smoothing,
-                    reduction="none",
-                )
-                if args.loss == "focal":
-                    # focal factor from the unsmoothed target probability; class
-                    # weights and label smoothing stay inside the CE term so
-                    # ce -> focal changes exactly one thing
-                    pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
-                    loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
-                if teacher is not None:
-                    temp = args.distill_temp
-                    teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
-                    student_lp = F.log_softmax(logits.float() / temp, dim=-1)
-                    kd = F.kl_div(student_lp, teacher_p, reduction="none").sum(-1) * (temp * temp)
-                    # per-row alpha: replay/unmatched rows (mask 0) keep the pure hard-label loss
-                    alpha = args.distill_alpha * teacher[1][batch_idx].to(device)
-                    loss_values = (1.0 - alpha) * loss_values + alpha * kd
+                loss_values = per_row_loss(logits, labels, batch_idx)
+                if args.rdrop_alpha > 0:
+                    # R-Drop (arXiv:2106.14448): second dropout-perturbed pass +
+                    # symmetric KL; needs --dropout > 0 or both passes are identical
+                    logits2 = model(**encoded).logits
+                    lp1 = F.log_softmax(logits.float(), dim=-1)
+                    lp2 = F.log_softmax(logits2.float(), dim=-1)
+                    rdrop_kl = 0.5 * (
+                        F.kl_div(lp1, lp2.exp(), reduction="none").sum(-1)
+                        + F.kl_div(lp2, lp1.exp(), reduction="none").sum(-1)
+                    )
+                    loss_values = 0.5 * (loss_values + per_row_loss(logits2, labels, batch_idx)) + args.rdrop_alpha * rdrop_kl
+                    total_kl += float(rdrop_kl.detach().mean().cpu()) * len(batch_idx)
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
             scaler.scale(loss / accum).backward()
             if step % accum == 0:
@@ -476,12 +517,14 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             total_loss += float(loss.detach().cpu()) * len(batch_idx)
             seen += len(batch_idx)
             if args.log_every and step % args.log_every == 0:
-                print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}")
+                kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
+                print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}{kl_note}")
         if step % accum != 0:
             optimizer_step()
         if device.type == "cuda":
             torch.cuda.synchronize()
-        print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}")
+        kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
+        print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}{kl_note}")
         if args.epoch_checkpoint_dir:
             try:
                 save_epoch_checkpoint(model, tokenizer, args.epoch_checkpoint_dir, epoch)
@@ -1085,6 +1128,14 @@ def parse_args():
     parser.add_argument("--distill-temp", type=float, default=2.0)
     parser.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
                         help="adamw8bit (bitsandbytes) fits 0.6B training in 8GB VRAM")
+    parser.add_argument("--bf16", action="store_true",
+                        help="load weights and autocast in bfloat16, GradScaler off (no fp32 master "
+                             "copy — required for 9B-class full FT on a single 80-96GB GPU; "
+                             "default fp32+fp16-autocast path is unchanged without this flag)")
+    parser.add_argument("--rdrop-alpha", type=float, default=0.0,
+                        help="R-Drop: weight of the symmetric KL between two dropout-perturbed forward passes (0 disables; ~2x train time when on)")
+    parser.add_argument("--dropout", type=float, default=None,
+                        help="override model dropout probs (attention_dropout etc.) at load; decoder configs default to 0.0, required for --rdrop-alpha to bite")
     parser.add_argument("--class-weight-power", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -1124,7 +1175,13 @@ def parse_args():
     parser.add_argument("--save-val-logits", dest="save_val_logits", action="store_true", default=True)
     parser.add_argument("--no-save-val-logits", dest="save_val_logits", action="store_false")
     parser.add_argument("--logits-dir", default="experiments/logits")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.rdrop_alpha > 0 and not args.dropout:
+        parser.error(
+            "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "
+            "to 0.0, so both R-Drop passes would be identical (KL=0) at 2x train cost"
+        )
+    return args
 
 
 if __name__ == "__main__":

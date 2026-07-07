@@ -8,14 +8,15 @@ Current score, target, and in-flight state live in the docs below, not here.
 `leaderboard_calibration.md` (local↔Public mapping) → `research_log.md`
 (decision log) → `experiments/results.csv` (all runs; the `train_command` column
 holds the exact command per run). Cloud GPU work: `colab/COLAB.md`. Current
-execution handoff, when present: `handoff_20260706_gpu_plan.md`.
+execution handoff, when present: `handoff_20260707_m9_qwen35_9b_teacher.md`
+(M9 teacher-scale lane; `handoff_20260706_gpu_plan.md` is the superseded
+07-06 plan, kept for history).
 
 ## Task and evaluation environment
 
 Dacon 236694: predict the next coding-agent action (14 classes) from
 `current_prompt`/`history`/`session_meta`; metric Macro-F1. The server runs
-`python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min
-(not binding in practice — every submission to date ran < 1 min), pip install
+`python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min, pip install
 ≤ 10 min, submission zip ≤ 1 GB.
 
 ## Submission contract

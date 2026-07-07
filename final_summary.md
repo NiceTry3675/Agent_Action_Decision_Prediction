@@ -2,9 +2,48 @@
 
 ## Current Public Baseline
 
-- Public Macro-F1: `0.7852`
-- Package: `submissions/hcx05b_refit.zip`
-- Model path: `script.py` + `model/` (int8 encoder-only, no sparse leg)
+- Public Macro-F1: `0.7891`
+- Package: `submissions/kd_m8_refit.zip` (512 MB) — HCX-0.5B student, KD from
+  M8 (Qwen3.5-0.8B) alone as teacher. Base training recipe is identical to
+  `hcx05b_refit_s42` (see "Previous baseline" below: `current_v1`, len384,
+  ep3, lr 2e-5, batch16, grad-accum1, gradient-checkpointing,
+  class-weight-power 0.5, label-smoothing 0.02, focal g2.0, replay last1
+  cap10000, seed42), with KD from M8 added on top; no rule-boosts layer; KD
+  alpha=0.5, temperature=3. Teacher logits are
+  `experiments/logits/m8_qwen35_refit_train70k_fp16.pt`/`.npz` — verified
+  locally: M8's **full-refit** model's own forward pass over all 70000 train
+  rows (fp16), not a 3-fold OOF stitch. **Weights absorbed 2026-07-07**
+  (teammate handoff): fp16 original at
+  `experiments/incoming/models/kd_m8_refit/`, deployed int8 at
+  `experiments/incoming/models/kd_m8_refit_int8/`; verified the deployed int8
+  is bit-exactly derived from the fp16 checkpoint (all 219 tensors,
+  int8-rowwise-v1 re-quantization match; fp16 sha256 `9e684faa...b1842`).
+  Repackaged through this repo's own `package_submission.py`, offline CPU
+  smoke passed — this pack is now the repo's directly-reproducible best.
+  `class_bias` is all zeros (final refit, never tuned) — deployed as-is; do
+  not inject a bias without a separate Public validation.
+- Server inference `6:32/10:00`, essentially unchanged from the non-KD HCX
+  pack's `6:29` (KD only changes the training loss, not architecture/length).
+- +0.0038 vs the non-KD HCX-0.5B baseline (`0.7852`) — above the 0.002 noise
+  floor, the largest single jump since the M7 breakthrough (`0.780`).
+- Contrasts with the earlier m7+m8+v6-blend KD attempt on HCX, which
+  *reversed* on Public (see KD-fold-leak finding below) — single-teacher KD
+  from M8 alone transferred positively instead. Structural difference now
+  confirmed: this teacher is one full-refit model's train-set predictions,
+  not a per-fold OOF ensemble, so there's no cross-fold path for a student's
+  held-out val rows to have leaked into the teacher's own training data the
+  way the m7+m8+v6 blend had. M8's predictions being near one-hot (memorized
+  on its own training rows) still limits the "dark knowledge" per row, but
+  the KD signal apparently still helped net.
+- **Seed-variance calibration point:** a same-recipe non-KD HCX-0.5B refit
+  with only the seed changed (42 -> 777, `hcx05_s777`) scored Public `0.765`
+  — `-0.0202` vs the seed42 instance, roughly **2x this repo's previously
+  calibrated seed-noise band (±0.007-0.011)**. HCX-0.5B's seed variance on
+  this recipe may genuinely be wider than prior lines — see
+  `leaderboard_calibration.md` 2026-07-07.
+
+### Previous baseline: HCX-0.5B refit, non-KD (`hcx05b_refit.zip`, `0.7852`)
+
 - Baseline stack: **champion recipe unchanged** (`current_v1` serializer,
   focal g2.0, ep3, replay last1 cap10000, len384) — only the base model
   changed, from `Qwen/Qwen3-0.6B` to `naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B`
@@ -60,13 +99,29 @@ The decoder-family line (Qwen2.5-0.5B -> Qwen3-0.6B -> HCX-0.5B) replaced the
 encoder-only XLM-R line in four days: XLM-R replay+rules+sparse `0.743` ->
 Qwen2.5-0.5B ep3 refit `0.770` -> Qwen3-0.6B ep3 refit (OOF bias/rules, not
 val-tuning) `0.780` -> Qwen3-0.6B **distilled** from an OOF-diversity teacher
-blend `0.782` -> **HCX-0.5B refit, same champion recipe, base-model swap
-only** `0.7852` (current best). Both Qwen3-0.6B packs remain valid fallbacks
-(`submissions/m7_qwen3_refit.zip`, `submissions/kd_m8blend_qwen3_refit.zip`).
+blend `0.782` -> HCX-0.5B refit, same champion recipe, base-model swap only
+`0.7852` -> **HCX-0.5B distilled from the M8 full-refit teacher**
+`0.7891` (current best, `kd_m8_refit.zip`). The non-KD HCX pack and both
+Qwen3-0.6B packs remain valid fallbacks (`submissions/hcx05b_refit.zip`,
+`submissions/m7_qwen3_refit.zip`, `submissions/kd_m8blend_qwen3_refit.zip`).
 
 ## Model Configuration
 
-### Current best: HCX-0.5B refit (`hcx05b_refit.zip`, `0.7852`)
+### Current best: HCX-0.5B KD refit (`kd_m8_refit.zip`, `0.7891`)
+
+- Identical to the `hcx05b_refit` configuration below (base model, serializer,
+  length, epochs, regularization, replay) — the only change is the added KD
+  term in the training loss:
+  `--distill-logits m8_qwen35_refit_train70k_fp16.pt --distill-alpha 0.5
+  --distill-temp 3.0` (teacher = M8 Qwen3.5-0.8B full-refit forward pass over
+  all 70000 train rows; replay rows keep pure hard-label loss by construction)
+- Inference add-ons: none — `class_bias` all zeros (final refit, untuned), no
+  rule boosts. This exact configuration scored Public `0.7891` / `6:32`.
+- Artifacts: int8-codec HF weights (512 MB package); fp16 original preserved
+  at `experiments/incoming/models/kd_m8_refit/` for weight-space work
+  (soup/SWA/best-of-N need fp16)
+
+### Prior pack: HCX-0.5B non-KD refit (`hcx05b_refit.zip`, `0.7852`, fallback)
 
 - Base model: `naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B` (Llama-
   family decoder, `AutoModelForSequenceClassification`, same generic pad-token
@@ -125,8 +180,9 @@ only** `0.7852` (current best). Both Qwen3-0.6B packs remain valid fallbacks
 | Qwen2.5-0.5B ep3 FULL-DATA refit (decoder) | n/a (refit) | n/a | n/a | `0.770` | Superseded; decoder line confirmed. |
 | Qwen3-0.6B ep3 len416 FULL-DATA refit + 3-fold OOF bias/rules | n/a (refit) | `0.755929` | `0.758499` -> `0.767129` w/ rules | `0.780` | Superseded; kept as fallback pack. |
 | Qwen3-0.6B ep3 len416 FULL-DATA refit, KD from OOF-blend teacher (M7+M8+v6) + 3-fold OOF bias/rules | n/a (refit) | `0.782848` | `0.783540` -> `0.786984` w/ rules | `0.782` | Superseded by HCX-0.5B below; kept as fallback pack. Rules-layer transfer was negative this round (OOF rules->Public: -0.005 vs M7's +0.013) — see `leaderboard_calibration.md`. |
-| HyperCLOVAX-SEED-0.5B (HCX-0.5B), champion recipe unchanged, base-model swap only, len384 | fixed 2stage `0.769796` | n/a | n/a | `0.7852` | **Current baseline.** +0.0045 vs prior `0.780` baseline, +0.0032 vs the KD pack. |
+| HyperCLOVAX-SEED-0.5B (HCX-0.5B), champion recipe unchanged, base-model swap only, len384 | fixed 2stage `0.769796` | n/a | n/a | `0.7852` | Superseded by `kd_m8_refit` below; kept as the non-KD fallback pack (`hcx05b_refit.zip`). |
 | HCX-0.5B + KD from OOF-blend teacher (M7+M8+v6), matched seed42 | fixed screen raw `0.7820` (mildly optimistic, see KD-fold-leak finding above) | n/a | n/a | `0.7827` | **Rejected**: -0.0025 vs non-KD HCX at the same seed, a clean matched-pair result. Do not repeat KD+rules on a same-fold-split teacher without the rule above. |
+| `kd_m8_refit` (was `kd_hcx_m8`): HCX-0.5B + KD from M8 (Qwen3.5-0.8B) alone as teacher (`m8_qwen35_refit_train70k_fp16.pt`, full-refit not OOF), base recipe = `hcx05b_refit_s42`, alpha=0.5 temp=3, no rules layer | n/a (refit; matched-recipe seed42 fixed screen raw `0.783852` / 2stage `0.787801` — mildly optimistic, full-refit teacher saw val rows) | n/a | n/a | `0.7891` | **Current baseline**, absorbed 2026-07-07 and repackaged as `submissions/kd_m8_refit.zip`. +0.0039 vs non-KD HCX-0.5B, largest single jump since M7. |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local
@@ -134,9 +190,10 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Package And Smoke
 
-- `hcx05b_refit.zip` (current best): 512 MB
-- `model/`: int8 encoder-only, 512 MB weights (HCX-0.5B)
-- Fallbacks: `kd_m8blend_qwen3_refit.zip` (515 MB, `0.782`), `m7_qwen3_refit.zip`
+- `kd_m8_refit.zip` (current best): 512 MB
+- `model/`: int8 encoder-only, 512 MB weights (HCX-0.5B, KD-trained)
+- Fallbacks: `hcx05b_refit.zip` (512 MB, `0.7852`),
+  `kd_m8blend_qwen3_refit.zip` (515 MB, `0.782`), `m7_qwen3_refit.zip`
   (539 MB, `0.780`)
 - Archive root: `script.py`, `requirements.txt`, `model/`
 - Offline zip-extracted smoke passed with `TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1`
@@ -161,10 +218,12 @@ fixed/OOF screens (see KD-fold-leak finding above).
   either build the teacher OOF on a different fold seed/split than the
   student's own OOF, skip rules-retuning on the KD student (bias-only tune),
   or decide purely via matched-seed Public submissions.
-- HCX x Qwen3-0.6B logit-blend ensemble (fixed 2stage `0.7725`) is a real
-  diversity signal parked on timing — revisit once either leg's inference
-  cost drops (e.g. via the cascade infra already built in this repo,
-  `script.py`'s `meta.cascade` routing).
+- HCX x Qwen3-0.6B logit-blend diversity does **not** survive KD from M8: a
+  matched-seed42 held-out screen (2026-07-07) measured the kd_m8_refit student
+  x m7 blend at `-0.0027` (w50) vs `+0.0086` for the non-KD HCX x m7 pair —
+  KD from a Qwen-family teacher absorbed the cross-family signal. The
+  cascade-on-kd-baseline lane is closed; do not revisit without a
+  non-Qwen-family second leg showing a fresh blend gain.
 - Make any new promotion decision from OOF logits, not fixed split alone.
 - Prioritize weak-class gains for `list_directory`, `read_file`, `grep_search`, `web_search`, and `glob_pattern`.
 - Keep rule and sparse ensemble changes only if they improve OOF after 2-stage bias tuning.
