@@ -48,8 +48,9 @@ def main():
         torch_dtype=dtype,
         **label_kwargs,
     )
-    if model.config.pad_token_id is None:
-        model.config.pad_token_id = tokenizer.pad_token_id
+    for config in (getattr(model, "config", None), getattr(getattr(model, "config", None), "text_config", None)):
+        if config is not None and (not hasattr(config, "pad_token_id") or getattr(config, "pad_token_id") is None):
+            setattr(config, "pad_token_id", tokenizer.pad_token_id)
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
     model.to(device)

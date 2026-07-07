@@ -426,10 +426,10 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         model = AutoModelForSequenceClassification.from_pretrained(args.base_model, config=config, **dtype_kwargs).to(device)
     else:
         model = AutoModelForSequenceClassification.from_pretrained(args.base_model, **label_kwargs, **dtype_kwargs).to(device)
-    if model.config.pad_token_id is None:
+    if not hasattr(model.config, "pad_token_id") or model.config.pad_token_id is None:
         # decoder classifiers (Qwen2ForSequenceClassification) refuse batch>1 without it;
         # persisted into config.json by save_pretrained for inference/quantize
-        model.config.pad_token_id = tokenizer.pad_token_id
+        ensure_model_pad_token(model, tokenizer.pad_token_id)
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
 
@@ -612,6 +612,16 @@ def load_tokenizer_for_args(args):
         # decoder checkpoints (Qwen etc.) ship without a pad token; tokenizer.pad() needs one
         tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
+
+
+def ensure_model_pad_token(model, pad_token_id):
+    """Set pad_token_id on top-level and nested text configs when present."""
+    configs = [getattr(model, "config", None), getattr(getattr(model, "config", None), "text_config", None)]
+    for config in configs:
+        if config is None:
+            continue
+        if not hasattr(config, "pad_token_id") or getattr(config, "pad_token_id") is None:
+            setattr(config, "pad_token_id", pad_token_id)
 
 
 def load_class_bias_artifact(path):
@@ -1107,7 +1117,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)

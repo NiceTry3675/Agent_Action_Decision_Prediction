@@ -7,10 +7,7 @@ Current score, target, and in-flight state live in the docs below, not here.
 `final_summary.md` (submitted package — source of truth) →
 `leaderboard_calibration.md` (local↔Public mapping) → `research_log.md`
 (decision log) → `experiments/results.csv` (all runs; the `train_command` column
-holds the exact command per run). Cloud GPU work: `colab/COLAB.md`. Current
-execution handoff, when present: `handoff_20260707_m9_qwen35_9b_teacher.md`
-(M9 teacher-scale lane; `handoff_20260706_gpu_plan.md` is the superseded
-07-06 plan, kept for history).
+holds the exact command per run). Cloud GPU work: `colab/COLAB.md`.
 
 ## Task and evaluation environment
 

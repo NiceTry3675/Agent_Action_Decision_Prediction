@@ -535,6 +535,109 @@ def serialize_transformer_sample_current_v6e(sample):
     return "\n".join(parts)
 
 
+# NOTE: no `retry`/`재시도` here — in this corpus those overwhelmingly mean
+# "implement retry logic" (code change), not "run it again" (measured 2026-07-08).
+V7_RERUN_RE = re.compile(
+    r"\b(again|rerun|re-run|once more|one more time)\b"
+    r"|다시|한번 더|한 번 더|한번만 더|한 번만 더|방금 그|아까 그|재실행|또 돌려|또 실행"
+)
+V7_NUM_RE = re.compile(r"\d+")
+
+
+def v7_result_bucket(result):
+    text = safe_text(result)
+    if not text:
+        return "na"
+    low = text.lower()
+    if "exit=" in low:
+        return "exit0" if "exit=0" in low else "exitN"
+    match = V7_NUM_RE.search(low)
+    if match:
+        count = int(match.group())
+        if count == 0:
+            return "zero"
+        if count == 1:
+            return "one"
+        if count <= 5:
+            return "few"
+        return "many"
+    if any(word in low for word in ("ok", "pass", "clean", "no issues")):
+        return "ok"
+    if any(word in low for word in ("fail", "error", "conflict")):
+        return "fail"
+    return "other"
+
+
+def v7_target_anchor(prompt, ptype):
+    """First concrete target mention for the given specificity class, so the
+    state line carries a redundant anchor of the load-bearing prompt token."""
+    text = safe_text(prompt)
+    if ptype in ("exact", "basename", "glob"):
+        match = PATH_MENTION_RE.search(text)
+        if match:
+            return match.group(0)[:40]
+    if ptype == "symbol":
+        for token in TOKEN_RE.findall(text):
+            if "_" in token or re.search(r"[a-z][A-Z]", token) or re.search(r"\w+\(\)", token):
+                return token[:40]
+    return ""
+
+
+def serialize_transformer_sample_current_v7(sample):
+    """current_v1 plus a derived-state line right after the current line and a
+    compact echo of it as the final line. Rationale (attention-sink probe,
+    diag_serializer_headroom_20260707.json): the early copy gets causal
+    exposure to every later token and survives truncation; the echo sits in
+    the classification token's local window (last-40 tokens receive 0.263 of
+    its non-sink mass). Normalized last/prev action:result-bucket, prompt
+    target-specificity with a literal anchor, rerun marker. Every current_v1
+    line is preserved byte-identical."""
+    base = serialize_transformer_sample_current(sample)
+    history = sample.get("history") or []
+    action_names = []
+    result_summaries = []
+    for event in history:
+        if event.get("role") == "assistant_action":
+            action_names.append(safe_text(event.get("name")))
+            result_summaries.append(safe_text(event.get("result_summary")))
+    last_action = action_names[-1] if action_names else "none"
+    prev_action = action_names[-2] if len(action_names) > 1 else "none"
+    last_bucket = v7_result_bucket(result_summaries[-1]) if result_summaries else "na"
+    prev_bucket = v7_result_bucket(result_summaries[-2]) if len(result_summaries) > 1 else "na"
+    prompt = safe_text(sample.get("current_prompt", ""))
+    rerun = "y" if V7_RERUN_RE.search(prompt.lower()) else "n"
+    ptype = path_specificity_token(prompt)
+    anchor = v7_target_anchor(prompt, ptype)
+    ptype_bit = f"ptype={ptype}:{anchor}" if anchor else f"ptype={ptype}"
+    state = (
+        f"state: last={last_action}:{last_bucket} prev={prev_action}:{prev_bucket} "
+        f"{ptype_bit} rerun={rerun}"
+    )
+    echo = f"state2: last={last_action}:{last_bucket} {ptype_bit} rerun={rerun}"
+    lines = base.split("\n")
+    return "\n".join([lines[0], state] + lines[1:] + [echo])
+
+
+# 16 identical '$$$$' tokens on the HCX tokenizer: constant-K/V register slots
+# (dedicated attention dump sites; ViT-register analogue). Placed early so
+# every later query can use them and truncation can never drop them.
+V7R_REGISTER_LINE = "reg: " + "$" * 64
+
+
+def serialize_transformer_sample_current_v7r(sample):
+    """current_v7 plus a constant register line right after the state line.
+
+    Register rationale (filler_substitution_probe_20260708): a $-wall
+    mechanically absorbs the same attention mass as natural low-info tokens
+    but with CONSTANT key/value vectors, so heads that dump attention there
+    inject a learnable constant bias instead of row-varying noise. Whether
+    fine-tuning learns to exploit this is the open question this variant
+    screens; single-variable increment over current_v7."""
+    base = serialize_transformer_sample_current_v7(sample)
+    lines = base.split("\n")
+    return "\n".join(lines[:2] + [V7R_REGISTER_LINE] + lines[2:])
+
+
 def serialize_transformer_sample_current_v2(sample):
     """Priority-ordered rewrite of current_v1: highest-signal fields first so
     right-truncation drops the oldest history pairs instead of args/results,
@@ -832,6 +935,10 @@ def serialize_transformer_sample(sample, serializer_name="current_v1"):
         return serialize_transformer_sample_current_v6(sample)
     if serializer_name == "current_v6e":
         return serialize_transformer_sample_current_v6e(sample)
+    if serializer_name == "current_v7":
+        return serialize_transformer_sample_current_v7(sample)
+    if serializer_name == "current_v7r":
+        return serialize_transformer_sample_current_v7r(sample)
     if serializer_name == "state_v2":
         return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":
