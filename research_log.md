@@ -303,3 +303,32 @@ rules는 학생 자체 OOF로 재튜닝)이 Public 후보. 병행: m7+m8 캐스�
 - Evidence: Qwen3-0.6B 학생 + OOF 블렌드 교사(m7+m8+v6, 2stage 0.7728, alpha 0.5 T2.0), 챔피언 v1 레시피 fixed 스크린 — raw `0.780809` / bias `0.783273` / 2stage `0.784007`. v1 앵커 `0.770875` 대비 **+0.0131**, M8 0.8B 스크린(0.7804)도 상회. 약클래스 전반 상승: list 0.5106, read 0.6054, grep 0.6254, ask 0.6875. 행: results.csv `20260706_164744_..._kd_m8blend_qwen3_screen`.
 - Caveat(사전 등록): 교사 폴드모델이 스크린 val 세션을 학습에 봤으므로 수치 일부는 낙관 가능. 학생 OOF도 같은 구조의 경미한 낙관을 공유(교사·학생 폴드 분할 동일) — 3중 중첩 없이 불가피한 표준 스태킹 리스크. 최종 판정은 Public.
 - Decision: 게이트 통과 → 풀체인 진행. KD 학생 3-fold OOF(레인 A, chain_runs.py로 체이닝) → aggregate/rules(로컬 단독) → KD refit(--final-only, 아티팩트 주입) → int8 패키징 → Public. 부수 확인: KD 인프라(teacher OOF 정렬·replay 제외)와 8bit/ckpt 패치가 실전 검증됨.
+
+### 2026-07-07 - KD refit 완료, int8 코덱 손실 소폭 증가 (기록용, 배포 진행)
+
+- Evidence: `kd_m8blend_qwen3_refit` int8 검증(1024 샘플) — weight mean_rel error 0.952% / logit max_abs 0.069 / **argmax agreement 99.12%** (1024 샘플 결과). M6/M7 전례 99.61%(1024/2000 샘플) 대비 소폭 열화 — KD 학습이 만든 weight 분포가 row-wise int8 코덱에 약간 더 민감한 것으로 추정.
+- Decision: 하드 게이트 문서화 이력 없음(과거 수치는 관측치이지 명시적 컷오프 아님); 절대 영향은 1024행 중 9행 argmax 반전(0.88%)으로 작음 → 패키징 계속 진행. 리스크로 기록만.
+
+### 2026-07-07 - KD refit submitted: Public 0.782, new baseline (+0.002 vs M7)
+
+- Evidence: `kd_m8blend_qwen3_refit.zip` Public **0.782**, runtime **8:54/10:00**. OOF chain was raw 0.782848 / 2stage 0.783540 / rules 0.786984.
+- Transfer analysis: raw OOF (0.782848) landed almost exactly on Public (-0.0008) — the strongest raw->Public match seen this competition. But the 2-stage/rules layers gave **negative** transfer this round: rules 0.786984 -> Public 0.782 is -0.005, inverted from M7's rules 0.767129 -> Public 0.780 (+0.013).
+- Interpretation: matches the pre-registered caveat exactly — teacher OOF (m7+m8+v6 fold models) and student OOF share the identical 3-fold split, so bias/rules tuning saw an optimistic surface (student predictions on val folds benefit from teacher signal computed on models that never saw those same folds as teachers, but the coincidence of split boundaries still correlates residual errors across teacher and student folds). The optimism partially reversed on Public. Net effect still positive because the raw KD signal itself is large (+0.027 OOF raw vs M7).
+- Decision: **New baseline.** `final_summary.md`, `leaderboard_calibration.md` updated. M7 pack (`m7_qwen3_refit.zip`, Public 0.780) kept as fallback, not deleted. Do not treat future same-split KD+rules combinations as a free +0.02 lever — the rules layer specifically needs either a held-out slice for the student or discounted expectations when teacher/student share a fold split.
+- Next: if another KD round is attempted, prefer a teacher OOF built on a *different* fold seed/split than the student's OOF, or skip rules-retuning on KD-student OOF and reuse a bias-only tune to reduce the optimistic-surface risk.
+
+### 2026-07-07 - 신기록: HCX-0.5B refit Public 0.7852; KD-fold-leak 룰 확정
+
+- Why: 챔피언 레시피(current_v1, focal, ep3, replay last1 cap10000, len384)에서 base model만 Qwen3-0.6B→`naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B`(HCX-0.5B, 0.5B)로 교체해 제출. 같은 blend 교사(m7+m8+v6, `export_teacher_logits.py`/`colab/run_teacher_export.py`로 export)로 HCX student KD도 병행 실험.
+- Evidence: HCX-0.5B non-KD refit — fixed 2stage 0.769796 → **Public 0.7852**, 추론 6:29/10:00 (Qwen3-0.6B 라인 8:55 대비 -2:26, 주원인은 HCX 토크나이저 자체가 동일 current_v1 텍스트에서 ~11% 적은 토큰, mean 200 vs Qwen 226, len384 절단 사실상 0). 이전 최고(0.782, KD Qwen3-0.6B) 대비 +0.0032, M7(0.780) 대비 +0.0045(노이즈 룰 0.002 초과, 유의미). rules 레이어 없음(bias만). HCX vs Qwen3-0.6B 동일 fixed 14001행 비교: 총점 동급이나 클래스별 상보적 — HCX 우세(plan_task +0.037, read_file +0.028, list_directory +0.025, web_search +0.010), Qwen 우세(ask_user +0.041, HCX recall 0.56로 약함). 오류중첩 82%, 상호구제 608/531건, 로짓블렌드 fixed 2stage 0.7725(+0.0027) — 다양성 실재하나 2모델 배포는 타이밍 초과로 미채택.
+- Evidence(KD-fold-leak, 핵심): 같은 blend 교사로 HCX student KD를 seed42 매치드로 실행 — 로컬 스크린은 +0.0122(raw 0.7697→0.7820, ask_user +0.075)로 대박처럼 보였으나 **동일 seed Public은 0.7827로 non-KD HCX(0.7852)보다 -0.0025**. 원인: 교사 블렌드가 fold별 OOF 예측인데 각 fold 모델은 train의 ~2/3을 학습 → 전체적으로 보면 학생의 로컬 val 행이 교사 학습데이터에서 완전히 배제된 게 아니라서, KD 타깃을 통해 val 정보가 간접 흡수됨. 이게 **로컬 fixed/OOF 스크린만 인플레이션시키고 Public엔 반영 안 됨.**
+- Decision: 이 발견은 우리 자신의 2026-07-07 KD 엔트리(rules 레이어 OOF→Public 전이 -0.005)와 방향이 같고, 매치드시드라 훨씬 깨끗한 증거임 — 두 관측이 서로를 확증. **공통 룰로 채택: KD/스태킹 계열은 로컬 fixed/OOF 스크린으로 승격 판단 금지, matched-seed Public 제출로만 판정.** 교사 export 자체는 계속 유효(판정 방법만 교체). `final_summary.md`(Current Public Baseline을 HCX-0.5B 0.7852로 갱신), `leaderboard_calibration.md`(2행 + 방법론 기록) 갱신 완료.
+
+### 2026-07-07 - HCX-0.5B 팩 흡수: 이 repo에서 직접 재현·검증 가능한 로컬 팩으로 승격
+
+- Why: HCX-0.5B refit 산출물(`handoff_hcx_0707/`: hf_model 가중치, hf_meta.json, fixed-val 로짓)을 이 repo의 정식 경로로 흡수해 독립 검증하고, 우리 자체 서브미션 파이프라인(`package_submission.py`, offline smoke)으로 재포장.
+- Evidence: 인계받은 `hf_meta.json`의 `class_bias`가 전부 0으로 비어있었음(final-refit 자체는 val split이 없어 별도 아티팩트에서 주입해야 하는데, 그 주입 단계가 handoff엔 빠져 있었음) — 첨부된 `hcx_screen_val_logits.pt`(fixed seed42, 14001행, raw 0.765997→old-bias 0.768743→2stage 0.769796)에서 tuned class_bias를 추출해 주입. rule_boosts 레이어는 원래 없음(레시피에 없었음, 정상).
+- 작업: `experiments/incoming/models/hcx05b_refit/`로 복사 + bias 주입, val 로짓은 `experiments/logits/20260707_hcx05b_len384_screen_seed42_val_logits.pt`로 명명 이관, `experiments/results.csv`에 fixed-screen 행(`20260707_hcx05b_len384_screen_seed42`)과 refit 행(`20260707_hcx05b_refit`) 등록, `experiments/artifacts/20260707_hcx05b_refit_metrics.json`에 레시피·스코어·아키텍처 비교·KD 결과 종합 기록. `package_submission.py --requirements requirements_qwen3.txt`로 `submissions/hcx05b_refit.zip`(512MB) 재포장 — HCX는 Llama-family라 서버 stock 4.46.3에서도 로드되지만 기존 오버라이드를 그대로 사용(무해).
+- 검증: 클린 추출 CPU 오프라인 스모크 전 항목 통과(컬럼/ID순서/라벨 유효성/int8 로드).
+- Decision: `submissions/hcx05b_refit.zip`이 이제 이 repo가 직접 재현·재검증 가능한 현재 baseline. `final_summary.md`/`leaderboard_calibration.md`를 이 팩 기준으로 갱신(개인·채널 언급은 문서에서 제거, 기술적 내용만 유지 — 원본 handoff 자료는 `handoff_hcx_0707/`에 untracked로 보존).
+- Next: HCX-0.5B 위에 OOF rule-boosts 레이어(M7/KD와 동일 파이프라인) 튜닝이 가장 자연스러운 다음 증분. KD 재시도 시엔 위 KD-fold-leak 룰(matched-seed Public 판정, 또는 교사 OOF를 학생과 다른 fold 분할로) 적용.
