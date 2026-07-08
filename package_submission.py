@@ -40,6 +40,31 @@ def fail(msg):
     sys.exit(f"package_submission: {msg}")
 
 
+def normalize_hf_configs(model_dir):
+    """Backport newer HF config keys to the 4.51 eval/runtime format.
+
+    Transformers 5.x serializes Llama RoPE as rope_parameters; 4.51 ignores
+    that key and falls back to rope_theta=10000 unless the legacy top-level
+    key is present.
+    """
+    for config_path in sorted(model_dir.glob("hf_model*/config.json")):
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        changed = False
+        rope_params = config.get("rope_parameters") or {}
+        if "rope_theta" in rope_params and "rope_theta" not in config:
+            config["rope_theta"] = rope_params["rope_theta"]
+            changed = True
+        if "rope_theta" in config and "rope_scaling" not in config:
+            config["rope_scaling"] = None
+            changed = True
+        if config.get("dtype") and "torch_dtype" not in config:
+            config["torch_dtype"] = config["dtype"]
+            changed = True
+        if changed:
+            config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"normalized HF config for 4.51 runtime: {config_path.relative_to(model_dir)}")
+
+
 def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
@@ -51,6 +76,7 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
     for enc_dir in sorted(hf_dir.glob("hf_model*")):
         if enc_dir.is_dir():
             shutil.copytree(enc_dir, model_dir / enc_dir.name)
+    normalize_hf_configs(model_dir)
     shutil.copy2(hf_dir / "hf_meta.json", model_dir / "hf_meta.json")
     if sparse_dir is not None:
         sparse_dir = Path(sparse_dir)

@@ -638,6 +638,310 @@ def serialize_transformer_sample_current_v7r(sample):
     return "\n".join(lines[:2] + [V7R_REGISTER_LINE] + lines[2:])
 
 
+# Register-design iteration over current_v7r (screen 20260707_184650 confirmed
+# the register mechanism: +0.004429 vs v7, plan_task recovered; open regression
+# grep_search -0.0101). One design variable per variant, all vs the v7r anchor.
+# Measured HCX merge widths: '$'/'^' 4 chars/token, '&' 2, '░' 1.
+V7RL_REGISTER_LINE = "reg: " + "$" * 16
+V7RM_REGISTER_LINE = "reg: " + "$" * 16 + "^" * 16 + "&" * 8 + "░" * 4
+V7RD_EARLY_LINE = "reg: " + "$" * 32
+V7RD_LATE_LINE = "reg2: " + "$" * 32
+
+
+def serialize_transformer_sample_current_v7rl(sample):
+    """current_v7r with register capacity cut 16 -> 4 slots. Tests whether the
+    grep_search regression is over-absorption (registers stealing attention
+    that discriminative lexical tokens need); ViT-register literature found 4
+    slots sufficient. 12 tokens cheaper than v7r."""
+    base = serialize_transformer_sample_current_v7(sample)
+    lines = base.split("\n")
+    return "\n".join(lines[:2] + [V7RL_REGISTER_LINE] + lines[2:])
+
+
+def serialize_transformer_sample_current_v7rm(sample):
+    """current_v7r at equal capacity (16 slots) but 4 distinct K/V types
+    ($$$$/^^^^/&&/░ x4 each) instead of one. Identical tokens differ only by
+    RoPE phase; distinct embeddings let heads address slot groups separately,
+    matching how ViT registers are distinct learned vectors."""
+    base = serialize_transformer_sample_current_v7(sample)
+    lines = base.split("\n")
+    return "\n".join(lines[:2] + [V7RM_REGISTER_LINE] + lines[2:])
+
+
+def serialize_transformer_sample_current_v7rd(sample):
+    """current_v7r capacity split 8 early + 8 immediately before the tail echo.
+    The classification token's non-sink attention is tail-local (last 40 tokens
+    take 0.263), so trained late registers can serve as its aggregation buffer
+    — placed before the echo so overflow still clips echo tokens first and the
+    classification position stays on signal, never on a register."""
+    base = serialize_transformer_sample_current_v7(sample)
+    lines = base.split("\n")
+    return "\n".join(
+        lines[:2] + [V7RD_EARLY_LINE] + lines[2:-1] + [V7RD_LATE_LINE, lines[-1]]
+    )
+
+
+# --- current_v8: composite redesign (2026-07-08, user-approved single shot) ---
+# Deadline call: verified pieces composed at once instead of one-variable
+# screens. Content -> bins: v6 turn (exact/regime) and language-dominance
+# tokens ride the early v7 state line; only the phase bit is echoed in the
+# tail — the classification window (~40 tokens, 0.263 of non-sink mass) is
+# shared with the newest result_summary, so a fat echo would evict the most
+# action-predictive raw content. Structure -> walls: zero-content numerals
+# AND their field words (xmeta recovery +0.0002) are replaced IN PLACE by
+# constant runs — the C1 substitution probe showed this form is mechanically
+# equivalent to v1's natural filler — with a distinct char per site so heads
+# can address the meta-position and workspace-position slot groups
+# separately. The dedicated reg: line is dropped: the in-place walls carry
+# the register mass (~29 slots), avoiding over-absorption from stacking
+# walls on top of natural noise (v7r's grep_search regression). dirty=/ci=
+# stay: never dropped in any variant, and they are the only workspace signal
+# tied to run_tests/lint.
+V8_META_WALL = "$" * 64  # 16 slots; replaces the whole meta line (tier/lang/turn/budget/elapsed)
+V8_WS_WALL = "^" * 48  # ~13 slots; replaces loc=/langs= inside the workspace line
+
+
+def serialize_transformer_sample_current_v8(sample):
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_names = []
+    last_user = ""
+    result_bits = []
+    arg_bits = []
+    result_summaries = []
+    for event in history:
+        if event.get("role") == "user":
+            last_user = safe_text(event.get("content", ""))
+        elif event.get("role") == "assistant_action":
+            name = safe_text(event.get("name"))
+            action_names.append(name)
+            result = safe_text(event.get("result_summary"))
+            result_summaries.append(result)
+            if result:
+                result_bits.append(f"{name}:{result[:120]}")
+            args = event.get("args") or {}
+            if isinstance(args, dict):
+                for key, value in list(args.items())[:4]:
+                    arg_bits.append(f"{name}.{safe_text(key)}={safe_text(value)[:80]}")
+
+    open_files = ws.get("open_files") or []
+
+    last_action = action_names[-1] if action_names else "none"
+    prev_action = action_names[-2] if len(action_names) > 1 else "none"
+    last_bucket = v7_result_bucket(result_summaries[-1]) if result_summaries else "na"
+    prev_bucket = v7_result_bucket(result_summaries[-2]) if len(result_summaries) > 1 else "na"
+    rerun = "y" if V7_RERUN_RE.search(prompt.lower()) else "n"
+    ptype = path_specificity_token(prompt)
+    anchor = v7_target_anchor(prompt, ptype)
+    ptype_bit = f"ptype={ptype}:{anchor}" if anchor else f"ptype={ptype}"
+    turn_bit = turn_v6_token(sm.get("turn_index"))
+    lang_bit = top_language_dominance_pair(ws)
+
+    parts = [
+        f"current: {prompt}",
+        f"state: last={last_action}:{last_bucket} prev={prev_action}:{prev_bucket} "
+        f"{ptype_bit} rerun={rerun} turn={turn_bit} lang={lang_bit}",
+        V8_META_WALL,
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"{V8_WS_WALL} open={' | '.join(safe_text(x) for x in open_files[:6])}",
+        f"actions: {' > '.join(action_names[-8:]) if action_names else 'none'}",
+    ]
+    if last_user:
+        parts.append(f"last_user: {last_user}")
+    if arg_bits:
+        parts.append(f"args: {' | '.join(arg_bits[-10:])}")
+    if result_bits:
+        parts.append(f"results: {' | '.join(result_bits[-8:])}")
+    parts.append(
+        f"state2: last={last_action}:{last_bucket} {ptype_bit} rerun={rerun} turn={turn_bit}"
+    )
+    return "\n".join(parts)
+
+
+# Satellite cell: does a trained constant buffer INSIDE the classification
+# window help (aggregation-buffer hypothesis) or hurt (untrained tail junk
+# hijacked 0.250 of classification attention pre-training)? 8 slots of '&'
+# (distinct from both wall sites), inserted right before the echo so the
+# final position always stays on signal.
+V8T_TAIL_WALL = "&" * 16  # 8 slots ('&' merges 2 chars/token)
+
+
+def serialize_transformer_sample_current_v8t(sample):
+    lines = serialize_transformer_sample_current_v8(sample).split("\n")
+    return "\n".join(lines[:-1] + [V8T_TAIL_WALL, lines[-1]])
+
+
+# current_v7rb: v7r + v6 phase/language bins appended to the early state line.
+# Functional substitution (2026-07-08 design law): raw turn/langs floats stay
+# untouched as structural substrate; single-token derived copies land at the
+# proven early landing site so attention can migrate on its own. budget/
+# elapsed bins deliberately excluded — they are correlated re-encodings of
+# session progress that turn already carries. Echo and all other lines are
+# v7r byte-identical.
+def serialize_transformer_sample_current_v7rb(sample):
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    lines = serialize_transformer_sample_current_v7r(sample).split("\n")
+    lines[1] += f" turn={turn_v6_token(sm.get('turn_index'))} lang={top_language_dominance_pair(ws)}"
+    return "\n".join(lines)
+
+
+# current_v7rc: v7r with the meta line (tier/lang_pref/turn/budget/elapsed)
+# removed entirely -- no wall in its place. Isolates a question v8 could not
+# answer cleanly: v8 bundled "delete/replace this content" with "drop the
+# dedicated reg line", so its failure couldn't be attributed to either alone.
+# Here reg stays untouched and adjacent (state, reg, then straight to
+# workspace) -- testing whether an existing nearby register already gives a
+# downstream natural field's removal a safe dump site, without any new wall.
+def serialize_transformer_sample_current_v7rc(sample):
+    lines = serialize_transformer_sample_current_v7r(sample).split("\n")
+    return "\n".join(l for l in lines if not l.startswith("meta:"))
+
+
+def _v7r_workspace_pieces(sample):
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    language_mix = ws.get("language_mix") or {}
+    if isinstance(language_mix, dict):
+        langs = " ".join(f"{safe_text(k)}={float(v):.2f}" for k, v in list(language_mix.items())[:5])
+    else:
+        langs = ""
+    open_str = " | ".join(safe_text(x) for x in (ws.get("open_files") or [])[:6])
+    return ws, langs, open_str
+
+
+# current_v7rw / current_v7rg: decoupled single-variable siblings of v7rc's
+# question, applied to workspace's loc/langs instead of the whole meta line.
+# Reconstructed directly from `sample` (not regex on flattened text -- langs
+# values contain internal '=' chars, e.g. "py=0.92 yaml=0.05", which broke an
+# earlier throwaway regex-based estimate into a silent no-op).
+V7RW_LOC_WALL = "^" * 16  # 4 slots (^ merges 4 chars/token) -- ViT-register "4 slots suffice" precedent
+
+
+def serialize_transformer_sample_current_v7rw(sample):
+    """v7r with the loc= field replaced by a bare wall run (no 'loc=' label --
+    the key is meaningless once its value is constant), langs/dirty/ci
+    untouched. loc is a pure scalar with no established content value (same
+    xmeta-dropped family as budget/elapsed); reg stays adjacent and
+    untouched -- isolates the wall-substitution question from v8's bundled
+    reg removal. 4 slots kept minimal since this is pure addition over v1
+    (no field removed elsewhere to offset it)."""
+    ws, langs, open_str = _v7r_workspace_pieces(sample)
+    new_line = (
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"{V7RW_LOC_WALL} langs={langs} open={open_str}"
+    )
+    lines = serialize_transformer_sample_current_v7r(sample).split("\n")
+    return "\n".join(new_line if l.startswith("workspace:") else l for l in lines)
+
+
+def serialize_transformer_sample_current_v7rg(sample):
+    """v7r with the langs= float list replaced by v6's compact dominance-pair
+    marker (e.g. go!yaml) instead of a wall -- langs carries real
+    distributional signal (unlike loc), and v6 already validated this
+    non-destructive compact form; loc stays a raw numeral, untouched."""
+    ws, langs, open_str = _v7r_workspace_pieces(sample)
+    new_line = (
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"loc={safe_text(ws.get('loc'))} langs={top_language_dominance_pair(ws)} open={open_str}"
+    )
+    lines = serialize_transformer_sample_current_v7r(sample).split("\n")
+    return "\n".join(new_line if l.startswith("workspace:") else l for l in lines)
+
+
+# current_v7rcgw: v7rc (meta deleted) + langs v6-compact, PLUS loc fully
+# removed (no wall in its own spot, matching meta's treatment) with its wall
+# relocated to a new bare line between the actions/last_user block and the
+# args/results block. Caveat (unlike reg's fixed-early, always-safe position):
+# this boundary's distance from the sequence end varies with how much
+# args/results content exists -- short rows can land it close to the
+# classification window (the v7rd/v8t tail-hijack failure mode), long rows
+# put it safely mid-sequence. Untested placement, not validated-safe like reg.
+def serialize_transformer_sample_current_v7rcgw(sample):
+    ws, langs, open_str = _v7r_workspace_pieces(sample)
+    ws_line = (
+        f"workspace: dirty={safe_text(ws.get('git_dirty'))} ci={safe_text(ws.get('last_ci_status'))} "
+        f"langs={top_language_dominance_pair(ws)} open={open_str}"
+    )
+    lines = serialize_transformer_sample_current_v7rc(sample).split("\n")
+    lines = [ws_line if l.startswith("workspace:") else l for l in lines]
+
+    if any(l.startswith("results:") for l in lines):
+        insert_at = next(i for i, l in enumerate(lines) if l.startswith("results:"))
+    elif any(l.startswith("args:") for l in lines):
+        insert_at = next(i for i, l in enumerate(lines) if l.startswith("args:")) + 1
+    elif any(l.startswith("last_user:") for l in lines):
+        insert_at = next(i for i, l in enumerate(lines) if l.startswith("last_user:")) + 1
+    else:
+        insert_at = next(i for i, l in enumerate(lines) if l.startswith("actions:")) + 1
+    lines.insert(insert_at, V7RW_LOC_WALL)
+    return "\n".join(lines)
+
+
+# --- current_v9o / current_v9f: tag-schema variants of current_v7r ---
+# Marker-layer-only change (2026-07-08): natural tokens, content bytes, and
+# state/reg/echo placement are v7r-identical; only our invented field markers
+# change from "field: " to XML-style tags. Rationale: HCX pretraining is
+# tag-segmented (StarCoder-lineage added_tokens like <pr_diff>), and '<'/'</'
+# are clean single tokens. v9o uses opening tags only — measured cost 0
+# ("field: " and "<field>" are both 3 tokens, content keeps its leading-space
+# tokenization). v9f adds closing tags (+~28 tokens/row) for explicit segment
+# ends. Lines with an unrecognized prefix (e.g. multi-line prompts in unseen
+# test data) pass through untouched.
+V9_FIELDS = (
+    "current", "state", "reg", "meta", "workspace",
+    "actions", "last_user", "args", "results", "state2",
+)
+
+
+def _v9_tagged(sample, close):
+    out = []
+    for line in serialize_transformer_sample_current_v7r(sample).split("\n"):
+        name, sep, rest = line.partition(": ")
+        if sep and name in V9_FIELDS:
+            if close:
+                out.append(f"<{name}> {rest} </{name}>")
+            else:
+                out.append(f"<{name}> {rest}")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
+def serialize_transformer_sample_current_v9o(sample):
+    return _v9_tagged(sample, close=False)
+
+
+def serialize_transformer_sample_current_v9f(sample):
+    return _v9_tagged(sample, close=True)
+
+
+# current_v9h: hybrid closing. v9o (open-only, all fields) collapsed (-0.017,
+# broken-markup penalty) and v9f (open+close, all fields) lost twice more
+# (len384 -0.0027, len416 -0.0067 despite removing the truncation confound) --
+# 3/3 against tag-wrapping every field. The one place closing tags carry a
+# real signal is boundary ambiguity: current/last_user are the only free-text
+# fields where arbitrary user text could contain schema-like substrings, so
+# "where does this field end" is a genuine question there and nowhere else
+# (every other line is single-line, newline-terminated, self-delimiting).
+# v9h wraps only those two with open+close tags; every other field keeps
+# v1's "field: " prefix untouched -- 2 fields tagged instead of 9, so far
+# cheaper than v9f regardless of outcome.
+def serialize_transformer_sample_current_v9h(sample):
+    lines = serialize_transformer_sample_current_v7r(sample).split("\n")
+    out = []
+    for line in lines:
+        if line.startswith("current: "):
+            out.append(f"<current> {line[len('current: '):]} </current>")
+        elif line.startswith("last_user: "):
+            out.append(f"<last_user> {line[len('last_user: '):]} </last_user>")
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def serialize_transformer_sample_current_v2(sample):
     """Priority-ordered rewrite of current_v1: highest-signal fields first so
     right-truncation drops the oldest history pairs instead of args/results,
@@ -939,6 +1243,32 @@ def serialize_transformer_sample(sample, serializer_name="current_v1"):
         return serialize_transformer_sample_current_v7(sample)
     if serializer_name == "current_v7r":
         return serialize_transformer_sample_current_v7r(sample)
+    if serializer_name == "current_v7rl":
+        return serialize_transformer_sample_current_v7rl(sample)
+    if serializer_name == "current_v7rm":
+        return serialize_transformer_sample_current_v7rm(sample)
+    if serializer_name == "current_v7rd":
+        return serialize_transformer_sample_current_v7rd(sample)
+    if serializer_name == "current_v8":
+        return serialize_transformer_sample_current_v8(sample)
+    if serializer_name == "current_v8t":
+        return serialize_transformer_sample_current_v8t(sample)
+    if serializer_name == "current_v7rb":
+        return serialize_transformer_sample_current_v7rb(sample)
+    if serializer_name == "current_v7rc":
+        return serialize_transformer_sample_current_v7rc(sample)
+    if serializer_name == "current_v7rw":
+        return serialize_transformer_sample_current_v7rw(sample)
+    if serializer_name == "current_v7rg":
+        return serialize_transformer_sample_current_v7rg(sample)
+    if serializer_name == "current_v7rcgw":
+        return serialize_transformer_sample_current_v7rcgw(sample)
+    if serializer_name == "current_v9o":
+        return serialize_transformer_sample_current_v9o(sample)
+    if serializer_name == "current_v9f":
+        return serialize_transformer_sample_current_v9f(sample)
+    if serializer_name == "current_v9h":
+        return serialize_transformer_sample_current_v9h(sample)
     if serializer_name == "state_v2":
         return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":

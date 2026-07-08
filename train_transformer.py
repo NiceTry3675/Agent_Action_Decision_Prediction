@@ -404,7 +404,7 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
     )
     # bf16: no fp32 master copy — halves weight+grad memory (9B: 90GB -> ~54GB
     # with adamw8bit), the only way 9B-class full FT fits a single 80-96GB GPU
-    dtype_kwargs = {"torch_dtype": torch.bfloat16} if args.bf16 else {}
+    dtype_kwargs = {"torch_dtype": torch.bfloat16 if args.bf16 else torch.float32}
     if args.dropout is not None:
         # decoder configs (Llama/Qwen family) default all dropout to 0.0, which
         # makes R-Drop's two passes identical — override before weight load
@@ -1117,7 +1117,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)

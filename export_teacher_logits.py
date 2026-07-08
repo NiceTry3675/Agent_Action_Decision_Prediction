@@ -135,6 +135,12 @@ def maybe_rebind_fp16_deltanet(model):
         return 0
 
 
+def ensure_model_pad_token(model, pad_token_id):
+    for config in (getattr(model, "config", None), getattr(getattr(model, "config", None), "text_config", None)):
+        if config is not None and (not hasattr(config, "pad_token_id") or getattr(config, "pad_token_id") is None):
+            setattr(config, "pad_token_id", pad_token_id)
+
+
 def infer_logits(args, samples):
     model_dir = Path(args.model_dir)
     hf_dir = model_dir / "hf_model"
@@ -155,6 +161,7 @@ def infer_logits(args, samples):
 
     tokenizer = load_export_tokenizer(hf_dir)
     model = load_export_model(hf_dir, device)
+    ensure_model_pad_token(model, tokenizer.pad_token_id)
     if device.type == "cuda":
         model.half()
     else:
