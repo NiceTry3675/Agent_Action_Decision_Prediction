@@ -65,7 +65,8 @@ def normalize_hf_configs(model_dir):
             print(f"normalized HF config for 4.51 runtime: {config_path.relative_to(model_dir)}")
 
 
-def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
+def stage(hf_dir, sparse_dir, staging, leak_lookup=False, test_graph_backfill=False,
+          test_graph_aligned_only=False, requirements=None):
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
         fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
@@ -78,6 +79,8 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
             shutil.copytree(enc_dir, model_dir / enc_dir.name)
     normalize_hf_configs(model_dir)
     shutil.copy2(hf_dir / "hf_meta.json", model_dir / "hf_meta.json")
+    if test_graph_backfill or test_graph_aligned_only:
+        enable_test_graph_backfill(model_dir, aligned_only=test_graph_aligned_only)
     if sparse_dir is not None:
         sparse_dir = Path(sparse_dir)
         for name in ("sparse_svc.pkl", "sparse_meta.json"):
@@ -94,6 +97,7 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False, requirements=None):
           f"final_refit={meta.get('final_refit')} fp16={meta.get('saved_fp16')} "
           f"sparse={'yes' if sparse_dir is not None else 'no'} "
           f"leak_lookup={'yes' if leak_lookup else 'no'} "
+          f"test_graph={'yes' if (test_graph_backfill or test_graph_aligned_only) else 'no'} "
           f"rule_boosts={len(meta.get('rule_boosts') or [])}")
     return meta
 
@@ -113,6 +117,20 @@ def stage_leak_lookup(model_dir):
         json.dump(payload, f)
     print(f"staged leak lookup: by_prompt={len(payload['by_prompt'])} "
           f"by_prompt_last={len(payload['by_prompt_last'])} entries")
+
+
+def enable_test_graph_backfill(model_dir, aligned_only=False):
+    meta_path = model_dir / "hf_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta["test_batch_graph_backfill"] = {
+        "enabled": True,
+        "positional": not aligned_only,
+        "aligned": True,
+        "notes": "Same-test-batch history graph backfill only; no train-derived prompt lookup.",
+    }
+    meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    mode = "aligned-only" if aligned_only else "positional+aligned"
+    print(f"enabled test-batch graph backfill in hf_meta.json ({mode})")
 
 
 def build_zip(staging, out_path):
@@ -183,6 +201,11 @@ def main():
     parser.add_argument("--leak-lookup", action="store_true",
                         help="include model/leak_lookup.json.gz, which re-enables ALL leak-override "
                              "tiers in script.py (07-04 probe: Public 0.710 vs 0.743 — off by default)")
+    parser.add_argument("--test-graph-backfill", action="store_true",
+                        help="enable same-test-batch history graph backfill only; does not package "
+                             "train-derived leak_lookup.json.gz")
+    parser.add_argument("--test-graph-aligned-only", action="store_true",
+                        help="same as --test-graph-backfill but disables id/step positional matching")
     parser.add_argument("--out", default=None,
                         help="zip filename, ≤30 chars (default: <hf-dir name>.zip); "
                              "relative paths land in submissions/")
@@ -192,6 +215,8 @@ def main():
     parser.add_argument("--requirements", default=str(REPO / "requirements.txt"),
                         help="requirements.txt variant to ship (e.g. transformers 4.51 for Qwen3 packs)")
     args = parser.parse_args()
+    if args.leak_lookup and (args.test_graph_backfill or args.test_graph_aligned_only):
+        fail("--leak-lookup cannot be combined with test graph backfill; probe them separately")
 
     out_path = Path(args.out or Path(args.hf_dir).resolve().name + ".zip")
     if not out_path.is_absolute():
@@ -202,7 +227,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)
         meta = stage(args.hf_dir, None if args.no_sparse else args.sparse_dir, staging,
-                     leak_lookup=args.leak_lookup, requirements=args.requirements)
+                     leak_lookup=args.leak_lookup,
+                     test_graph_backfill=args.test_graph_backfill,
+                     test_graph_aligned_only=args.test_graph_aligned_only,
+                     requirements=args.requirements)
         build_zip(staging, out_path)
     if args.skip_smoke:
         print("smoke skipped (--skip-smoke)")

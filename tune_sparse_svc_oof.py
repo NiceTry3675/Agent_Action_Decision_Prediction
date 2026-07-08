@@ -175,40 +175,98 @@ def score_metrics(y_true, scores):
     return f1_metrics(y_true.tolist(), pred)
 
 
-def tune_ensemble(base_scores, sparse_scores, y_true, weights, tune_bias):
+def parse_class_mask(value):
+    if not value:
+        return []
+    names = [item.strip() for item in value.split(",") if item.strip()]
+    bad = [name for name in names if name not in ALL_CLASSES]
+    if bad:
+        raise ValueError(f"unknown class names in --class-mask: {bad}")
+    return names
+
+
+def parse_gate_margins(value):
+    margins = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        margins.append(None if item.lower() == "none" else float(item))
+    return margins or [None]
+
+
+def apply_sparse_controls(sparse_scores, base_scores, class_mask, gate_margin, gate_topk):
+    adjusted = sparse_scores.clone()
+    mask_idx = [ALL_CLASSES.index(label) for label in class_mask]
+    if mask_idx:
+        keep = torch.zeros(adjusted.shape[1], dtype=torch.bool)
+        keep[torch.tensor(mask_idx, dtype=torch.long)] = True
+        adjusted[:, ~keep] = 0.0
+
+    gate = None
+    if gate_margin is not None:
+        top2 = base_scores.topk(2, dim=1).values
+        gate = (top2[:, 0] - top2[:, 1]) <= float(gate_margin)
+    if gate_topk > 0 and mask_idx:
+        top_idx = base_scores.topk(min(gate_topk, base_scores.shape[1]), dim=1).indices
+        weak = torch.zeros(base_scores.shape[1], dtype=torch.bool)
+        weak[torch.tensor(mask_idx, dtype=torch.long)] = True
+        top_gate = weak[top_idx].any(dim=1)
+        gate = top_gate if gate is None else (gate & top_gate)
+    active_count = adjusted.shape[0]
+    if gate is not None:
+        adjusted[~gate] = 0.0
+        active_count = int(gate.sum().item())
+    return adjusted, active_count
+
+
+def tune_ensemble(base_scores, sparse_scores, y_true, weights, tune_bias, class_mask, gate_margins, gate_topk):
     best = None
-    for weight in weights:
-        combined = base_scores + weight * sparse_scores
-        raw_metrics = score_metrics(y_true, combined)
-        bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
-        old_bias = None
-        old_metrics = None
-        metrics = raw_metrics
-        if tune_bias:
-            old_bias, _ = tune_class_bias(combined, y_true.tolist(), rounds=2)
-            old_pred = predict_with_bias(combined, old_bias)
-            old_metrics = f1_metrics(y_true.tolist(), old_pred)
-            bias, _ = tune_class_bias_two_stage(
-                combined,
-                y_true.tolist(),
-                initial_bias=old_bias,
-                initial_best=old_metrics["macro_f1"],
-                fine_rounds=2,
+    for gate_margin in gate_margins:
+        controlled_sparse, active_count = apply_sparse_controls(
+            sparse_scores, base_scores, class_mask, gate_margin, gate_topk
+        )
+        gate_label = "none" if gate_margin is None else f"{gate_margin:.3f}"
+        for weight in weights:
+            combined = base_scores + weight * controlled_sparse
+            raw_metrics = score_metrics(y_true, combined)
+            bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
+            old_bias = None
+            old_metrics = None
+            metrics = raw_metrics
+            if tune_bias:
+                old_bias, _ = tune_class_bias(combined, y_true.tolist(), rounds=2)
+                old_pred = predict_with_bias(combined, old_bias)
+                old_metrics = f1_metrics(y_true.tolist(), old_pred)
+                bias, _ = tune_class_bias_two_stage(
+                    combined,
+                    y_true.tolist(),
+                    initial_bias=old_bias,
+                    initial_best=old_metrics["macro_f1"],
+                    fine_rounds=2,
+                )
+                pred = predict_with_bias(combined, bias)
+                metrics = f1_metrics(y_true.tolist(), pred)
+            candidate = {
+                "sparse_weight": weight,
+                "gate_margin": gate_margin,
+                "gate_topk": gate_topk,
+                "gate_active_count": active_count,
+                "sparse_class_mask": class_mask,
+                "macro_f1_raw": raw_metrics["macro_f1"],
+                "macro_f1_old_bias": old_metrics["macro_f1"] if old_metrics else None,
+                "macro_f1": metrics["macro_f1"],
+                "old_class_bias": [float(value) for value in old_bias.tolist()] if old_bias is not None else None,
+                "class_bias": [float(value) for value in bias.tolist()],
+                "metrics": metrics,
+            }
+            if best is None or candidate["macro_f1"] > best["macro_f1"]:
+                best = candidate
+            print(
+                f"gate_margin={gate_label} active={active_count} sparse_weight={weight:.3f} "
+                f"raw={raw_metrics['macro_f1']:.6f} metric={metrics['macro_f1']:.6f}",
+                flush=True,
             )
-            pred = predict_with_bias(combined, bias)
-            metrics = f1_metrics(y_true.tolist(), pred)
-        candidate = {
-            "sparse_weight": weight,
-            "macro_f1_raw": raw_metrics["macro_f1"],
-            "macro_f1_old_bias": old_metrics["macro_f1"] if old_metrics else None,
-            "macro_f1": metrics["macro_f1"],
-            "old_class_bias": [float(value) for value in old_bias.tolist()] if old_bias is not None else None,
-            "class_bias": [float(value) for value in bias.tolist()],
-            "metrics": metrics,
-        }
-        if best is None or candidate["macro_f1"] > best["macro_f1"]:
-            best = candidate
-        print(f"sparse_weight={weight:.3f} raw={raw_metrics['macro_f1']:.6f} metric={metrics['macro_f1']:.6f}", flush=True)
     return best
 
 
@@ -235,6 +293,12 @@ def main():
     parser.add_argument("--text-serializer", choices=["current_v1", "state_v2", "compact_events_v1", "recent_pairs_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--normalize", action="store_true")
     parser.add_argument("--weights", default="0,0.02,0.05,0.08,0.1,0.15,0.2,0.3,0.4,0.5,0.7,1.0")
+    parser.add_argument("--class-mask", default="",
+                        help="comma-separated classes whose sparse residual logits may be nonzero")
+    parser.add_argument("--gate-margins", default="none",
+                        help="comma-separated base-logit margins to try, or none")
+    parser.add_argument("--gate-topk", type=int, default=0,
+                        help="only apply sparse residual when one of --class-mask classes is in base top-k")
     parser.add_argument("--tune-bias", action="store_true")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--notes", default="")
@@ -255,7 +319,12 @@ def main():
     print(f"sparse_oof_macro_f1={sparse_metrics['macro_f1']:.6f}", flush=True)
     print(f"base_oof_macro_f1={base_metrics['macro_f1']:.6f}", flush=True)
     weights = [float(value) for value in args.weights.split(",") if value.strip()]
-    best = tune_ensemble(base_scores, sparse_scores, y_true, weights, args.tune_bias)
+    class_mask = parse_class_mask(args.class_mask)
+    gate_margins = parse_gate_margins(args.gate_margins)
+    best = tune_ensemble(
+        base_scores, sparse_scores, y_true, weights, args.tune_bias,
+        class_mask, gate_margins, args.gate_topk,
+    )
 
     output_dir = Path("experiments/artifacts")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -290,6 +359,10 @@ def main():
         "base_metrics": base_metrics,
         "metrics": best["metrics"],
         "best_sparse_weight": best["sparse_weight"],
+        "sparse_class_mask": best["sparse_class_mask"],
+        "sparse_gate_margin": best["gate_margin"],
+        "sparse_gate_topk": best["gate_topk"],
+        "sparse_gate_active_count": best["gate_active_count"],
         "best_raw_macro_f1": best["macro_f1_raw"],
         "best_old_bias_macro_f1": best["macro_f1_old_bias"],
         "best_old_class_bias": dict(zip(ALL_CLASSES, best["old_class_bias"])) if best["old_class_bias"] is not None else None,
@@ -331,6 +404,8 @@ def main():
         f"- Sparse-only Macro-F1: {sparse_metrics['macro_f1']:.6f}",
         f"- Text serializer: {args.text_serializer}",
         f"- Best sparse weight: {best['sparse_weight']:.3f}",
+        f"- Sparse class mask: {best['sparse_class_mask'] or 'none'}",
+        f"- Sparse gate: margin={best['gate_margin']} topk={best['gate_topk']} active={best['gate_active_count']}/{len(sparse_ids)}",
         f"- Old bias-tuned Macro-F1: {best['macro_f1_old_bias']:.6f}" if best["macro_f1_old_bias"] is not None else "- Old bias-tuned Macro-F1: not run",
         f"- Best Macro-F1: {best['macro_f1']:.6f}",
         f"- Weakest classes: {summarize_weak(best['metrics']).replace(';', ', ')}",

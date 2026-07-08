@@ -1469,6 +1469,121 @@ def sparse_ensemble_scores(sparse_ensemble, samples):
     return torch.tensor(scores, dtype=torch.float32)
 
 
+def apply_sparse_controls(sparse_scores, base_logits, sparse_meta, class_names):
+    class_mask = sparse_meta.get("sparse_class_mask") or sparse_meta.get("class_mask") or []
+    gate_margin = sparse_meta.get("sparse_gate_margin", sparse_meta.get("gate_margin"))
+    gate_topk = int(sparse_meta.get("sparse_gate_topk", sparse_meta.get("gate_topk", 0)) or 0)
+    if not class_mask and gate_margin in (None, "", "none") and gate_topk <= 0:
+        return sparse_scores
+
+    adjusted = sparse_scores.clone()
+    mask_idx = []
+    if class_mask:
+        class_to_idx = {label: idx for idx, label in enumerate(class_names)}
+        mask_idx = [class_to_idx[label] for label in class_mask if label in class_to_idx]
+        if mask_idx:
+            keep = torch.zeros(adjusted.shape[1], dtype=torch.bool, device=adjusted.device)
+            keep[torch.tensor(mask_idx, dtype=torch.long, device=adjusted.device)] = True
+            adjusted[:, ~keep] = 0.0
+
+    gate = None
+    if gate_margin not in (None, "", "none"):
+        top2 = base_logits.topk(2, dim=1).values
+        gate = (top2[:, 0] - top2[:, 1]) <= float(gate_margin)
+    if gate_topk > 0 and mask_idx:
+        top_idx = base_logits.topk(min(gate_topk, base_logits.shape[1]), dim=1).indices
+        weak = torch.zeros(base_logits.shape[1], dtype=torch.bool, device=base_logits.device)
+        weak[torch.tensor(mask_idx, dtype=torch.long, device=base_logits.device)] = True
+        top_gate = weak[top_idx].any(dim=1)
+        gate = top_gate if gate is None else (gate & top_gate)
+    if gate is not None:
+        adjusted[~gate.to(adjusted.device)] = 0.0
+    return adjusted
+
+
+def normalize_prior(values, floor=1e-4):
+    prior = torch.tensor(values, dtype=torch.float32)
+    if prior.ndim != 1:
+        raise ValueError("prior must be a 1D vector")
+    prior = torch.clamp(prior, min=float(floor))
+    return prior / prior.sum().clamp_min(1e-12)
+
+
+def batch_prior_calibration_bias(base_scores, calibration, class_names, device):
+    """Estimate a small transductive class bias from the whole test batch.
+
+    The packaged calibration matrix is P(model-prob-class | true-class) from a
+    held-out run.  At inference we match the test batch's mean softmax vector to
+    that matrix, shrink the solved prior toward the reference validation prior,
+    then add a capped log-prior-ratio bias.  This is intentionally conservative:
+    it changes global posterior mass, not individual labels.
+    """
+    if not calibration or not calibration.get("enabled", False):
+        return torch.zeros(len(class_names), dtype=torch.float32, device=device)
+    cal_classes = calibration.get("classes", class_names)
+    if list(cal_classes) != list(class_names):
+        raise ValueError("prior calibration class order does not match model class order")
+
+    n_classes = len(class_names)
+    floor = float(calibration.get("prior_floor", 1e-4))
+    ref_prior = normalize_prior(calibration["reference_prior"], floor=floor)
+    confusion = torch.tensor(
+        calibration.get("soft_confusion") or calibration.get("confusion"),
+        dtype=torch.float32,
+    )
+    if confusion.shape != (n_classes, n_classes):
+        raise ValueError(f"prior calibration confusion shape {tuple(confusion.shape)} != {(n_classes, n_classes)}")
+
+    probs = torch.softmax(base_scores.float().cpu(), dim=-1)
+    q_test = torch.clamp(probs.mean(dim=0), min=floor)
+    q_test = q_test / q_test.sum().clamp_min(1e-12)
+
+    ridge = float(calibration.get("ridge", 0.05))
+    eye = torch.eye(n_classes, dtype=torch.float32)
+    lhs = confusion.T @ confusion + ridge * eye
+    rhs = confusion.T @ q_test + ridge * ref_prior
+    try:
+        solved = torch.linalg.solve(lhs, rhs)
+    except Exception:
+        solved = torch.linalg.lstsq(lhs, rhs.unsqueeze(1)).solution.squeeze(1)
+    solved = torch.clamp(solved, min=floor)
+    solved = solved / solved.sum().clamp_min(1e-12)
+
+    prior_blend = float(calibration.get("prior_blend", 0.25))
+    prior_blend = max(0.0, min(1.0, prior_blend))
+    target_prior = (1.0 - prior_blend) * ref_prior + prior_blend * solved
+    target_prior = torch.clamp(target_prior, min=floor)
+    target_prior = target_prior / target_prior.sum().clamp_min(1e-12)
+
+    bias_scale = float(calibration.get("bias_scale", 0.35))
+    cap = float(calibration.get("bias_cap", 0.18))
+    bias = bias_scale * torch.log(target_prior / ref_prior.clamp_min(floor))
+    bias = torch.clamp(bias, min=-cap, max=cap)
+
+    protected = set(calibration.get("protected_classes", []))
+    protected_cap = calibration.get("protected_cap")
+    if protected and protected_cap is not None:
+        protected_cap = float(protected_cap)
+        for idx, label in enumerate(class_names):
+            if label in protected:
+                if protected_cap <= 0:
+                    bias[idx] = 0.0
+                else:
+                    bias[idx] = torch.clamp(bias[idx], min=-protected_cap, max=protected_cap)
+
+    top_changes = sorted(
+        ((class_names[i], float(bias[i]), float(ref_prior[i]), float(target_prior[i]), float(q_test[i])) for i in range(n_classes)),
+        key=lambda row: abs(row[1]),
+        reverse=True,
+    )[:5]
+    print(
+        "Prior calibration: "
+        f"blend={prior_blend:.2f} scale={bias_scale:.2f} cap={cap:.2f} "
+        f"top_bias={[(name, round(delta, 4)) for name, delta, _, _, _ in top_changes]}"
+    )
+    return bias.to(device)
+
+
 LEAK_LOOKUP_FILENAME = "leak_lookup.json.gz"
 LEAK_LOOKUP_FORMAT = "leak-lookup-v2"
 LEAK_STEP_RE = re.compile(r"^(?P<sess>.+)-step_(?P<step>\d+)$")
@@ -1576,6 +1691,80 @@ def compute_leak_overrides(samples, train_lookup=None, valid_classes=None):
             record(sample_id, by_prompt_last.get(f"{prompt_key}|{leak_last_action(sample)}"), "train_prompt_last")
             record(sample_id, by_prompt.get(prompt_key), "train_prompt")
 
+    return overrides, stats
+
+
+def compute_test_batch_graph_overrides(samples, valid_classes=None, use_positional=True, use_aligned=True):
+    """Recover only labels implied by other rows in the same test batch.
+
+    This intentionally does not use train-derived prompt lookups.  A row is
+    overridden only when same-batch histories point to a single valid action,
+    and positional matches also verify the source row's current prompt against
+    the history content before trusting step arithmetic.
+    """
+    valid = set(valid_classes or ALL_CLASSES)
+    candidates = {}
+    candidate_tiers = {}
+
+    def add_candidate(sample_id, action, tier):
+        if not sample_id or action not in valid:
+            return
+        candidates.setdefault(sample_id, set()).add(action)
+        candidate_tiers.setdefault(sample_id, {}).setdefault(action, set()).add(tier)
+
+    if use_positional:
+        parsed = [LEAK_STEP_RE.match(safe_text(sample.get("id", ""))) for sample in samples]
+        by_session = {}
+        for sample, match in zip(samples, parsed):
+            if match is None:
+                continue
+            by_session.setdefault(match.group("sess"), {})[int(match.group("step"))] = sample
+        for steps in by_session.values():
+            for step, sample in steps.items():
+                pairs = history_pair_labels(sample.get("history"))
+                for offset, (content, action) in enumerate(pairs):
+                    source = steps.get(step - len(pairs) + offset)
+                    if source is None:
+                        continue
+                    if leak_text_key(source.get("current_prompt")) != leak_text_key(content):
+                        continue
+                    add_candidate(safe_text(source.get("id")), action, "positional")
+
+    if use_aligned:
+        pair_index = {}
+        for sample in samples:
+            owner_id = safe_text(sample.get("id"))
+            hashed = leak_hashed_pairs(sample)
+            for j, (content_key, action) in enumerate(hashed):
+                pair_index.setdefault(content_key, []).append((owner_id, hashed, j, action))
+        for sample in samples:
+            sample_id = safe_text(sample.get("id"))
+            own = leak_hashed_pairs(sample)
+            if not own:
+                continue
+            prompt_key = leak_text_key(sample.get("current_prompt"))
+            for owner_id, hashed, j, action in pair_index.get(prompt_key, ()):
+                if owner_id == sample_id:
+                    continue
+                m = len(own)
+                if j - m >= 0 and hashed[j - m:j] == own:
+                    add_candidate(sample_id, action, "aligned")
+
+    overrides = {}
+    stats = {"positional": 0, "aligned": 0, "conflict": 0}
+    for sample in samples:
+        sample_id = safe_text(sample.get("id"))
+        actions = candidates.get(sample_id, set())
+        if not actions:
+            continue
+        if len(actions) != 1:
+            stats["conflict"] += 1
+            continue
+        action = next(iter(actions))
+        tiers = candidate_tiers.get(sample_id, {}).get(action, set())
+        tier = "positional" if "positional" in tiers else "aligned"
+        overrides[sample_id] = action
+        stats[tier] += 1
     return overrides, stats
 
 
@@ -1827,9 +2016,8 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
     samples = load_jsonl(test_path)
     ids = [safe_text(sample.get("id", "")) for sample in samples]
 
-    # The lookup file is the switch for ALL override tiers (incl. positional/
-    # aligned): the 07-04 probe scored Public 0.710 vs the identical stack's
-    # 0.743, so overrides must never run unless explicitly packaged back in.
+    # Legacy train lookup remains fully opt-in.  Same-batch graph backfill is a
+    # separate opt-in meta flag so it can be probed without train->test lookups.
     leak_overrides = {}
     try:
         train_lookup = load_leak_lookup(model_dir)
@@ -1839,8 +2027,18 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
             )
             tier_text = " ".join(f"{tier}={count}" for tier, count in leak_stats.items())
             print(f"Leak overrides: total={len(leak_overrides)}/{len(samples)} {tier_text}")
+        elif (meta.get("test_batch_graph_backfill") or {}).get("enabled", False):
+            graph_cfg = meta.get("test_batch_graph_backfill") or {}
+            leak_overrides, leak_stats = compute_test_batch_graph_overrides(
+                samples,
+                valid_classes=meta["classes"],
+                use_positional=graph_cfg.get("positional", True),
+                use_aligned=graph_cfg.get("aligned", True),
+            )
+            tier_text = " ".join(f"{tier}={count}" for tier, count in leak_stats.items())
+            print(f"Test-batch graph backfill: total={len(leak_overrides)}/{len(samples)} {tier_text}")
         else:
-            print("Leak overrides disabled (no lookup file packaged)")
+            print("Leak overrides disabled")
     except Exception:
         print("Leak override computation failed; falling back to model-only predictions")
         traceback.print_exc()
@@ -1892,6 +2090,13 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         if base_scores is None:
             base_scores = model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
 
+    class_bias = class_bias + batch_prior_calibration_bias(
+        base_scores,
+        meta.get("prior_calibration"),
+        meta["classes"],
+        device,
+    )
+
     preds = []
     with torch.inference_mode():
         for start in range(0, len(texts), batch_size):
@@ -1900,6 +2105,7 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
             logits = apply_rule_boosts_to_logits(logits, samples[start:start + batch_size], rule_boosts, meta["classes"])
             if sparse_scores is not None:
                 sparse_batch = sparse_scores[start:start + len(batch_texts)].to(device)
+                sparse_batch = apply_sparse_controls(sparse_batch, logits, sparse_meta, meta["classes"])
                 logits = logits + sparse_weight * sparse_batch + sparse_bias
             pred_ids = torch.argmax(logits, dim=1).detach().cpu().tolist()
             preds.extend(meta["classes"][i] for i in pred_ids)

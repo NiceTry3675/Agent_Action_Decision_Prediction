@@ -1,4 +1,4 @@
-"""Verify the leak-override recovery (compute_leak_overrides) against training labels.
+"""Verify same-batch graph recovery and legacy leak overrides against labels.
 
 Modes:
   full      — treat all 70k train rows as the test set; positional+aligned tiers
@@ -17,7 +17,12 @@ import os
 import random
 
 from build_leak_lookup import build_lookup
-from script import LEAK_STEP_RE, compute_leak_overrides, load_jsonl
+from script import (
+    LEAK_STEP_RE,
+    compute_leak_overrides,
+    compute_test_batch_graph_overrides,
+    load_jsonl,
+)
 
 
 def load_labels(data_dir):
@@ -26,7 +31,10 @@ def load_labels(data_dir):
 
 
 def report(name, samples, labels, train_lookup=None):
-    overrides, stats = compute_leak_overrides(samples, train_lookup=train_lookup)
+    if train_lookup is None:
+        overrides, stats = compute_test_batch_graph_overrides(samples)
+    else:
+        overrides, stats = compute_leak_overrides(samples, train_lookup=train_lookup)
     correct = sum(1 for sample_id, action in overrides.items() if labels.get(sample_id) == action)
     wrong = [(sample_id, action, labels.get(sample_id)) for sample_id, action in overrides.items()
              if labels.get(sample_id) != action]

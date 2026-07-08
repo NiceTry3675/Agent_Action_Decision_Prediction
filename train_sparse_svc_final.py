@@ -36,16 +36,30 @@ def make_vectorizer(args):
     return FeatureUnion([("word", word), ("char", char)], n_jobs=1)
 
 
+def parse_class_mask(value):
+    if not value:
+        return []
+    names = [item.strip() for item in value.split(",") if item.strip()]
+    bad = [name for name in names if name not in ALL_CLASSES]
+    if bad:
+        raise ValueError(f"unknown class names in --class-mask: {bad}")
+    return names
+
+
 def load_retune_payload(path):
     if not path:
-        return {}, 0.0, [0.0] * len(ALL_CLASSES)
+        return {}, 0.0, [0.0] * len(ALL_CLASSES), [], None, 0
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     class_bias = payload.get("class_bias", {})
     if isinstance(class_bias, dict):
         bias_values = [float(class_bias.get(label, 0.0)) for label in ALL_CLASSES]
     else:
         bias_values = [float(value) for value in class_bias]
-    return payload, float(payload.get("sparse_weight", 0.0)), bias_values
+    sparse_weight = float(payload.get("sparse_weight", payload.get("best_sparse_weight", 0.0)))
+    class_mask = payload.get("sparse_class_mask") or payload.get("class_mask") or []
+    gate_margin = payload.get("sparse_gate_margin", payload.get("gate_margin"))
+    gate_topk = int(payload.get("sparse_gate_topk", payload.get("gate_topk", 0)) or 0)
+    return payload, sparse_weight, bias_values, class_mask, gate_margin, gate_topk
 
 
 def main():
@@ -54,6 +68,12 @@ def main():
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--retune-artifact", default="")
     parser.add_argument("--sparse-weight", type=float, default=None)
+    parser.add_argument("--class-mask", default=None,
+                        help="override retune artifact sparse class mask with comma-separated class names")
+    parser.add_argument("--gate-margin", type=float, default=None,
+                        help="override retune artifact sparse gate margin")
+    parser.add_argument("--gate-topk", type=int, default=None,
+                        help="override retune artifact sparse gate top-k")
     parser.add_argument("--c", type=float, default=0.05)
     parser.add_argument("--class-weight", choices=["balanced", "none"], default="balanced")
     parser.add_argument("--max-iter", type=int, default=3000)
@@ -71,8 +91,11 @@ def main():
     y = np.array([CLASS_TO_ID[labels_by_id[sample["id"]]] for sample in samples], dtype=np.int64)
     texts = [serialize_transformer_sample(sample, args.text_serializer) for sample in samples]
 
-    retune_payload, artifact_weight, class_bias = load_retune_payload(args.retune_artifact)
+    retune_payload, artifact_weight, class_bias, artifact_class_mask, artifact_gate_margin, artifact_gate_topk = load_retune_payload(args.retune_artifact)
     sparse_weight = artifact_weight if args.sparse_weight is None else args.sparse_weight
+    sparse_class_mask = artifact_class_mask if args.class_mask is None else parse_class_mask(args.class_mask)
+    sparse_gate_margin = artifact_gate_margin if args.gate_margin is None else args.gate_margin
+    sparse_gate_topk = artifact_gate_topk if args.gate_topk is None else args.gate_topk
 
     start = time.perf_counter()
     vectorizer = make_vectorizer(args)
@@ -97,6 +120,9 @@ def main():
         "classes": ALL_CLASSES,
         "text_serializer": args.text_serializer,
         "sparse_weight": float(sparse_weight),
+        "sparse_class_mask": sparse_class_mask,
+        "sparse_gate_margin": sparse_gate_margin,
+        "sparse_gate_topk": int(sparse_gate_topk or 0),
         "class_bias": [float(value) for value in class_bias],
         "retune_artifact": args.retune_artifact,
         "retune_macro_f1": retune_payload.get("two_stage_macro_f1"),
@@ -110,7 +136,8 @@ def main():
     print(
         f"saved sparse SVC artifact to {output_dir} "
         f"rows={len(samples)} features={x_train.shape[1]} elapsed={elapsed:.1f}s "
-        f"weight={sparse_weight} text_serializer={args.text_serializer}"
+        f"weight={sparse_weight} text_serializer={args.text_serializer} "
+        f"class_mask={sparse_class_mask or 'none'} gate_margin={sparse_gate_margin} gate_topk={sparse_gate_topk}"
     )
 
 

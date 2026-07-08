@@ -472,6 +472,41 @@ Full historical log through 2026-07-06 is archived at
 - Final decision: no more serializer variants from this generation. `current_v7r`
   is the only surviving candidate and the matched-teacher path should use it.
 
+### 2026-07-08 - Post-hoc Public probes did not beat the KD champion
+
+- Fixed-val bias plus weak-class sparse residual (`kdm8_fvb_sp`) scored Public
+  `0.786` versus `kd_m8_refit` at `0.7891`. The fixed-val 2-stage bias surface
+  did not transfer, and the sparse residual was too weak to rescue it. Decision:
+  do not inject fixed-val class bias into the final KD champion.
+- Test-batch label-shift/prior calibration (`kdm8_pcal`) kept the original
+  zero-bias champion and added only a conservative transductive prior bias
+  (`prior_blend=0.25`, `bias_scale=0.35`, cap `0.18`, strong classes
+  protected). Public was `0.7890`, user-reported `-0.00007` versus the champion.
+  Decision: neutral and not promoted; do not stack it with fixed-val bias/sparse.
+
+### 2026-07-08 - EXAONE 1.2B direct classifier is architecturally valid but not deployable all-row
+
+- Evidence: `transformers 4.51.3` does not recognize `exaone4`, but
+  `transformers 4.54.1` constructs `Exaone4ForSequenceClassification` and a
+  fp16 forward pass succeeds. EXAONE token lengths favor `current_v1` for
+  quality (`mean=248.6`, p95 `374`, p99 `410`) and `current_v5/current_v6` for
+  speed (`mean≈202-205`, p95 `325-328`).
+- Timing: on the same local RTX 3070 Ti probe, the current HCX KD pack projected
+  30k-row inference at `235s` local and is known to run `392s` on the server.
+  EXAONE fp16 projected `615s` local on `current_v1` and `504-512s` on
+  `current_v5/current_v6`; batch64-192 did not improve throughput. HCX-ratio
+  projection puts EXAONE all-row server time around `840-1024s`, above the
+  `600s` budget.
+- Size/quantization: BF16 weights are `2.4G`, so plain submission is impossible.
+  A custom int4 storage codec would likely solve zip size but not speed if it
+  dequantizes to fp16 at load. Official AWQ config is recognized, but the
+  AutoAWQ path adds fragile/deprecated dependencies and was not package-ready.
+- Decision: do not spend a Public slot on EXAONE 1.2B as a direct all-row
+  classifier. Keep it only as an offline teacher or as a routed low-confidence
+  cascade/referee leg unless an actual int4 compute path is proven.
+- Artifact:
+  `experiments/artifacts/20260708_exaone_direct_classifier_feasibility.json`.
+
 ## Current Next Step
 
 The active lane is M8 Qwen3.5-0.8B teacher refit with `--serializer current_v7r`
@@ -484,3 +519,29 @@ or otherwise verify the Llama RoPE config is read correctly.
 After the M8 v7r teacher finishes: export train70k logits, run the v7r-matched
 KD screen against the existing KD screen anchor (`0.787801`), and only then
 decide whether to refit, package, and spend a Public slot.
+
+### 2026-07-08 - M8 v7r-teacher 재학습 성공, 로짓 재export → v7r-matched KD 스크린 파이프라인 가동
+
+- M8(Qwen3.5-0.8B) `current_v7r` 전량 리핏 성공 완료(fp16 아티팩트 1454MB, 원본 M8과 동일 규격). pull 완료.
+- 발견: 이 프로젝트에 이미 export 전용 격리 venv(`/content/venv311`, torch2.7.1+transformers5.13) 관례가 있었으나(`colab/run_teacher_export.py` 주석) 이번 VM 인스턴스엔 존재하지 않음(확인됨) — 재생성 없이 이미 5.13이 깔린 시스템 파이썬으로 직행(요구사항 이미 충족).
+- 로짓 재export 런칭(M9 handoff 문서의 정확한 커맨드 패턴 재사용): `export_teacher_logits.py --model-dir .../m8_v7r_refit --serializer current_v7r --max-length 400 --dtype fp16 --output experiments/logits/m8_v7r_refit_train70k_fp16.pt`. **주의**: 이 스크립트는 results.csv에 행을 안 남겨 데몬 자동수집이 안 걸림 — rclone 수동 스테이징 필요(오케스트레이터에 반영).
+- 오케스트레이터(`after_export_kd_screen.py`) 가동: export 완료 대기 → 로짓 Drive 스테이징+로컬 pull → **transformers를 4.46.3으로 원복(검증 포함, 실패 시 KD 런칭 중단)** → v7r-matched KD 스크린 자동 런칭(`kd_v7r_matched_hcx05b_screen`, teacher=v7r-재학습 M8, alpha0.5 T3, vs KD 앵커 0.787801 +0.002=0.789801).
+- 가설: v1-teacher KD 실패(v7-KD -0.0025, v7r-KD -0.0048)의 원인이 teacher/student 직렬화기 불일치(KL 항이 v1-수준 불확실성으로 되끌어당김)였다면, matched teacher는 이 역-그래디언트를 제거해 v7r의 논-KD 이득(+0.007)이 스택될 것으로 기대 — 단 KD 자체의 안정화 효과와 일부 중복 가능성은 사전등록된 리스크.
+- 15분 모니터를 이 파이프라인(export→스테이징→원복→KD스크린) 추적으로 교체.
+
+### 2026-07-09 - Test-batch graph-only backfill infra split from train lookup
+
+- Implemented a separate `test_batch_graph_backfill` meta switch in `script.py`.
+  It runs only same-submission-batch history graph recovery and never reads the
+  train-derived `leak_lookup.json.gz`.
+- The graph function is stricter than the old bundled leak tier: positional
+  step matches must also verify that the source row's `current_prompt` equals
+  the later row's history user text, and all candidate actions must be
+  conflict-free before overriding.
+- Packaging flags: `package_submission.py --test-graph-backfill` enables
+  positional+aligned graph recovery; `--test-graph-aligned-only` disables
+  id/step positional matching. Both are mutually exclusive with `--leak-lookup`.
+- Local train audit with the new function preserved the previous internal-graph
+  ceiling: full positional `60,553/70,000` correct, noid aligned-only
+  `35,629/70,000` correct, and p=0.2 subsample `6,592/14,090` correct; all had
+  zero wrong rows. This is infrastructure only, not yet a Public result.
