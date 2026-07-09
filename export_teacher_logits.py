@@ -86,7 +86,37 @@ def load_export_tokenizer(hf_dir):
     return tokenizer
 
 
-def load_export_model(hf_dir, device):
+def load_gemma4_export_model(hf_dir, device, base_model):
+    from gemma4_seqcls import build_gemma4_seqcls
+
+    dtype = torch.float16 if device.type == "cuda" else torch.float32
+    label_kwargs = {
+        "num_labels": len(ALL_CLASSES),
+        "id2label": {i: label for i, label in enumerate(ALL_CLASSES)},
+        "label2id": {label: i for i, label in enumerate(ALL_CLASSES)},
+    }
+    adapter_config = Path(hf_dir) / "adapter_config.json"
+    if adapter_config.exists():
+        from peft import PeftModel
+
+        cfg = json.loads(adapter_config.read_text(encoding="utf-8"))
+        base_source = base_model or cfg.get("base_model_name_or_path")
+        if not base_source:
+            raise ValueError(f"{adapter_config} has no base_model_name_or_path; pass --base-model")
+        base = build_gemma4_seqcls(base_source, **label_kwargs, torch_dtype=dtype)
+        model = PeftModel.from_pretrained(base, hf_dir)
+        model = model.merge_and_unload()
+        print(f"Loaded Gemma4 custom seq-cls + LoRA adapter from {hf_dir}", flush=True)
+    else:
+        model = build_gemma4_seqcls(hf_dir, **label_kwargs, torch_dtype=dtype)
+        print(f"Loaded Gemma4 custom seq-cls full checkpoint from {hf_dir}", flush=True)
+    disable_decoder_cache(model)
+    return model.to(device)
+
+
+def load_export_model(hf_dir, device, model_class="auto", base_model=""):
+    if model_class == "gemma4custom":
+        return load_gemma4_export_model(hf_dir, device, base_model)
     try:
         return load_hf_model(str(hf_dir), device)
     except ValueError as exc:
@@ -142,15 +172,21 @@ def ensure_model_pad_token(model, pad_token_id):
 
 
 def infer_logits(args, samples):
-    model_dir = Path(args.model_dir)
-    hf_dir = model_dir / "hf_model"
+    if args.hf_model:
+        hf_dir = Path(args.hf_model)
+        model_dir = hf_dir.parent if hf_dir.name == "hf_model" else hf_dir
+    else:
+        model_dir = Path(args.model_dir)
+        hf_dir = model_dir / "hf_model"
     meta_path = model_dir / "hf_meta.json"
-    if not meta_path.exists():
+    if not meta_path.exists() and not args.hf_model:
         raise FileNotFoundError(f"missing hf_meta.json: {meta_path}")
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     serializer = args.serializer or meta.get("serializer_name", "current_v1")
     max_length = args.max_length or int(meta.get("max_length", 192))
     batch_size = args.batch_size or int(meta.get("batch_size", 16))
+    model_class = args.model_class or meta.get("model_class", "auto")
+    base_model = args.base_model or meta.get("base_model", "")
 
     device = torch.device(args.device if args.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu"))
     if device.type == "cuda":
@@ -160,7 +196,7 @@ def infer_logits(args, samples):
         print("device=cpu", flush=True)
 
     tokenizer = load_export_tokenizer(hf_dir)
-    model = load_export_model(hf_dir, device)
+    model = load_export_model(hf_dir, device, model_class=model_class, base_model=base_model)
     ensure_model_pad_token(model, tokenizer.pad_token_id)
     if device.type == "cuda":
         model.half()
@@ -196,11 +232,13 @@ def infer_logits(args, samples):
     export_meta = {
         "source": "hf_model_export",
         "model_dir": str(model_dir),
-        "base_model": meta.get("base_model"),
+        "base_model": base_model or meta.get("base_model"),
+        "model_class": model_class,
         "serializer_name": serializer,
         "max_length": max_length,
         "batch_size": batch_size,
         "fp16_deltanet_rebound_layers": export_meta_rebound,
+        "source_note": args.source_note,
     }
     return logits, export_meta
 
@@ -289,12 +327,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Export or repackage teacher logits for KD.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--model-dir", help="HF artifact dir containing hf_model/ and hf_meta.json")
+    source.add_argument("--hf-model", help="Direct hf_model/ directory; useful for adapter-only teacher exports")
     source.add_argument("--input-payload", help="Existing .pt payload with ids/logits to repackage")
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--split", choices=["train", "test"], default="train")
     parser.add_argument("--input-jsonl", default="")
     parser.add_argument("--labels-csv", default="", help="Defaults to <data-dir>/train_labels.csv for train split")
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output", "--out", required=True)
     parser.add_argument("--also-npz", default="", help="Optional second output path in .npz format")
     parser.add_argument("--dtype", choices=["fp16", "fp32"], default="fp16")
     parser.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
@@ -305,6 +344,9 @@ def parse_args():
     parser.add_argument("--pad-to-multiple-of", type=int, default=8)
     parser.add_argument("--progress-every", type=int, default=20)
     parser.add_argument("--fp16-deltanet", action="store_true")
+    parser.add_argument("--model-class", choices=["auto", "gemma4custom"], default="")
+    parser.add_argument("--base-model", default="", help="Base model id/path for adapter-only custom exports")
+    parser.add_argument("--source-note", default="")
     parser.add_argument("--limit", type=int, default=0, help="Debug export on the first N source rows")
     parser.add_argument("--preserve-input-order", dest="sort_by_id", action="store_false")
     parser.set_defaults(sort_by_id=True)
@@ -314,7 +356,7 @@ def parse_args():
 def main():
     args = parse_args()
     input_jsonl, samples, source_ids = load_source_ids(args)
-    if args.model_dir:
+    if args.model_dir or args.hf_model:
         logits, export_meta = infer_logits(args, samples)
         ids = source_ids
     else:
@@ -339,6 +381,12 @@ def main():
         attach_labels(payload, ids, labels_path)
     ids, payload["logits"], payload = reorder(ids, payload["logits"], payload, args.sort_by_id)
     payload["ids"] = ids
+    if "y_true" in payload:
+        y_true = payload["y_true"]
+        pred = torch.argmax(payload["logits"].float(), dim=1)
+        acc = float((pred == y_true).float().mean())
+        payload["metadata"]["train_argmax_acc"] = acc
+        print(f"teacher train-set argmax acc={acc:.4f}", flush=True)
 
     fmt = "npz" if output_path.suffix == ".npz" else "pt"
     save_output(output_path, payload, fmt)

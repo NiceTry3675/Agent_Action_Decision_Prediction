@@ -3,7 +3,6 @@ import json
 import math
 import random
 import re
-import shutil
 import shlex
 import sys
 import time
@@ -13,7 +12,7 @@ from pathlib import Path
 
 import torch
 import torch.nn.functional as F
-from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
 from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample
 from train import (
@@ -223,6 +222,29 @@ def add_replay_examples(samples, y, train_idx, args):
     return new_samples, new_y, new_train_idx, sample_weights, len(replay_samples)
 
 
+def load_teacher_logits(path, samples):
+    """Offline-distillation teacher logits: {"ids", "logits" [N,C], "classes"} keyed by
+    sample id. Replay pseudo-samples (id suffix ::replay_) are absent from the teacher
+    map and keep plain CE via the returned mask."""
+    payload = torch_load(path)
+    classes = [str(c) for c in payload["classes"]]
+    if classes != list(ALL_CLASSES):
+        raise ValueError(f"teacher classes mismatch vs ALL_CLASSES: {classes}")
+    logits = payload["logits"].float()
+    row_of = {str(i): n for n, i in enumerate(payload["ids"])}
+    out = torch.zeros(len(samples), len(ALL_CLASSES))
+    mask = torch.zeros(len(samples), dtype=torch.bool)
+    hit = 0
+    for n, sample in enumerate(samples):
+        row = row_of.get(str(sample.get("id")))
+        if row is not None:
+            out[n] = logits[row]
+            mask[n] = True
+            hit += 1
+    print(f"teacher logits: matched {hit}/{len(samples)} samples from {path}")
+    return out, mask
+
+
 def make_batches(indices, batch_size, rng=None, lengths=None, bucket_multiplier=1):
     indices = indices[:]
     if rng is not None:
@@ -250,12 +272,16 @@ def cache_path(args, source_path, sample_count, kind, cache_scope="train"):
     serializer = safe_slug(args.serializer)
     replay = ""
     if getattr(args, "replay_mode", "none") != "none":
+        # replay selection/order depends on args.seed -- caches must not be shared
+        # across seeds (mismatched text/label pairs silently poison the replay slice)
         replay = (
             f"_replay-{safe_slug(args.replay_mode)}-n{args.max_replay_samples}"
             f"-w{safe_slug(args.replay_sample_weight)}-scope-{safe_slug(cache_scope)}"
             f"-seed{args.seed}"
         )
         if getattr(args, "split", "") == "session_oof":
+            # replay rows are drawn from the in-fold train sessions, so each fold
+            # produces different replay text -- caches must not cross folds
             replay += f"-oof{args.fold_id}of{args.n_folds}"
     return (
         Path(args.cache_dir)
@@ -365,7 +391,7 @@ def evaluate(model, tokenizer, encoded_features, lengths, y, indices, args, devi
             bucket_multiplier=args.eval_bucket_multiplier,
         ):
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
-            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
+            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.float16):
                 logits = model(**encoded).logits.float()
             logits_parts.append(logits.detach().cpu())
             ordered_indices.extend(batch_idx)
@@ -376,149 +402,70 @@ def evaluate(model, tokenizer, encoded_features, lengths, y, indices, args, devi
     return logits, y_true, metrics, ordered_indices
 
 
-def build_teacher_targets(samples, args):
-    """Align an OOF teacher payload (ids + log-prob logits) to `samples` by id.
-    Returns (logprobs, mask) CPU tensors or None when --distill-logits is unset.
-    Replay pseudo-samples and unmatched ids get mask 0 (pure hard-label loss),
-    so OOF teachers stay leak-free by construction."""
-    if not getattr(args, "distill_logits", None):
-        return None
-    payload = torch.load(args.distill_logits, map_location="cpu", weights_only=False)
-    teacher_rows = payload["logits"].float()
-    by_id = {safe_text(sample_id): row for sample_id, row in zip(payload["ids"], teacher_rows)}
-    logprobs = torch.zeros(len(samples), teacher_rows.shape[1])
-    mask = torch.zeros(len(samples))
-    for i, sample in enumerate(samples):
-        row = by_id.get(safe_text(sample.get("id")))
-        if row is not None:
-            logprobs[i] = row
-            mask[i] = 1.0
-    print(
-        f"distill: matched {int(mask.sum())}/{len(samples)} rows from {args.distill_logits} "
-        f"(alpha={args.distill_alpha} T={args.distill_temp})"
-    )
-    return logprobs, mask
-
-
-def load_sequence_classifier(args, tokenizer, label_kwargs):
-    lora_r = int(getattr(args, "lora_r", 0) or 0)
+def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device, teacher=None):
     resume_from = getattr(args, "resume_from", "") or ""
-    resume_path = Path(resume_from) if resume_from else None
-    resume_is_adapter = bool(resume_path and (resume_path / "adapter_config.json").exists())
-    load_source = args.base_model if resume_is_adapter else (resume_from or args.base_model)
-    load_dtype = torch.float16 if lora_r > 0 else (torch.bfloat16 if args.bf16 else torch.float32)
-    model_class = getattr(args, "model_class", "auto")
-
-    if model_class == "gemma4custom":
-        if args.dropout is not None:
-            raise ValueError("--dropout is not wired for --model-class gemma4custom")
-        from gemma4_seqcls import build_gemma4_seqcls
-
-        model = build_gemma4_seqcls(load_source, **label_kwargs, torch_dtype=load_dtype)
-    elif model_class == "qwen35text":
+    lora_r = int(getattr(args, "lora_r", 0) or 0)
+    model_cls = AutoModelForSequenceClassification
+    if getattr(args, "model_class", "auto") == "qwen35text":
+        # multimodal Qwen3.5-Base checkpoints: text-only class skips the vision tower at load
         from transformers import Qwen3_5TextForSequenceClassification
-
-        model = Qwen3_5TextForSequenceClassification.from_pretrained(
-            load_source,
-            **label_kwargs,
-            torch_dtype=load_dtype,
-        )
-    elif model_class == "gemma3text":
+        model_cls = Qwen3_5TextForSequenceClassification
+    elif getattr(args, "model_class", "auto") == "gemma3text":
         from transformers import Gemma3TextForSequenceClassification
-
-        model = Gemma3TextForSequenceClassification.from_pretrained(
-            load_source,
-            **label_kwargs,
-            torch_dtype=load_dtype,
-        )
+        model_cls = Gemma3TextForSequenceClassification
+    if getattr(args, "model_class", "auto") == "gemma4custom":
+        # no official Gemma4 seq-cls class yet (PR #45294 unmerged) -- in-repo head
+        from gemma4_seqcls import build_gemma4_seqcls
+        model = build_gemma4_seqcls(
+            resume_from if resume_from else args.base_model,
+            num_labels=len(ALL_CLASSES),
+            id2label={i: label for i, label in enumerate(ALL_CLASSES)},
+            label2id={label: i for i, label in enumerate(ALL_CLASSES)},
+            torch_dtype=torch.float16 if lora_r > 0 else None,
+        ).to(device)
     else:
-        dtype_kwargs = {"torch_dtype": load_dtype}
-        if args.dropout is not None:
-            # decoder configs (Llama/Qwen family) default all dropout to 0.0, which
-            # makes R-Drop's two passes identical -- override before weight load
-            config = AutoConfig.from_pretrained(load_source, **label_kwargs)
-            touched = []
-            for attr in (
-                "attention_dropout",
-                "hidden_dropout",
-                "hidden_dropout_prob",
-                "attention_probs_dropout_prob",
-                "classifier_dropout",
-                "resid_pdrop",
-                "embd_pdrop",
-            ):
-                if hasattr(config, attr):
-                    setattr(config, attr, args.dropout)
-                    touched.append(attr)
-            print(f"dropout override={args.dropout} on: {', '.join(touched) if touched else 'NO MATCHING CONFIG ATTRS'}")
-            model = AutoModelForSequenceClassification.from_pretrained(load_source, config=config, **dtype_kwargs)
-        else:
-            model = AutoModelForSequenceClassification.from_pretrained(load_source, **label_kwargs, **dtype_kwargs)
-
-    ensure_model_pad_token(model, tokenizer.pad_token_id)
+        model = model_cls.from_pretrained(
+            resume_from if resume_from else args.base_model,
+            num_labels=len(ALL_CLASSES),
+            id2label={i: label for i, label in enumerate(ALL_CLASSES)},
+            label2id={label: i for i, label in enumerate(ALL_CLASSES)},
+            torch_dtype=torch.float16 if lora_r > 0 else None,
+        ).to(device)
+    if model.config.pad_token_id is None:
+        # decoder classifiers (Qwen2ForSequenceClassification) refuse batch>1 without it;
+        # persisted into config.json by save_pretrained for inference/quantize
+        model.config.pad_token_id = tokenizer.pad_token_id
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
-
     if lora_r > 0:
-        from peft import LoraConfig, PeftModel, get_peft_model
-
-        if resume_is_adapter:
-            print(f"loading trainable LoRA adapter from {resume_from}")
-            model = PeftModel.from_pretrained(model, resume_from, is_trainable=True)
-        else:
-            model = get_peft_model(
-                model,
-                LoraConfig(
-                    r=lora_r,
-                    lora_alpha=2 * lora_r,
-                    lora_dropout=0.05,
-                    target_modules=[
-                        "q_proj",
-                        "k_proj",
-                        "v_proj",
-                        "o_proj",
-                        "gate_proj",
-                        "up_proj",
-                        "down_proj",
-                    ],
-                    modules_to_save=["score"],
-                    task_type="SEQ_CLS",
-                ),
-            )
-        if args.gradient_checkpointing and hasattr(model, "enable_input_require_grads"):
+        # teacher-only path: 1.5B+ full FT needs ~15GB fp32 weights+grads regardless of
+        # batch size; frozen fp16 base + LoRA adapters keeps 16GB cards off the WDDM spill
+        from peft import LoraConfig, get_peft_model
+        model = get_peft_model(model, LoraConfig(
+            r=lora_r, lora_alpha=2 * lora_r, lora_dropout=0.05,
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            modules_to_save=["score"], task_type="SEQ_CLS",
+        ))
+        if args.gradient_checkpointing:
             model.enable_input_require_grads()
-        for param in model.parameters():
-            if param.requires_grad and param.dtype == torch.float16:
-                param.data = param.data.float()
-        if hasattr(model, "print_trainable_parameters"):
-            model.print_trainable_parameters()
-
-    return model
-
-
-def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device, teacher=None):
-    label_kwargs = dict(
-        num_labels=len(ALL_CLASSES),
-        id2label={i: label for i, label in enumerate(ALL_CLASSES)},
-        label2id={label: i for i, label in enumerate(ALL_CLASSES)},
-    )
-    model = load_sequence_classifier(args, tokenizer, label_kwargs).to(device)
+        for p in model.parameters():
+            # trainable params must be fp32 masters for GradScaler/optimizer stability
+            if p.requires_grad and p.dtype == torch.float16:
+                p.data = p.data.float()
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
-    trainable_params = [param for param in model.parameters() if param.requires_grad]
-    if args.optim == "adamw8bit":
+    if getattr(args, "optim", "adamw") == "adamw8bit":
+        # 1.5B+ teachers on 16GB: optimizer states 16B/param -> 2B/param (bitsandbytes)
         import bitsandbytes as bnb
-
-        optimizer = bnb.optim.AdamW8bit(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = bnb.optim.AdamW8bit(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     else:
-        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     accum = max(1, args.grad_accum_steps)
     batches_per_epoch = math.ceil(len(train_idx) / args.batch_size)
     total_steps = math.ceil(batches_per_epoch / accum) * args.epochs
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
-    # bf16 needs no loss scaling; a disabled scaler passes scale/unscale_/step through
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda" and not args.bf16)
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
     rng = random.Random(args.seed)
 
     def optimizer_step():
@@ -529,33 +476,13 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
-    def per_row_loss(logits, labels, batch_idx):
-        loss_values = F.cross_entropy(
-            logits.float(),
-            labels,
-            weight=weights,
-            label_smoothing=args.label_smoothing,
-            reduction="none",
-        )
-        if args.loss == "focal":
-            # focal factor from the unsmoothed target probability; class
-            # weights and label smoothing stay inside the CE term so
-            # ce -> focal changes exactly one thing
-            pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
-            loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
-        if teacher is not None:
-            temp = args.distill_temp
-            teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
-            student_lp = F.log_softmax(logits.float() / temp, dim=-1)
-            kd = F.kl_div(student_lp, teacher_p, reduction="none").sum(-1) * (temp * temp)
-            # per-row alpha: replay/unmatched rows (mask 0) keep the pure hard-label loss
-            alpha = args.distill_alpha * teacher[1][batch_idx].to(device)
-            loss_values = (1.0 - alpha) * loss_values + alpha * kd
-        return loss_values
-
     start_epoch = 1
-    if args.resume_from:
-        state_path = Path(args.resume_from) / "checkpoint_state.json"
+    if resume_from:
+        # ep2 crash-recovery: same 3-epoch scheduler, fast-forwarded past completed
+        # epochs so ep3 starts at the exact lr the uninterrupted run would have.
+        # Optimizer moments restart (checkpoint stored weights only) -- negligible
+        # over one final low-lr epoch.
+        state_path = Path(resume_from) / "checkpoint_state.json"
         last_done = 0
         if state_path.exists():
             last_done = int(json.loads(state_path.read_text(encoding="utf-8")).get("last_completed_epoch", 0))
@@ -563,18 +490,17 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         steps_per_opt_epoch = math.ceil(batches_per_epoch / accum)
         for _ in range(steps_per_opt_epoch * last_done):
             scheduler.step()
+        # advance rng through skipped epochs so the resumed epoch draws the same
+        # batch order the uninterrupted run would have produced
         for _ in range(last_done):
             list(make_batches(train_idx, args.batch_size, rng, lengths, args.bucket_multiplier))
-        print(
-            f"resume: {args.resume_from} last_completed_epoch={last_done} "
-            f"start_epoch={start_epoch} lr={scheduler.get_last_lr()[0]:.3e}"
-        )
+        print(f"resume: {resume_from} last_completed_epoch={last_done} "
+              f"start_epoch={start_epoch} lr={scheduler.get_last_lr()[0]:.3e}")
 
     optimizer.zero_grad(set_to_none=True)
     for epoch in range(start_epoch, args.epochs + 1):
         model.train()
         total_loss = 0.0
-        total_kl = 0.0
         seen = 0
         step = 0
         for step, batch_idx in enumerate(
@@ -584,21 +510,38 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             labels = torch.tensor([y[i] for i in batch_idx], dtype=torch.long, device=device)
             weights_for_samples = torch.tensor([sample_weights[i] for i in batch_idx], dtype=torch.float32, device=device)
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
-            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
+            with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.float16):
                 logits = model(**encoded).logits
-                loss_values = per_row_loss(logits, labels, batch_idx)
-                if args.rdrop_alpha > 0:
-                    # R-Drop (arXiv:2106.14448): second dropout-perturbed pass +
-                    # symmetric KL; needs --dropout > 0 or both passes are identical
-                    logits2 = model(**encoded).logits
-                    lp1 = F.log_softmax(logits.float(), dim=-1)
-                    lp2 = F.log_softmax(logits2.float(), dim=-1)
-                    rdrop_kl = 0.5 * (
-                        F.kl_div(lp1, lp2.exp(), reduction="none").sum(-1)
-                        + F.kl_div(lp2, lp1.exp(), reduction="none").sum(-1)
-                    )
-                    loss_values = 0.5 * (loss_values + per_row_loss(logits2, labels, batch_idx)) + args.rdrop_alpha * rdrop_kl
-                    total_kl += float(rdrop_kl.detach().mean().cpu()) * len(batch_idx)
+                loss_values = F.cross_entropy(
+                    logits.float(),
+                    labels,
+                    weight=weights,
+                    label_smoothing=args.label_smoothing,
+                    reduction="none",
+                )
+                if args.loss == "focal":
+                    # focal factor from the unsmoothed target probability; class
+                    # weights and label smoothing stay inside the CE term so
+                    # ce -> focal changes exactly one thing
+                    pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
+                    loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
+                if teacher is not None:
+                    # offline KD: alpha*T^2*KL(student/T || teacher/T) + (1-alpha)*CE on
+                    # teacher-matched rows; rows without a teacher row (replay) keep CE.
+                    t_logits, t_mask = teacher
+                    bidx = torch.tensor(batch_idx, dtype=torch.long)
+                    tm = t_mask[bidx].to(device)
+                    if bool(tm.any()):
+                        tl = t_logits[bidx].to(device)
+                        temp = args.distill_temp
+                        kd = F.kl_div(
+                            F.log_softmax(logits.float() / temp, dim=-1),
+                            F.softmax(tl / temp, dim=-1),
+                            reduction="none",
+                        ).sum(dim=-1) * (temp * temp)
+                        loss_values = torch.where(
+                            tm, args.distill_alpha * kd + (1.0 - args.distill_alpha) * loss_values, loss_values
+                        )
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
             scaler.scale(loss / accum).backward()
             if step % accum == 0:
@@ -606,30 +549,22 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             total_loss += float(loss.detach().cpu()) * len(batch_idx)
             seen += len(batch_idx)
             if args.log_every and step % args.log_every == 0:
-                kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
-                print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}{kl_note}")
+                print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}")
         if step % accum != 0:
             optimizer_step()
         if device.type == "cuda":
             torch.cuda.synchronize()
-        kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
-        print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}{kl_note}")
+        print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}")
         if args.epoch_checkpoint_dir:
             try:
-                save_epoch_checkpoint(
-                    model,
-                    tokenizer,
-                    args.epoch_checkpoint_dir,
-                    epoch,
-                    snapshot_epoch=bool(args.snapshot_epoch_checkpoints),
-                )
+                save_epoch_checkpoint(model, tokenizer, args.epoch_checkpoint_dir, epoch)
             except Exception as exc:
                 # checkpoint is insurance only — a Drive-mount hiccup must not kill the run
                 print(f"  epoch checkpoint FAILED (continuing): {exc}")
     return model
 
 
-def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch, snapshot_epoch=False):
+def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch):
     """Crash insurance for preemptible runtimes: overwrite ckpt_dir with an
     fp16 copy of the last completed epoch (point it at a Drive path)."""
     import copy
@@ -637,23 +572,13 @@ def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch, snapshot_epoch=Fals
     start = time.perf_counter()
     ckpt_dir = Path(ckpt_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
-    if hasattr(model, "peft_config"):
-        model.save_pretrained(ckpt_dir, safe_serialization=True)
+    snapshot = copy.deepcopy(model).half().cpu()
+    snapshot.save_pretrained(ckpt_dir, safe_serialization=True)
+    del snapshot
+    if epoch == 1:
         tokenizer.save_pretrained(ckpt_dir)
-    else:
-        snapshot = copy.deepcopy(model).half().cpu()
-        snapshot.save_pretrained(ckpt_dir, safe_serialization=True)
-        del snapshot
-        if epoch == 1:
-            tokenizer.save_pretrained(ckpt_dir)
     (ckpt_dir / "checkpoint_state.json").write_text(
         json.dumps({"last_completed_epoch": epoch}), encoding="utf-8")
-    if snapshot_epoch:
-        snapshot_dir = ckpt_dir.with_name(f"{ckpt_dir.name}_ep{epoch}")
-        if snapshot_dir.exists():
-            shutil.rmtree(snapshot_dir)
-        shutil.copytree(ckpt_dir, snapshot_dir)
-        print(f"  epoch checkpoint snapshot -> {snapshot_dir}")
     print(f"  epoch checkpoint -> {ckpt_dir} (epoch={epoch}, {time.perf_counter() - start:.0f}s)")
 
 
@@ -661,6 +586,10 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
     output_dir = Path(output_dir)
     hf_dir = output_dir / "hf_model"
     hf_dir.mkdir(parents=True, exist_ok=True)
+    if hasattr(model, "merge_and_unload"):
+        # LoRA teacher: fold adapters back into the base so downstream
+        # quantize/export/inference see a plain HF checkpoint
+        model = model.merge_and_unload()
     if args.save_fp16:
         model = model.half()
     model.save_pretrained(hf_dir, safe_serialization=True)
@@ -678,8 +607,6 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "replay_mode": args.replay_mode,
         "replay_sample_weight": args.replay_sample_weight,
         "base_model": args.base_model,
-        "model_class": getattr(args, "model_class", "auto"),
-        "lora_r": int(getattr(args, "lora_r", 0) or 0),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
         "saved_fp16": bool(args.save_fp16),
@@ -719,16 +646,6 @@ def load_tokenizer_for_args(args):
         # decoder checkpoints (Qwen etc.) ship without a pad token; tokenizer.pad() needs one
         tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
-
-
-def ensure_model_pad_token(model, pad_token_id):
-    """Set pad_token_id on top-level and nested text configs when present."""
-    configs = [getattr(model, "config", None), getattr(getattr(model, "config", None), "text_config", None)]
-    for config in configs:
-        if config is None:
-            continue
-        if not hasattr(config, "pad_token_id") or getattr(config, "pad_token_id") is None:
-            setattr(config, "pad_token_id", pad_token_id)
 
 
 def load_class_bias_artifact(path):
@@ -927,7 +844,7 @@ def run(args):
             final_idx,
             args,
             device,
-            teacher=build_teacher_targets(final_samples, args),
+            teacher=load_teacher_logits(args.distill_logits, final_samples) if args.distill_logits else None,
         )
         train_sec = time.perf_counter() - train_start
         artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
@@ -1039,7 +956,7 @@ def run(args):
     train_start = time.perf_counter()
     model = train_model(
         tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device,
-        teacher=build_teacher_targets(samples, args),
+        teacher=load_teacher_logits(args.distill_logits, samples) if args.distill_logits else None,
     )
     train_sec = time.perf_counter() - train_start
 
@@ -1125,7 +1042,7 @@ def run(args):
             final_idx,
             args,
             device,
-            teacher=build_teacher_targets(samples if args.replay_mode == "none" else final_samples, args),
+            teacher=load_teacher_logits(args.distill_logits, final_samples) if args.distill_logits else None,
         )
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, metrics)
         artifact_size = dir_size_mb(args.output_dir)
@@ -1224,7 +1141,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
@@ -1239,20 +1156,6 @@ def parse_args():
     parser.add_argument("--label-smoothing", type=float, default=0.02)
     parser.add_argument("--loss", choices=["ce", "focal"], default="ce")
     parser.add_argument("--focal-gamma", type=float, default=2.0)
-    parser.add_argument("--distill-logits", default=None,
-                        help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
-    parser.add_argument("--distill-alpha", type=float, default=0.5)
-    parser.add_argument("--distill-temp", type=float, default=2.0)
-    parser.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
-                        help="adamw8bit (bitsandbytes) fits 0.6B training in 8GB VRAM")
-    parser.add_argument("--bf16", action="store_true",
-                        help="load weights and autocast in bfloat16, GradScaler off (no fp32 master "
-                             "copy — required for 9B-class full FT on a single 80-96GB GPU; "
-                             "default fp32+fp16-autocast path is unchanged without this flag)")
-    parser.add_argument("--rdrop-alpha", type=float, default=0.0,
-                        help="R-Drop: weight of the symmetric KL between two dropout-perturbed forward passes (0 disables; ~2x train time when on)")
-    parser.add_argument("--dropout", type=float, default=None,
-                        help="override model dropout probs (attention_dropout etc.) at load; decoder configs default to 0.0, required for --rdrop-alpha to bite")
     parser.add_argument("--class-weight-power", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=42)
@@ -1265,16 +1168,22 @@ def parse_args():
                         help="save the val-split-trained model (no refit) as a submittable HF artifact")
     parser.add_argument("--epoch-checkpoint-dir", default="",
                         help="overwrite this dir with an fp16 snapshot after every epoch (crash insurance; use a Drive path on Colab)")
-    parser.add_argument("--snapshot-epoch-checkpoints", action="store_true",
-                        help="after each epoch checkpoint, also copy it to <epoch-checkpoint-dir>_epN")
     parser.add_argument("--resume-from", default="",
-                        help="resume from an epoch-checkpoint dir; scheduler/RNG skip past completed epochs, optimizer state restarts")
+                        help="resume from an epoch-checkpoint dir: load its weights and skip past its completed epochs (scheduler fast-forwarded; optimizer state restarts)")
+    parser.add_argument("--distill-logits", default="",
+                        help="teacher logits file for offline KD ({ids, logits[N,C], classes}); rows without a teacher entry (replay) keep plain CE")
+    parser.add_argument("--distill-alpha", type=float, default=0.5,
+                        help="KD mix: alpha*KL + (1-alpha)*CE on teacher-matched rows")
+    parser.add_argument("--distill-temp", type=float, default=3.0,
+                        help="KD softmax temperature (loss scaled by T^2)")
+    parser.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
+                        help="adamw8bit (bitsandbytes) cuts optimizer memory 8x for 1.5B+ teachers on 16GB")
+    parser.add_argument("--lora-r", type=int, default=0,
+                        help="LoRA rank for teacher training (0=full FT); fp16 frozen base + merged save")
+    parser.add_argument("--model-class", choices=["auto", "qwen35text", "gemma3text", "gemma4custom"], default="auto",
+                        help="text-only seq-cls class override for multimodal checkpoints")
     parser.add_argument("--grad-accum-steps", type=int, default=1,
                         help="optimizer step every N batches (effective batch = batch-size x N); matches teammate recipe batch4 x accum4")
-    parser.add_argument("--lora-r", type=int, default=0,
-                        help="LoRA rank for teacher training (0=full fine-tune)")
-    parser.add_argument("--model-class", choices=["auto", "qwen35text", "gemma3text", "gemma4custom"], default="auto",
-                        help="text-only/custom sequence-classification class override")
     parser.add_argument("--save-fp16", action="store_true")
     parser.add_argument("--output-dir", default="model")
     parser.add_argument("--rule-boosts-path", default="")
@@ -1300,13 +1209,7 @@ def parse_args():
     parser.add_argument("--save-val-logits", dest="save_val_logits", action="store_true", default=True)
     parser.add_argument("--no-save-val-logits", dest="save_val_logits", action="store_false")
     parser.add_argument("--logits-dir", default="experiments/logits")
-    args = parser.parse_args()
-    if args.rdrop_alpha > 0 and not args.dropout:
-        parser.error(
-            "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "
-            "to 0.0, so both R-Drop passes would be identical (KL=0) at 2x train cost"
-        )
-    return args
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

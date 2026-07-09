@@ -1,0 +1,8 @@
+# Qwen3-family packs: needs transformers >= 4.51 (Qwen3ForSequenceClassification).
+# Server preinstalls transformers==4.46.3 — this OVERRIDES it; install failures do
+# not consume a submission slot (rule.md), so this doubles as the free env probe.
+# Uses torch from the evaluation server preinstalled packages.
+transformers>=4.51,<4.52
+safetensors==0.8.0
+scikit-learn==1.8.0
+joblib==1.5.3

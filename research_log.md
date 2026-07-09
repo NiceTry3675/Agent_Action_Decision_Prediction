@@ -545,3 +545,40 @@ decide whether to refit, package, and spend a Public slot.
   ceiling: full positional `60,553/70,000` correct, noid aligned-only
   `35,629/70,000` correct, and p=0.2 subsample `6,592/14,090` correct; all had
   zero wrong rows. This is infrastructure only, not yet a Public result.
+
+### 2026-07-08 - v7r-matched KD 스크린 결과: 가설 확인, 승격 기준 미달 — v7r 레인 최종 마감
+
+- **2stage 0.788443** vs v1-teacher KD 앵커 0.787801 — **+0.000642**, 게이트(+0.002=0.789801) 미달, 노이즈 플로어(0.002) 안. **refit/패키징/Public 없음.**
+- **메커니즘 확인**: v1-teacher KD 조합(v7: -0.002457, v7r: -0.004769) 대비 matched teacher로의 전환만으로 **+0.0054 스윙**(노이즈 밖) — "v1-teacher의 KL항이 학생을 v1-수준 불확실성으로 되끌어당긴다"는 07-08 낮 정정 가설이 실증적으로 확인됨. 다만 matched teacher가 v7r 논-KD 이득(+0.007) 전량을 스택하진 못하고 v1-teacher KD 수준(~0.7878)까지만 회복 — KD 자체의 안정화 효과와 v7r 이득이 부분 중복되는 것으로 해석.
+- 약클래스: list_directory 0.5257(v1-teacher KD 앵커 0.5181 대비 개선), ask_user 0.6872(소폭 개선), grep_search 0.6466(소폭 하락) — 노이즈권 재배치, 방향성 신호 아님.
+- **Decision: v7r 직렬화기 레인 최종 마감.** 논-KD 티어에서는 s777 페어로 검증된 확정 레버(+0.007)이나, 챔피언 팩이 KD 라인(`kd_m8_refit` Public 0.7891)이라 직접 배포 경로 없음. matched-teacher로도 승격 기준 미달 확인 — 이 이상 투입(alpha 재탐색 등)은 별도 사용자 판단 대기, 기본은 종료. 오늘 하루 소진 GPU: M8 v7r 재학습 ~9h + export + 스크린 3건, 신규 챌린저 9개(v8/v8t/v7rb/v7rc/v7rcgw/v9o/v9f×2/v9h) 전부 실패, v7r만 유일 생존 논-KD 레버로 남음.
+
+### 2026-07-08 - v7r-matched KD 전량 리핏 착수 (사용자 판단: 게이트 미달이나 Public 시도)
+
+- 사용자 지시: kd_v7r_matched_hcx05b_screen(2stage 0.788443, +0.000642 — 게이트 미달·노이즈권)을 그대로 전량 리핏해 Public 시도. Public이 최종 판정이라는 원칙, 방향은 양(+)이었다는 점 근거.
+- 레인 A 재오픈(사용자), 워처로 하트비트 fresh 감지 후 자동 push+런칭. 커맨드는 `kd_m8_refit`(현 챔피언) 리핏 커맨드를 완전 미러 — `--serializer current_v1→current_v7r`, `--distill-logits`를 matched teacher 파일(`m8_v7r_refit_train70k_fp16.pt`)로 교체, 나머지 동일(alpha0.5 T3, seed42, `--final-model --final-only`).
+- 참고: HCX(Llama계열) 리핏이라 transformers 오버라이드 불필요 — 신규 부트스트랩은 기본 4.46.3, 별도 조치 없이 안전.
+- 완료 후: `package_submission.py --no-sparse` → 오프라인 스모크 → 사용자 확인 후 Public 제출(1슬롯 vs 0.7891). 15분 모니터 갱신.
+
+### 2026-07-08 - refit 1차 즉시 실패(teacher .pt 누락)/2차 재개 — 재발 버그, 스테이징 관례 재확인
+
+- 1차 런칭 즉시 실패: `FileNotFoundError: experiments/logits/m8_v7r_refit_train70k_fp16.pt` — 사용자가 새로 연 레인 A는 완전히 새 VM 인스턴스(A100, uptime 3.3분)라 로컬 디스크에 아무 것도 없고, `.pt`는 gitignore 대상(레포 컨벤션상 `.npz`만 추적)이라 `cloud_sync.py push`(tracked 파일만 번들)에 안 실림 — Screen 2 첫 런칭 때(07-08 오전)와 동일한 재발 버그.
+- 복구: Drive(`gdrive:AADP_exchange/logits/m8_v7r_refit_train70k_fp16.pt`, 앞서 export 후 스테이징해 둔 파일)에서 VM 마운트 경로(`/content/drive/MyDrive/...`)로 `cp`(rclone CLI는 VM에 없음 — Drive는 마운트 파일시스템이라 cp로 충분) → `/content/AADP/experiments/logits/`로 복사, 크기 일치 확인(6858237 bytes) 후 재런칭(pid 4597), 정상 진행 확인.
+- **일반화 교훈**: `.pt` teacher 로짓을 쓰는 모든 KD 런칭은 **레인(VM 인스턴스)이 바뀔 때마다** 재스테이징이 필요함 — push만으로 충분하다고 가정하지 말 것. 15분 모니터를 `kd_v7r_matched_refit` 추적으로 갱신.
+
+### 2026-07-08 - refit 완료, 패키징 중 int8 변환 필요성 재확인
+
+- kd_v7r_matched_refit 전량 리핏 완료(fp16 1090.6MB), pull 완료. `package_submission.py --no-sparse`가 fp16 그대로 패키징해 1031MB로 1024MB 제한 초과 — `package_submission.py`엔 int8 변환 로직이 없음(레포 컨벤션상 별도 `quantize_checkpoint.py` 수동 단계 필요, `script.py`의 `load_hf_model`이 `model.int8.safetensors` 존재 시 우선 로드).
+- `quantize_checkpoint.py quantize` 실행: 1132.6MB → 568.2MB(50.17%, 170/219 텐서 양자화). 무결성 검증(`verify`, CPU 512샘플) 진행 중.
+
+### 2026-07-08 - kd_v7r_matched 패키징 완료, Public 제출 대기
+
+- int8 변환 완료(1132.6MB→568.2MB, argmax 99.80%). `experiments/incoming/models/kd_v7r_matched_refit_int8/`(fp16 model.safetensors 제거, int8만 유지) 구성 → `package_submission.py --no-sparse` → `submissions/kd_v7r_matched.zip`(512MB). GPU/CPU 클린 추출 오프라인 스모크 양쪽 통과(로컬 5행 스텁 — 정확성만 검증, 타이밍 무의미).
+- 추론 시간 투영(로컬 스텁으론 실측 불가, 토큰비 기반): v7r mean 261.1 vs v1 mean 200.5(HCX, +30.2%) × 챔피언 실측 6:32/10:00 → **예상 ~8:30-8:35/10:00**, 여유 ~1:25-1:30분 — 챔피언 대비 빠듯하나 예산 안.
+- **Decision: Public 제출 대기 — 사용자 실행.** matched-seed 비교 대상은 kd_m8_refit(0.7891); 스크린 단계 델타(+0.000642)는 노이즈권이라 결과가 어느 쪽으로 나와도 0.002 플로어 안일 가능성이 높음(사전 기대치 명시, 07-08 스크린 판정과 동일 기조).
+
+### 2026-07-09 - kd_v7r_matched Public 결과: 0.787, v7r 레인 최종 종료
+
+- Public **0.787** / runtime **7:57/10:00** (`kd_v7r_matched.zip`). vs 챔피언 `kd_m8_refit` 0.7891 → **-0.0021**, 0.002 노이즈 플로어를 근소하게 넘는 음(-) 방향. 사전등록 기대치(스크린 델타 +0.000642는 노이즈권 → 결과가 어느 방향이든 놀랍지 않음)와 부합.
+- 런타임은 토큰비 기반 투영(~8:30-8:35)보다 여유 있게 나옴(7:57) — 투영이 보수적이었음.
+- **Decision: `kd_v7r_matched` 반려, 챔피언 유지(`kd_m8_refit` 0.7891). v7r 직렬화기 레인 전체 최종 종료.** 논-KD 티어의 확정 레버(+0.007, s777로 재현)는 여전히 유효한 사실이나 챔피언이 KD 라인이라 배포 경로가 없었고, 유일한 스택 경로였던 matched-teacher KD도 스크린(게이트 미달)과 Public(음의 델타) 양쪽에서 승격 실패를 확인. 추가 v7r 계열 작업 없음.
