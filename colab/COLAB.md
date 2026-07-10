@@ -74,9 +74,11 @@ channel below.
 2. Run `[probe]`; check the GPU class fits the job.
 3. Run `[bootstrap]`; verify the printed commit matches local HEAD (or the intended
    dirty push) and `transformers` is 4.46.3.
-   Weak4 specialist lanes additionally install `peft==0.19.1` and run
-   `colab/weak4_lane_preflight.py` before launch to lock GPU class, anchor, and
-   warm-start provenance.
+   Weak4 specialist lanes additionally run `pip uninstall -y torchao`, install
+   `transformers==4.46.3 peft==0.19.1`, and run
+   `colab/weak4_lane_preflight.py` before launch to lock the dependency set, GPU
+   class, anchor, and warm-start provenance. Colab's preinstalled `torchao==0.10.0`
+   is incompatible with PEFT 0.19.1 and otherwise fails only when LoRA is attached.
 4. Run `[agent]` — runs `vm_agent.py daemon` synchronously (the session's last Quick
    Pick). The cell stays busy for the whole session; that is the keepalive. Colab's
    idle timer only counts executing cells — a detached daemon leaves the kernel idle

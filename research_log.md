@@ -713,3 +713,44 @@ decide whether to refit, package, and spend a Public slot.
   (팀원 의견 3과 동일 순서 — 채택).
 - 참고: condalpha-KD 챔피언 갱신(Weak4-true 행 표적 KD α 단일 변경)은 weak4
   표적 개입 방향의 약한 순풍이나, 0.002 노이즈권 해석은 유지.
+
+### 2026-07-10 - Weak4 routed specialist screen rejected at the plain-v1 control
+
+- A100 fp16 matched screens completed from the leak-free `kd_hcx_m8_screen`
+  warm-start: `spec_v1` (`current_v1`) and `spec_nav` (`weak_nav_v1`), both LoRA
+  r16, Weak4-only conditional focal loss, seed42/session/len384/ep2. The saved
+  adapters use PEFT 0.19.1 and share the same code fingerprint. Detailed metrics
+  and alpha grids are in `experiments/artifacts/20260710_spec_v1_weak4_router_tuner.json`
+  and `experiments/artifacts/20260710_spec_nav_weak4_router_tuner.json`.
+- Fixed-anchor routing selected 4,200 of 5,745 main-Weak4 predictions (cap 0.30).
+  Both tune-set optima were alpha 0. At alpha 0.05, full macro deltas were
+  `spec_v1 -0.000350` and `spec_nav -0.000339`; larger blends deteriorated further.
+  Hard specialist replacement also corrected fewer routed rows than the main
+  conditional decision, so this is a specialist-recipe failure rather than a
+  `weak_nav_v1`-only failure.
+- Routed token audits had no len384 overflow for either serializer. Therefore
+  truncation does not explain the result; the plain `current_v1` specialist
+  control itself fails to add signal.
+- **Decision: reject this Weak4 routed-specialist recipe; no `spec_paths`, final
+  refit, int8/T4 rehearsal, package, or Public submission.** Keep the artifacts
+  for diagnosis. Future work, if resumed, must change the learning objective or
+  routing/selection evidence rather than iterate the serializer on this recipe.
+
+### 2026-07-10 - Weak4 uncapped route_fraction=1.0 audit confirms rejection
+
+- Followed the recorded team recommendation and reran alpha tuning plus the
+  60/40 session confirm split with `route_fraction=1.0`. This routes all 5,745
+  main-argmax-Weak4 rows, versus 4,200 rows at cap 0.30. Reports:
+  `experiments/artifacts/20260710_spec_v1_weak4_router_r100_tuner.json` and
+  `experiments/artifacts/20260710_spec_nav_weak4_router_r100_tuner.json`.
+- Both uncapped runs again selected alpha 0 and failed the quality gate. Through
+  alpha 0.50, the added high-margin rows almost never changed class, so the
+  alpha-grid macro deltas were effectively identical to cap 0.30. At alpha 1.0,
+  uncapped hard replacement was slightly worse, not better.
+- Small-alpha confirm rescue occasionally exceeded harm, but tune and full-val
+  deltas remained negative; this fails the pre-registered requirement that the
+  signal generalize across tune, confirm, and full validation. Routed len384
+  overflow was zero for `spec_v1` and one row for `spec_nav`, too small to explain
+  the failure.
+- **Decision: the low-margin cap is not the cause of the specialist failure.
+  Keep the recipe rejected and do not reopen final refit/Public.**

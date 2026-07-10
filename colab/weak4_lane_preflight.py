@@ -7,6 +7,7 @@ from pathlib import Path
 import peft
 import torch
 import transformers
+from peft.import_utils import is_torchao_available
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from script import ALL_CLASSES
@@ -35,6 +36,13 @@ def main():
         raise RuntimeError(f"expected transformers==4.46.3, got {transformers.__version__}")
     if peft.__version__ != "0.19.1":
         raise RuntimeError(f"expected peft==0.19.1, got {peft.__version__}")
+    try:
+        is_torchao_available()
+    except ImportError as exc:
+        raise RuntimeError(
+            "PEFT cannot initialize with the installed optional torchao package; "
+            "uninstall torchao or install a PEFT-compatible version"
+        ) from exc
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is unavailable")
     gpu_name = torch.cuda.get_device_name(0)
