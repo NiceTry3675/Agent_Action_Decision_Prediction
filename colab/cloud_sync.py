@@ -2,6 +2,7 @@
 
 Usage:
     python colab/cloud_sync.py push [--data]   # code bundle (+ one-time data tarball) -> Drive
+    python colab/cloud_sync.py push-anchor FILE # fixed validation payload -> Drive anchors/
     python colab/cloud_sync.py list            # list collected runs on Drive
     python colab/cloud_sync.py pull RUN_NAME   # download a run and merge results/artifacts
     python colab/cloud_sync.py pull-model NAME # download saved weights from Drive models/
@@ -25,6 +26,7 @@ paired with colab/colab_runner_b.ipynb on the VM side.
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shlex
@@ -61,6 +63,18 @@ def push(include_data):
     tracked = ls_files()
     untracked = ls_files("--others", "--exclude-standard")
     files = tracked + untracked
+    fingerprint = hashlib.sha256()
+    for rel in sorted(files):
+        path = REPO / rel
+        if not path.is_file():
+            continue
+        rel_bytes = rel.encode("utf-8")
+        fingerprint.update(len(rel_bytes).to_bytes(4, "big"))
+        fingerprint.update(rel_bytes)
+        fingerprint.update(path.stat().st_size.to_bytes(8, "big"))
+        with path.open("rb") as f:
+            while chunk := f.read(1024 * 1024):
+                fingerprint.update(chunk)
     stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
     tag = f"{stamp}_{commit[:8]}" + ("_dirty" if dirty else "")
     manifest = {
@@ -70,6 +84,7 @@ def push(include_data):
         "dirty_files": dirty[:100],
         "tracked_file_count": len(tracked),
         "untracked_file_count": len(untracked),
+        "working_tree_fingerprint_sha256": fingerprint.hexdigest(),
     }
     with tempfile.TemporaryDirectory() as td:
         bundle = Path(td) / f"code_{tag}.tar.gz"
@@ -90,6 +105,21 @@ def push(include_data):
                 tf.add(REPO / "open/data", arcname="open/data")
             sh(["rclone", "copy", str(data_bundle), f"{EXCHANGE}/data/"])
             print("pushed open_data.tar.gz")
+
+
+def push_anchor(path, remote_name):
+    path = Path(path)
+    if not path.is_file():
+        sys.exit(f"anchor payload not found: {path}")
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    sh(["rclone", "copyto", str(path), f"{EXCHANGE}/anchors/{remote_name}"])
+    print(
+        f"pushed anchor {path} -> {EXCHANGE}/anchors/{remote_name} "
+        f"size_mb={path.stat().st_size / 1e6:.2f} sha256={digest.hexdigest()}"
+    )
 
 
 def list_runs():
@@ -239,6 +269,9 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     p_push = sub.add_parser("push", help="upload code bundle (and optionally data) to Drive")
     p_push.add_argument("--data", action="store_true", help="also upload open/data tarball (one-time)")
+    p_anchor = sub.add_parser("push-anchor", help="upload the fixed validation anchor payload")
+    p_anchor.add_argument("path")
+    p_anchor.add_argument("--name", default="anchor_val_logits.pt")
     sub.add_parser("list", help="list collected runs on Drive")
     p_pull = sub.add_parser("pull", help="download a collected run and merge results")
     p_pull.add_argument("run_name")
@@ -262,6 +295,8 @@ def main():
     require_rclone()
     if args.command == "push":
         push(args.data)
+    elif args.command == "push-anchor":
+        push_anchor(args.path, args.name)
     elif args.command == "list":
         list_runs()
     elif args.command == "pull":

@@ -1,10 +1,12 @@
 import argparse
+import hashlib
 import json
 import math
 import random
 import re
 import shutil
 import shlex
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -36,6 +38,9 @@ EXPLORER4_CLASSES = [
 ]
 EXPLORER4_CLASS_IDS = [ALL_CLASSES.index(label) for label in EXPLORER4_CLASSES]
 EXPLORER4_CLASS_ID_SET = set(EXPLORER4_CLASS_IDS)
+WEAK4_CLASSES = ALL_CLASSES[:4]
+WEAK4_CLASS_IDS = list(range(4))
+WEAK4_CLASS_ID_SET = set(WEAK4_CLASS_IDS)
 
 
 def safe_slug(value):
@@ -53,11 +58,43 @@ def torch_load(path):
 def class_weights(y, device, power):
     counts = Counter(y)
     total = len(y)
-    weights = []
-    for class_id in range(len(ALL_CLASSES)):
-        weights.append((total / (len(ALL_CLASSES) * max(1, counts[class_id]))) ** power)
-    mean = sum(weights) / len(weights)
-    return torch.tensor([w / mean for w in weights], dtype=torch.float32, device=device)
+    present = sorted(class_id for class_id, count in counts.items() if count > 0)
+    if not present:
+        raise ValueError("cannot compute class weights from an empty label set")
+    weights = [0.0] * len(ALL_CLASSES)
+    for class_id in present:
+        weights[class_id] = (total / (len(present) * counts[class_id])) ** power
+    mean = sum(weights[class_id] for class_id in present) / len(present)
+    for class_id in present:
+        weights[class_id] /= mean
+    return torch.tensor(weights, dtype=torch.float32, device=device)
+
+
+def classification_loss_values(
+    logits,
+    labels,
+    weights,
+    label_smoothing,
+    loss_name,
+    focal_gamma,
+    class_ids=None,
+):
+    loss_logits = logits.float()
+    if class_ids is not None:
+        loss_logits = loss_logits[:, class_ids]
+    loss_values = F.cross_entropy(
+        loss_logits,
+        labels,
+        weight=weights,
+        label_smoothing=label_smoothing,
+        reduction="none",
+    )
+    if loss_name == "focal":
+        pt = F.log_softmax(loss_logits, dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
+        loss_values = (1.0 - pt) ** focal_gamma * loss_values
+    elif loss_name != "ce":
+        raise ValueError(f"unknown loss: {loss_name}")
+    return loss_values
 
 
 def select_balanced_subset(indices, y, size, seed):
@@ -230,6 +267,127 @@ def add_replay_examples(samples, y, train_idx, args):
         f"cap={args.max_replay_samples} weight={args.replay_sample_weight}"
     )
     return new_samples, new_y, new_train_idx, sample_weights, len(replay_samples)
+
+
+def filter_train_indices(train_idx, y, mode):
+    if mode == "none":
+        return list(train_idx)
+    if mode != "weak4":
+        raise ValueError(f"unknown train label filter: {mode}")
+    filtered = [idx for idx in train_idx if y[idx] in WEAK4_CLASS_ID_SET]
+    if not filtered:
+        raise ValueError("--train-label-filter weak4 selected zero training rows")
+    counts = Counter(y[idx] for idx in filtered)
+    missing = [label for label_id, label in enumerate(WEAK4_CLASSES) if counts[label_id] == 0]
+    if missing:
+        raise ValueError(f"weak4 training split is missing labels: {missing}")
+    print(
+        "train label filter=weak4 "
+        f"kept={len(filtered)}/{len(train_idx)} "
+        f"counts={{{', '.join(f'{WEAK4_CLASSES[i]}:{counts[i]}' for i in WEAK4_CLASS_IDS)}}}"
+    )
+    return filtered
+
+
+def specialist_optimizer_groups(model, weight_decay, train_label_filter):
+    named = [(name, param) for name, param in model.named_parameters() if param.requires_grad]
+    if train_label_filter != "weak4":
+        return [param for _, param in named]
+    score_params = [param for name, param in named if ".score." in f".{name}."]
+    other_params = [param for name, param in named if ".score." not in f".{name}."]
+    if not score_params:
+        raise ValueError("weak4 specialist found no trainable score parameters")
+    groups = []
+    if other_params:
+        groups.append({"params": other_params, "weight_decay": weight_decay})
+    groups.append({"params": score_params, "weight_decay": 0.0})
+    return groups
+
+
+def validate_specialist_warmstart(args):
+    if args.train_label_filter != "weak4":
+        return
+    if not args.resume_from:
+        raise ValueError("Weak4 specialist training requires --resume-from")
+    resume_dir = Path(args.resume_from)
+    meta_path = resume_dir.parent / "hf_meta.json" if resume_dir.name == "hf_model" else resume_dir / "hf_meta.json"
+    if not meta_path.is_file():
+        raise ValueError(f"Weak4 warm-start metadata is missing: {meta_path}")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    if list(meta.get("classes") or []) != ALL_CLASSES:
+        raise ValueError("Weak4 warm-start class order does not match ALL_CLASSES")
+    if meta.get("base_model") != args.base_model:
+        raise ValueError(
+            f"Weak4 warm-start base_model mismatch: {meta.get('base_model')!r} != {args.base_model!r}"
+        )
+    if not bool(meta.get("saved_fp16", False)):
+        raise ValueError("Weak4 warm-start must be a saved fp16 artifact")
+    is_final_refit = bool(meta.get("final_refit", False))
+    if args.final_only:
+        if not is_final_refit:
+            raise ValueError("Weak4 final-only training must warm-start from the final refit")
+    else:
+        if is_final_refit:
+            raise ValueError("Weak4 screen must not warm-start from a final refit that saw validation")
+        if meta.get("validation_split") != "session":
+            raise ValueError("Weak4 screen warm-start must use the fixed session validation split")
+    print(
+        f"Weak4 warm-start OK: {resume_dir} final_refit={is_final_refit} "
+        f"saved_fp16={meta.get('saved_fp16')}"
+    )
+
+
+def assert_validation_anchor(samples, y, train_idx, val_idx, args):
+    if not args.assert_val_ids:
+        return
+    payload = torch_load(args.assert_val_ids)
+    anchor_classes = list(payload.get("classes") or [])
+    if anchor_classes != ALL_CLASSES:
+        raise ValueError(
+            f"validation anchor classes mismatch: expected={ALL_CLASSES} actual={anchor_classes}"
+        )
+    if payload.get("split") != args.split:
+        raise ValueError(
+            f"validation anchor split mismatch: expected={args.split} actual={payload.get('split')}"
+        )
+    if int(payload.get("seed", -1)) != int(args.seed):
+        raise ValueError(
+            f"validation anchor seed mismatch: expected={args.seed} actual={payload.get('seed')}"
+        )
+
+    anchor_ids = [safe_text(sample_id) for sample_id in payload.get("ids") or []]
+    val_ids = [safe_text(samples[idx].get("id")) for idx in val_idx]
+    if len(anchor_ids) != len(set(anchor_ids)):
+        raise ValueError("validation anchor contains duplicate ids")
+    if len(val_ids) != len(set(val_ids)):
+        raise ValueError("computed validation split contains duplicate ids")
+    if set(anchor_ids) != set(val_ids):
+        missing = sorted(set(anchor_ids) - set(val_ids))[:5]
+        extra = sorted(set(val_ids) - set(anchor_ids))[:5]
+        raise ValueError(
+            "validation ids do not match anchor: "
+            f"anchor={len(anchor_ids)} computed={len(val_ids)} missing={missing} extra={extra}"
+        )
+
+    train_ids = {safe_text(samples[idx].get("id")) for idx in train_idx}
+    overlap = train_ids & set(anchor_ids)
+    if overlap:
+        raise ValueError(f"training ids overlap anchor validation ids: {sorted(overlap)[:5]}")
+
+    anchor_y = payload.get("y_true")
+    if anchor_y is not None:
+        anchor_labels = {sample_id: int(label) for sample_id, label in zip(anchor_ids, anchor_y)}
+        mismatched = [
+            sample_id
+            for sample_id, idx in zip(val_ids, val_idx)
+            if anchor_labels.get(sample_id) != int(y[idx])
+        ]
+        if mismatched:
+            raise ValueError(f"validation labels do not match anchor for ids: {mismatched[:5]}")
+    print(
+        f"validation anchor OK: ids={len(val_ids)} train_disjoint={len(train_ids)} "
+        f"split={args.split} seed={args.seed}"
+    )
 
 
 def make_batches(indices, batch_size, rng=None, lengths=None, bucket_multiplier=1):
@@ -514,6 +672,10 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
     model = load_sequence_classifier(args, tokenizer, label_kwargs).to(device)
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
+    weak4_ids = torch.tensor(WEAK4_CLASS_IDS, dtype=torch.long, device=device)
+    weak4_weights = weights[weak4_ids]
+    if args.train_label_filter == "weak4":
+        weak4_weights = weak4_weights / torch.clamp(weak4_weights.mean(), min=1e-8)
     explorer4_ids = torch.tensor(EXPLORER4_CLASS_IDS, dtype=torch.long, device=device)
     explorer4_local_targets = torch.full((len(ALL_CLASSES),), -1, dtype=torch.long, device=device)
     explorer4_local_targets[explorer4_ids] = torch.arange(len(EXPLORER4_CLASS_IDS), device=device)
@@ -521,13 +683,19 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
     if args.explorer4_loss_balance:
         explorer4_weights = weights[explorer4_ids]
         explorer4_weights = explorer4_weights / torch.clamp(explorer4_weights.mean(), min=1e-8)
-    trainable_params = [param for param in model.parameters() if param.requires_grad]
+    optimizer_params = specialist_optimizer_groups(
+        model, args.weight_decay, args.train_label_filter
+    )
     if args.optim == "adamw8bit":
         import bitsandbytes as bnb
 
-        optimizer = bnb.optim.AdamW8bit(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = bnb.optim.AdamW8bit(
+            optimizer_params, lr=args.lr, weight_decay=args.weight_decay
+        )
     else:
-        optimizer = torch.optim.AdamW(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
+        optimizer = torch.optim.AdamW(
+            optimizer_params, lr=args.lr, weight_decay=args.weight_decay
+        )
     accum = max(1, args.grad_accum_steps)
     batches_per_epoch = math.ceil(len(train_idx) / args.batch_size)
     total_steps = math.ceil(batches_per_epoch / accum) * args.epochs
@@ -548,20 +716,24 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         optimizer.zero_grad(set_to_none=True)
 
     def per_row_loss(logits, labels, batch_idx):
-        loss_values = F.cross_entropy(
-            logits.float(),
+        if args.train_label_filter == "weak4":
+            if bool(((labels < 0) | (labels >= len(WEAK4_CLASS_IDS))).any()):
+                raise ValueError(f"weak4 specialist batch has labels outside 0-3: {labels.tolist()}")
+            loss_weights = weak4_weights
+            loss_class_ids = weak4_ids
+        else:
+            loss_weights = weights
+            loss_class_ids = None
+        loss_values = classification_loss_values(
+            logits,
             labels,
-            weight=weights,
-            label_smoothing=args.label_smoothing,
-            reduction="none",
+            loss_weights,
+            args.label_smoothing,
+            args.loss,
+            args.focal_gamma,
+            class_ids=loss_class_ids,
         )
-        if args.loss == "focal":
-            # focal factor from the unsmoothed target probability; class
-            # weights and label smoothing stay inside the CE term so
-            # ce -> focal changes exactly one thing
-            pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
-            loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
-        if args.explorer4_loss_weight > 0:
+        if args.explorer4_loss_weight > 0 and args.train_label_filter == "none":
             explorer4_targets = explorer4_local_targets[labels]
             explorer4_mask = explorer4_targets >= 0
             if bool(explorer4_mask.any()):
@@ -621,8 +793,14 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
                     # R-Drop (arXiv:2106.14448): second dropout-perturbed pass +
                     # symmetric KL; needs --dropout > 0 or both passes are identical
                     logits2 = model(**encoded).logits
-                    lp1 = F.log_softmax(logits.float(), dim=-1)
-                    lp2 = F.log_softmax(logits2.float(), dim=-1)
+                    if args.train_label_filter == "weak4":
+                        rdrop_logits1 = logits.float()[:, weak4_ids]
+                        rdrop_logits2 = logits2.float()[:, weak4_ids]
+                    else:
+                        rdrop_logits1 = logits.float()
+                        rdrop_logits2 = logits2.float()
+                    lp1 = F.log_softmax(rdrop_logits1, dim=-1)
+                    lp2 = F.log_softmax(rdrop_logits2, dim=-1)
                     rdrop_kl = 0.5 * (
                         F.kl_div(lp1, lp2.exp(), reduction="none").sum(-1)
                         + F.kl_div(lp2, lp1.exp(), reduction="none").sum(-1)
@@ -697,6 +875,82 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         model = model.half()
     model.save_pretrained(hf_dir, safe_serialization=True)
     tokenizer.save_pretrained(hf_dir)
+    if int(getattr(args, "lora_r", 0) or 0) > 0:
+        try:
+            from importlib.metadata import PackageNotFoundError, version
+
+            def package_version(name):
+                try:
+                    return version(name)
+                except PackageNotFoundError:
+                    return "missing"
+
+            try:
+                repo_dir = Path(__file__).resolve().parent
+                git_sha = subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=repo_dir,
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                ).strip()
+                git_status = subprocess.check_output(
+                    ["git", "status", "--porcelain"],
+                    cwd=repo_dir,
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                ).splitlines()
+                worktree_digest = hashlib.sha256(
+                    subprocess.check_output(
+                        ["git", "diff", "--binary", "HEAD"],
+                        cwd=repo_dir,
+                        stderr=subprocess.DEVNULL,
+                    )
+                )
+                untracked = []
+                for line in git_status:
+                    if not line.startswith("?? "):
+                        continue
+                    candidate = repo_dir / line[3:]
+                    paths = sorted(candidate.rglob("*")) if candidate.is_dir() else [candidate]
+                    untracked.extend(path for path in paths if path.is_file())
+                for path in sorted(set(untracked)):
+                    rel = str(path.relative_to(repo_dir)).encode("utf-8")
+                    worktree_digest.update(len(rel).to_bytes(4, "big"))
+                    worktree_digest.update(rel)
+                    worktree_digest.update(path.read_bytes())
+                worktree_sha = worktree_digest.hexdigest()
+            except (OSError, subprocess.CalledProcessError):
+                git_sha = "unknown"
+                git_status = ["unknown"]
+                worktree_sha = "unknown"
+            cloud_manifest_path = repo_dir / "cloud_manifest.json"
+            cloud_manifest = None
+            if cloud_manifest_path.is_file():
+                cloud_manifest = json.loads(cloud_manifest_path.read_text(encoding="utf-8"))
+            provenance = {
+                "git_sha": git_sha,
+                "git_dirty": bool(git_status),
+                "git_status": git_status,
+                "working_tree_diff_sha256": worktree_sha,
+                "cloud_manifest": cloud_manifest,
+                "python": sys.version.split()[0],
+                "packages": {
+                    "peft": package_version("peft"),
+                    "transformers": package_version("transformers"),
+                    "torch": package_version("torch"),
+                    "safetensors": package_version("safetensors"),
+                },
+                "train_command": " ".join(shlex.quote(part) for part in sys.argv),
+                "resume_from": str(args.resume_from),
+                "serializer_name": args.serializer,
+                "train_label_filter": args.train_label_filter,
+            }
+            (hf_dir / "weak4_training_provenance.json").write_text(
+                json.dumps(provenance, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            raise RuntimeError(f"failed to record LoRA training provenance: {exc}") from exc
     meta = {
         "classes": ALL_CLASSES,
         "class_bias": [float(x) for x in class_bias.tolist()],
@@ -712,6 +966,20 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "base_model": args.base_model,
         "model_class": getattr(args, "model_class", "auto"),
         "lora_r": int(getattr(args, "lora_r", 0) or 0),
+        "train_label_filter": args.train_label_filter,
+        "seed": int(args.seed),
+        "epochs": int(args.epochs),
+        "train_batch_size": int(args.batch_size),
+        "grad_accum_steps": int(args.grad_accum_steps),
+        "gradient_checkpointing": bool(args.gradient_checkpointing),
+        "learning_rate": float(args.lr),
+        "weight_decay": float(args.weight_decay),
+        "label_smoothing": float(args.label_smoothing),
+        "loss": args.loss,
+        "focal_gamma": float(args.focal_gamma),
+        "class_weight_power": float(args.class_weight_power),
+        "optim": args.optim,
+        "bf16": bool(args.bf16),
         "explorer4_loss_weight": float(args.explorer4_loss_weight),
         "explorer4_loss_balance": bool(args.explorer4_loss_balance),
         "trained_with_cuda": torch.cuda.is_available(),
@@ -788,6 +1056,42 @@ def explorer4_metrics(y_true, y_pred, full_metrics=None):
 def explorer4_metrics_from_logits(logits, y_true, bias, full_metrics=None):
     pred = predict_with_bias(logits, bias)
     return explorer4_metrics(y_true, pred, full_metrics=full_metrics)
+
+
+def weak4_conditional_metrics(logits, y_true):
+    weak_rows = [idx for idx, label in enumerate(y_true) if label in WEAK4_CLASS_ID_SET]
+    if not weak_rows:
+        raise ValueError("validation set has no true Weak4 rows")
+    row_idx = torch.tensor(weak_rows, dtype=torch.long)
+    weak_ids = torch.tensor(WEAK4_CLASS_IDS, dtype=torch.long)
+    pred_local = torch.argmax(logits.float()[row_idx][:, weak_ids], dim=1).tolist()
+    true_local = [int(y_true[idx]) for idx in weak_rows]
+    confusion = [[0 for _ in WEAK4_CLASSES] for _ in WEAK4_CLASSES]
+    for true_id, pred_id in zip(true_local, pred_local):
+        confusion[true_id][pred_id] += 1
+    per_class = {}
+    for class_id, label in enumerate(WEAK4_CLASSES):
+        tp = confusion[class_id][class_id]
+        fp = sum(confusion[row][class_id] for row in range(len(WEAK4_CLASSES))) - tp
+        fn = sum(confusion[class_id]) - tp
+        denom = 2 * tp + fp + fn
+        per_class[label] = (2 * tp / denom) if denom else 0.0
+    top_confusions = []
+    for true_id, true_label in enumerate(WEAK4_CLASSES):
+        for pred_id, pred_label in enumerate(WEAK4_CLASSES):
+            if true_id != pred_id and confusion[true_id][pred_id]:
+                top_confusions.append(
+                    (confusion[true_id][pred_id], true_label, pred_label)
+                )
+    top_confusions.sort(reverse=True)
+    return {
+        "n_true_weak4": len(weak_rows),
+        "macro_f1": sum(per_class.values()) / len(per_class),
+        "per_class_f1": per_class,
+        "confusion_4x4": confusion,
+        "prediction_distribution": dict(Counter(WEAK4_CLASSES[pred] for pred in pred_local)),
+        "top_confusions": top_confusions,
+    }
 
 
 def load_tokenizer_for_args(args):
@@ -887,6 +1191,7 @@ def save_val_logits(
     args,
     old_bias=None,
     old_bias_metrics=None,
+    weak4_conditional=None,
 ):
     if not args.save_val_logits:
         return ""
@@ -919,6 +1224,8 @@ def save_val_logits(
             "fold_id": args.fold_id if args.split == "session_oof" else None,
             "n_folds": args.n_folds if args.split == "session_oof" else None,
             "seed": args.seed,
+            "train_label_filter": args.train_label_filter,
+            "weak4_conditional_metrics": weak4_conditional,
         },
         path,
     )
@@ -953,6 +1260,16 @@ def run(args):
         raise ValueError("--save-val-model needs an explicit --output-dir; refusing to overwrite the packaged model/")
     if args.device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
+    validate_specialist_warmstart(args)
+    if (
+        (args.train_label_filter != "none" or args.assert_val_ids)
+        and args.resume_from
+        and (Path(args.resume_from) / "checkpoint_state.json").exists()
+    ):
+        raise ValueError(
+            "specialist warm-start --resume-from must be a completed full-weight checkpoint; "
+            "checkpoint_state.json indicates an epoch-resume directory"
+        )
     device = torch.device(args.device if args.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu"))
     if device.type == "cuda":
         torch.cuda.set_device(0)
@@ -991,6 +1308,7 @@ def run(args):
                 list(range(len(base_samples))),
                 args,
             )
+        final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
         print(f"split=final_refit train={len(final_idx)} replay_size={final_replay_size}")
         token_start = time.perf_counter()
         final_texts, text_cache_path = build_serialized_texts(final_samples, args, train_path, cache_scope="final")
@@ -1042,7 +1360,11 @@ def run(args):
             Path("experiments/results.csv"),
             {
                 "experiment_id": experiment_id,
-                "model_family": "torch_gpu_transformer_final_refit",
+                "model_family": (
+                    "weak4_lora_specialist_final_refit"
+                    if args.train_label_filter == "weak4"
+                    else "torch_gpu_transformer_final_refit"
+                ),
                 "base_model": args.base_model,
                 "features": "serialized prompt/action/workspace text",
                 "serializer_name": args.serializer,
@@ -1063,7 +1385,11 @@ def run(args):
                 "artifact_size_mb": f"{artifact_size:.3f}",
                 "train_command": " ".join(shlex.quote(part) for part in sys.argv),
                 "notes": args.notes or "final refit",
-                "decision": "final transformer refit complete; requires sparse artifact and package smoke test",
+                "decision": (
+                    "final Weak4 LoRA refit complete; sparse is forbidden; build with the screen tuner report"
+                    if args.train_label_filter == "weak4"
+                    else "final transformer refit complete; requires sparse artifact and package smoke test"
+                ),
             },
         )
         metrics_path = Path("experiments/artifacts") / f"{experiment_id}_metrics.json"
@@ -1099,7 +1425,11 @@ def run(args):
             f"- OOF class-bias source: {args.class_bias_artifact or 'none'}",
             f"- Rule boosts source: {args.rule_boosts_path or 'none'}",
             f"- Runtime or package-size concerns: runtime={runtime['total_sec']:.1f}s, tokenize={runtime['tokenize_sec']:.1f}s, train={runtime['train_sec']:.1f}s, artifact_size_mb={artifact_size:.1f}.",
-            f"- Decision: final transformer refit complete; next train final sparse SVC artifact and smoke-test offline submission package.",
+            (
+                "- Decision: final Weak4 LoRA refit complete; use the fixed screen tuner config and no sparse stack."
+                if args.train_label_filter == "weak4"
+                else "- Decision: final transformer refit complete; next train final sparse SVC artifact and smoke-test offline submission package."
+            ),
             "",
         ]
         if not args.no_research_log:
@@ -1109,9 +1439,11 @@ def run(args):
         return
 
     train_idx, val_idx = split_for_args(samples, y, args)
+    assert_validation_anchor(samples, y, train_idx, val_idx, args)
     full_val_count = len(val_idx)
     val_idx = select_balanced_subset(val_idx, y, args.quick_val_size, args.seed + 17)
     samples, y, train_idx, sample_weights, replay_size = add_replay_examples(samples, y, train_idx, args)
+    train_idx = filter_train_indices(train_idx, y, args.train_label_filter)
     fold_text = f" fold={args.fold_id}/{args.n_folds}" if args.split == "session_oof" else ""
     print(f"split={args.split}{fold_text} train={len(train_idx)} val={len(val_idx)} full_val={full_val_count}")
 
@@ -1140,6 +1472,19 @@ def run(args):
     logits, y_val, raw_metrics, ordered_val_idx = evaluate(model, tokenizer, encoded_features, lengths, y, val_idx, args, device)
     eval_sec = time.perf_counter() - eval_start
     print(f"  raw_macro_f1={raw_metrics['macro_f1']:.6f}")
+
+    weak4_conditional = None
+    if args.train_label_filter == "weak4":
+        weak4_conditional = weak4_conditional_metrics(logits, y_val)
+        print(
+            "  weak4_conditional "
+            f"rows={weak4_conditional['n_true_weak4']} "
+            f"macro_f1={weak4_conditional['macro_f1']:.6f}"
+        )
+        print("  weak4 conditional confusion (rows=true, cols=pred):")
+        print(f"    {'':18s} " + " ".join(f"{label[:8]:>8s}" for label in WEAK4_CLASSES))
+        for label, row in zip(WEAK4_CLASSES, weak4_conditional["confusion_4x4"]):
+            print(f"    {label:18s} " + " ".join(f"{value:8d}" for value in row))
 
     bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
     old_bias = None
@@ -1172,6 +1517,8 @@ def run(args):
         f"final={final_explorer4_metrics['explorer4_macro_f1']:.6f} "
         f"sum={final_explorer4_metrics['explorer4_sum_f1']:.6f}"
     )
+    report_raw_metrics = weak4_conditional if weak4_conditional is not None else raw_metrics
+    report_metrics = weak4_conditional if weak4_conditional is not None else metrics
 
     experiment_id = experiment_id_for(args)
     val_logits_path = save_val_logits(
@@ -1186,6 +1533,7 @@ def run(args):
         args,
         old_bias=old_bias,
         old_bias_metrics=old_bias_metrics,
+        weak4_conditional=weak4_conditional,
     )
     runtime = {
         "tokenize_sec": token_sec,
@@ -1198,7 +1546,7 @@ def run(args):
     elif args.split == "session_oof":
         decision = "oof fold complete; aggregate before decision"
     else:
-        decision = "keep as GPU candidate" if metrics["macro_f1"] >= args.keep_threshold else "discard or revisit"
+        decision = "keep as GPU candidate" if report_metrics["macro_f1"] >= args.keep_threshold else "discard or revisit"
 
     artifact_size = 0.0
     if args.final_model:
@@ -1219,6 +1567,7 @@ def run(args):
             final_texts, _ = build_serialized_texts(final_samples, args, train_path, cache_scope="final")
             final_encoded_features, final_lengths, _ = tokenize_texts(tokenizer, final_texts, args, train_path, cache_scope="final")
             print(f"final replay_size={final_replay_size}")
+        final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
         final_model = train_model(
             tokenizer,
             final_encoded_features,
@@ -1230,11 +1579,11 @@ def run(args):
             device,
             teacher=build_teacher_targets(samples if args.replay_mode == "none" else final_samples, args),
         )
-        save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, metrics)
+        save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, report_metrics)
         artifact_size = dir_size_mb(args.output_dir)
         print(f"saved HF artifact: {args.output_dir}")
     elif args.save_val_model:
-        save_hf_artifact(model, tokenizer, args.output_dir, bias, args, metrics)
+        save_hf_artifact(model, tokenizer, args.output_dir, bias, args, report_metrics)
         artifact_size = dir_size_mb(args.output_dir)
         print(f"saved val-split HF artifact: {args.output_dir}")
     elif Path(args.output_dir).exists():
@@ -1250,7 +1599,7 @@ def run(args):
         Path("experiments/results.csv"),
         {
             "experiment_id": experiment_id,
-            "model_family": "torch_gpu_transformer",
+            "model_family": "weak4_lora_specialist" if args.train_label_filter == "weak4" else "torch_gpu_transformer",
             "base_model": args.base_model,
             "features": "serialized prompt/action/workspace text",
             "serializer_name": args.serializer,
@@ -1265,13 +1614,13 @@ def run(args):
             "label_smoothing": args.label_smoothing,
             "replay_mode": args.replay_mode,
             "replay_size": replay_size,
-            "macro_f1_raw": f"{raw_metrics['macro_f1']:.6f}",
+            "macro_f1_raw": f"{report_raw_metrics['macro_f1']:.6f}",
             "macro_f1_bias_tuned": f"{old_bias_metrics['macro_f1']:.6f}" if old_bias_metrics else "",
             "macro_f1_bias_tuned_2stage": f"{metrics['macro_f1']:.6f}" if args.tune_bias else "",
-            "macro_f1": f"{metrics['macro_f1']:.6f}",
-            "weakest_classes": summarize_weak_classes(metrics),
-            "top_confusions": json.dumps(metrics["top_confusions"][:8], ensure_ascii=False),
-            "prediction_distribution": json.dumps(metrics["prediction_distribution"], ensure_ascii=False, sort_keys=True),
+            "macro_f1": f"{report_metrics['macro_f1']:.6f}",
+            "weakest_classes": summarize_weak_classes(report_metrics),
+            "top_confusions": json.dumps(report_metrics["top_confusions"][:8], ensure_ascii=False),
+            "prediction_distribution": json.dumps(report_metrics["prediction_distribution"], ensure_ascii=False, sort_keys=True),
             "artifact_path": args.output_dir if args.final_model else "",
             "val_logits_path": val_logits_path,
             "test_logits_path": "",
@@ -1284,7 +1633,17 @@ def run(args):
         },
     )
     if not args.no_research_log:
-        append_log(experiment_id, args, raw_metrics, metrics, decision, runtime, val_logits_path, artifact_size, old_bias_metrics)
+        append_log(
+            experiment_id,
+            args,
+            report_raw_metrics,
+            report_metrics,
+            decision,
+            runtime,
+            val_logits_path,
+            artifact_size,
+            old_bias_metrics if weak4_conditional is None else None,
+        )
 
     metrics_path = Path("experiments/artifacts") / f"{experiment_id}_metrics.json"
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1298,6 +1657,7 @@ def run(args):
                 "raw_explorer4_metrics": raw_explorer4_metrics,
                 "old_bias_explorer4_metrics": old_bias_explorer4_metrics,
                 "explorer4_metrics": final_explorer4_metrics,
+                "weak4_conditional_metrics": weak4_conditional,
                 "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in bias.tolist()])),
                 "old_class_bias": dict(zip(ALL_CLASSES, [float(x) for x in old_bias.tolist()])) if old_bias is not None else None,
                 "device": str(device),
@@ -1312,6 +1672,7 @@ def run(args):
                 "n_folds": args.n_folds if args.split == "session_oof" else None,
                 "replay_size": replay_size,
                 "replay_sample_weight": args.replay_sample_weight,
+                "train_label_filter": args.train_label_filter,
                 "explorer4_loss_weight": args.explorer4_loss_weight,
                 "explorer4_loss_balance": args.explorer4_loss_balance,
             },
@@ -1321,10 +1682,10 @@ def run(args):
         )
 
     print("  weakest classes:")
-    for label, score in sorted(metrics["per_class_f1"].items(), key=lambda kv: kv[1])[:8]:
+    for label, score in sorted(report_metrics["per_class_f1"].items(), key=lambda kv: kv[1])[:8]:
         print(f"    {label:18s} {score:.4f}")
     print("  top confusions:")
-    for count, true_label, pred_label in metrics["top_confusions"][:10]:
+    for count, true_label, pred_label in report_metrics["top_confusions"][:10]:
         print(f"    {true_label:18s} -> {pred_label:18s} {count}")
 
 
@@ -1332,7 +1693,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "weak_nav_v1", "weak_nav_paths_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
@@ -1351,6 +1712,10 @@ def parse_args():
                         help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
     parser.add_argument("--distill-alpha", type=float, default=0.5)
     parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument("--train-label-filter", choices=["none", "weak4"], default="none",
+                        help="restrict optimizer rows to canonical Weak4 labels and train with conditional 4-way loss")
+    parser.add_argument("--assert-val-ids", default="",
+                        help="validation-logits payload whose classes/split/seed/id set must match before training")
     parser.add_argument("--explorer4-loss-weight", type=float, default=0.0,
                         help="extra plain CE on true list/read/grep/glob rows, restricted to those four logits")
     parser.add_argument("--explorer4-loss-balance", action="store_true",
@@ -1420,6 +1785,31 @@ def parse_args():
         )
     if args.explorer4_loss_weight < 0:
         parser.error("--explorer4-loss-weight must be >= 0")
+    if args.train_label_filter != "none" and args.replay_mode != "none":
+        parser.error("--train-label-filter requires --replay-mode none")
+    if args.train_label_filter != "none" and args.distill_logits:
+        parser.error("--train-label-filter does not support --distill-logits")
+    if args.train_label_filter == "weak4":
+        if args.lora_r != 16:
+            parser.error("--train-label-filter weak4 requires --lora-r 16")
+        if not args.save_fp16:
+            parser.error("--train-label-filter weak4 requires --save-fp16")
+        if args.tune_bias or args.class_bias_artifact or args.rule_boosts_path:
+            parser.error("Weak4 specialist training forbids bias/rule post-processing inputs")
+        if args.explorer4_loss_weight > 0 or args.explorer4_loss_balance:
+            parser.error("Weak4 specialist training cannot be combined with Explorer4 auxiliary loss")
+        if args.final_only:
+            if args.assert_val_ids:
+                parser.error("--final-only has no validation split; omit --assert-val-ids")
+        else:
+            if not args.assert_val_ids:
+                parser.error("Weak4 screen training requires --assert-val-ids")
+            if args.quick_val_size:
+                parser.error("Weak4 screen validation must keep all 14,001 rows")
+            if not args.save_val_model:
+                parser.error("Weak4 screen training requires --save-val-model")
+            if args.final_model:
+                parser.error("run the Weak4 final refit separately with --final-model --final-only")
     return args
 
 

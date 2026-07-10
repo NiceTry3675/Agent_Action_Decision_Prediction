@@ -673,3 +673,43 @@ decide whether to refit, package, and spend a Public slot.
   구분. 잔여 헤드룸 탐색은 생성기 상태(직전 액션·경로·결과 요약) 조건부
   방향 — 학습 개입(조건부 CE)은 07-09에 실패했으므로, 시도한다면 기존 OOF
   툴체인 기반 prev-action 조건부 바이어스/룰의 로짓 후처리가 우선 경로.
+
+### 2026-07-10 - 조건부 α KD 팀 챔피언 갱신 및 Weak4 specialist 팀원 의견 기록
+
+- 팀원 제출 `condalpha-KD` Public **0.78962**로 챔피언 갱신. 기존
+  `kd_m8_refit`의 정확 점수 `0.78913` 대비 `+0.00049`; M8 teacher와 나머지
+  레시피는 유지하고, teacher-matched 원본 중 정답이 Weak4인 행만 KD alpha
+  `0.5 -> 0.7`로 높인 단일 변경(그 외 matched 원본 `0.5`, replay/unmatched는
+  기존처럼 KD 제외, T3). 0.002 노이즈권이므로 방향성 증거로 해석하지 않되
+  Public 최고점이라 팀 챔피언으로 승격. 정확한 아카이브/체크포인트와 팀원 측
+  weak-alpha 옵션은 로컬 인계 전이며, 현재 직접 재현 가능한 패키지는
+  `kd_m8_refit.zip`.
+- **팀원 의견 2 — 라우팅:** 기존 저신뢰 캐스케이드 실측이 고침 274 < 망침
+  349였으므로, specialist cap을 낮은 Weak4 내부 마진 순으로 고정하지 말 것.
+  T4 예산이 허용하면 main-Weak4 전량 라우팅하고, cap이 필요하면 selector를
+  비교한 뒤 confirm에서 `rescue > harm`일 때만 채택. 설계 확정이 아닌 검토
+  주의사항으로 기록.
+- **팀원 의견 3 — 순서:** T4 실측으로 route cap을 먼저 확정한 뒤 최종 alpha
+  튜닝/confirm을 수행할 것. cap이 바뀌면 alpha 튜닝과 confirm도 다시 실행.
+  역시 현재 채택 결정이 아니라 구현 계획 검토 의견으로 기록.
+
+### 2026-07-10 - Weak4 cap 정책: 저마진-우선 고정 철회, uncapped 우선 + selector 실증 판정 (추후 구현 시 적용)
+
+- "고침 274 < 망침 349" 해석 확정: 출처는 기존 **전역-마진 저신뢰 캐스케이드**
+  실측이라 현 specialist 설계로 직접 이전되지 않음 — (a) 전역 마진 라우팅이라
+  weak↔non-weak family flip이 harm에 포함되지만 현 설계는 family-lock으로 그
+  채널이 구조적으로 0, (b) 2차 leg가 weak4 특화 모델이 아닌 일반 강모델,
+  (c) α=0이 no-op으로 수렴하는 튜닝 블렌드가 아니었음. confirm `rescue > harm`
+  게이트가 동일 실패 모드를 이미 조건으로 걸고 있어, 우려가 현실이어도 비용은
+  레인 시간이지 오염 제출이 아님.
+- 다만 유효한 경고로 수용: rescue와 harm이 모두 저마진 구간에 몰린다는 실증
+  — "낮은 내부 마진 순 라우팅이 rescue를 극대화한다"는 cap 설계 가정의 반대
+  증거. 저마진 행은 main이 간신히 맞춘 행이라 뒤집기(harm)도 가장 쉬움.
+- **Decision (Weak4 레인 구현 시 적용):** ① T4 실측이 허용하면
+  **uncapped(전량 main-argmax-Weak4 라우팅)가 1순위** — selector 문제 자체
+  소멸. ② cap이 런타임상 불가피할 때만 튜너에 내부-마진 밴드별 rescue/harm
+  분해 리포트를 추가해 tune set에서 selector를 비교하고, confirm에서
+  `rescue > harm`일 때만 채택. ③ cap 변경 시 α 튜닝·confirm 재실행
+  (팀원 의견 3과 동일 순서 — 채택).
+- 참고: condalpha-KD 챔피언 갱신(Weak4-true 행 표적 KD α 단일 변경)은 weak4
+  표적 개입 방향의 약한 순풍이나, 0.002 노이즈권 해석은 유지.

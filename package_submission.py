@@ -21,6 +21,7 @@ pair them only if they were tuned together (new encoders: --no-sparse).
 """
 import argparse
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -38,6 +39,14 @@ VALID_ROOT = {"script.py", "requirements.txt", "model"}
 
 def fail(msg):
     sys.exit(f"package_submission: {msg}")
+
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        while chunk := f.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def normalize_hf_configs(model_dir):
@@ -70,6 +79,20 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False, test_graph_backfill=Fa
     hf_dir = Path(hf_dir)
     if not (hf_dir / "hf_model").is_dir() or not (hf_dir / "hf_meta.json").is_file():
         fail(f"{hf_dir} must contain hf_model/ and hf_meta.json")
+    source_meta = json.loads((hf_dir / "hf_meta.json").read_text(encoding="utf-8"))
+    specialist_enabled = bool((source_meta.get("weak4_specialist") or {}).get("enabled", False))
+    if specialist_enabled:
+        expected_script = (source_meta.get("weak4_provenance") or {}).get("script_sha256")
+        actual_script = sha256_file(REPO / "script.py")
+        if expected_script != actual_script:
+            fail(
+                "weak4 pack was built for a different script.py: "
+                f"pack={expected_script!r} current={actual_script}"
+            )
+    if specialist_enabled and sparse_dir is not None:
+        fail("weak4_specialist packages require --no-sparse")
+    if specialist_enabled and (leak_lookup or test_graph_backfill or test_graph_aligned_only):
+        fail("weak4_specialist packages forbid leak lookup and test graph backfill")
     shutil.copy2(REPO / "script.py", staging / "script.py")
     shutil.copy2(requirements or (REPO / "requirements.txt"), staging / "requirements.txt")
     model_dir = staging / "model"
@@ -77,6 +100,9 @@ def stage(hf_dir, sparse_dir, staging, leak_lookup=False, test_graph_backfill=Fa
     for enc_dir in sorted(hf_dir.glob("hf_model*")):
         if enc_dir.is_dir():
             shutil.copytree(enc_dir, model_dir / enc_dir.name)
+    for lora_dir in sorted(hf_dir.glob("lora_*")):
+        if lora_dir.is_dir():
+            shutil.copytree(lora_dir, model_dir / lora_dir.name)
     normalize_hf_configs(model_dir)
     shutil.copy2(hf_dir / "hf_meta.json", model_dir / "hf_meta.json")
     if test_graph_backfill or test_graph_aligned_only:
@@ -223,6 +249,8 @@ def main():
         out_path = REPO / "submissions" / out_path
     if len(out_path.name) > 30:
         fail(f"zip filename '{out_path.name}' is over the 30-char naming rule; pass a shorter --out")
+    if out_path.name.lower().startswith("submit"):
+        fail(f"zip filename '{out_path.name}' must not start with 'submit'")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="aadp_stage_") as td:
         staging = Path(td)

@@ -10,18 +10,23 @@ Experiment details live in `experiments/results.csv`.
 | DistilBERT current serializer, 3ep | `0.710721` | n/a | `~0.698` | about `-0.0127` vs fixed | Fixed and random validation were optimistic. |
 | XLM-R 3ep handoff | `0.718793` | n/a | `0.708057` | `-0.010736` vs fixed | Historical anchor only; superseded by XLM-R 5ep. |
 | XLM-R 5ep no-replay handoff | `0.738900` tuned | n/a | expected `0.726-0.728` | expected negative vs fixed | Canonical fixed-session baseline before replay. |
-| XLM-R replay + OOF rules + sparse SVC w4 | `0.751733` | `0.741881` | `0.743` | `+0.001119` vs OOF, `-0.008733` vs fixed | Current baseline; OOF calibrated well, fixed was optimistic. |
+| XLM-R replay + OOF rules + sparse SVC w4 | `0.751733` | `0.741881` | `0.743` | `+0.001119` vs OOF, `-0.008733` vs fixed | Historical encoder baseline; OOF calibrated well, fixed was optimistic. |
 
 ## Current Baseline
 
-- Package: Qwen3-0.6B (decoder, len416 focal) ep3 FULL-DATA refit + 3-fold OOF class bias
-  (2-stage) + 12 OOF rule boosts, int8 encoder-only, `requirements_qwen3.txt`
-  (transformers>=4.51,<4.52 override) — `m7_qwen3_refit.zip`.
-- Main signal: OOF 2-stage `0.758499` -> +12 rules `0.767129` -> Public `0.780`.
-- Superseded: XLM-R 5ep replay_last1 cap10000 + OOF rule boosts + sparse SVC weight `4.0`
-  (Public `0.743`).
-- ⚠ inference 8:50/10:00 — tightest margin to date; no further legroom for an ensemble
-  leg on this pack without optimizing further (sorted-batch inference already applied).
+- Team Public champion: conditional-alpha HCX-0.5B KD, Public `0.78962`
+  (teammate submission, 2026-07-10). It keeps the `kd_m8_refit` recipe and
+  changes only the KD alpha on teacher-matched original Weak4 rows from `0.5`
+  to `0.7`; other matched original rows stay at `0.5`, replay/unmatched rows
+  remain excluded from KD, and temperature stays `3.0`.
+- Delta: `+0.00049` over the exact prior champion `0.78913`, inside the `0.002`
+  noise band. Public is the final metric, so the higher observed instance is
+  promoted while the delta is not treated as directional recipe evidence.
+- Artifact status: exact archive/checkpoint not yet present locally. The current
+  directly reproducible fallback remains `submissions/kd_m8_refit.zip`
+  (`0.78913`, server inference `6:32/10:00`). The conditional-alpha change is
+  training-only, so the architecture and inference path are unchanged; its own
+  runtime was not included in the handoff.
 
 ## Notes
 
@@ -73,3 +78,4 @@ score lands.
 | 2026-07-08 | `kdm8_fvb_sp`: `kd_m8_refit` zero-bias champion plus fixed-val 2-stage class bias from `kd_hcx_m8_screen_s42` and weak-class gated TF-IDF LinearSVC residual (`w=0.02`, top2 weak gate) | fixed-val `0.787801` -> `0.787983` with sparse | **0.786** | -0.0031 vs `kd_m8_refit` | **Rejected.** The fixed-val class-bias surface did not transfer to Public, and the sparse residual was too weak to rescue it. Treat this as direct evidence not to inject fixed-val 2-stage bias into the final KD champion. |
 | 2026-07-08 | `kdm8_pcal`: `kd_m8_refit` zero-bias champion plus opt-in test-batch label-shift/prior calibration only (`prior_blend=0.25`, `bias_scale=0.35`, cap `0.18`; strong classes protected) | same fixed-val batch self-check produces ~zero calibration bias | **0.7890** | user-reported -0.00007 vs `kd_m8_refit` | **Neutral, not promoted.** The transductive prior calibration was essentially score-equivalent to the champion but did not beat it. Do not stack with fixed-val bias/sparse; any further prior-cal attempt would need a materially different target, not a stronger version of this same recipe. |
 | 2026-07-09 | `kd_v7r_matched`: `kd_m8_refit` recipe with serializer swapped `current_v1`->`current_v7r` and teacher swapped to a v7r-retrained M8 (matched teacher/student serializer), FULL-DATA refit, zero bias, int8 (`kd_v7r_matched.zip`) | n/a (refit unscreenable; matched-teacher screen 2stage `0.788443`, +0.000642 vs KD anchor `0.787801`, gate +0.002 not cleared) | **0.787** | -0.0021 vs `kd_m8_refit` (0.7891) | **Rejected, v7r line closed for good.** Delta sits just past the 0.002 noise floor on the negative side, consistent with the pre-registered expectation that this screen-level delta (+0.000642) was noise and could land either direction on Public. Runtime **7:57/10:00** — beat the token-ratio projection (~8:30-8:35), more margin than expected. Champion unchanged (`kd_m8_refit` 0.7891 stays baseline). This closes out the v7r serializer lane end-to-end: non-KD v7r had a confirmed +0.007 fixed/OOF lever but no deployment path outside the KD champion, and matched-teacher KD (the only route to stack it onto the champion) now has a real Public result confirming the screen-level non-promotion. No further v7r-family work planned. |
+| 2026-07-10 | `condalpha-KD`: `kd_m8_refit` recipe + teacher-matched original Weak4-row KD alpha `0.5 -> 0.7`; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` (teammate submission; artifact handoff pending) | n/a | **0.78962** | +0.00049 vs exact `kd_m8_refit` score `0.78913` | **NEW TEAM PUBLIC CHAMPION.** Delta is below the 0.002 noise floor, so it is not directional recipe evidence; Public is the final score and this is the highest observed instance. Exact archive/checkpoint and team-side weak-alpha option are not yet absorbed locally. |

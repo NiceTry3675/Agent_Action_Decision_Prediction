@@ -68,9 +68,15 @@ notebook is only used to boot the runtime; everything else goes through the comm
 channel below.
 
 1. If local code changed since the last push: `python colab/cloud_sync.py push`.
+   Fixed validation payloads can be staged per lane with `python
+   colab/cloud_sync.py push-anchor <payload.pt>`; they appear under
+   `/content/drive/MyDrive/<exchange folder>/anchors/`.
 2. Run `[probe]`; check the GPU class fits the job.
 3. Run `[bootstrap]`; verify the printed commit matches local HEAD (or the intended
    dirty push) and `transformers` is 4.46.3.
+   Weak4 specialist lanes additionally install `peft==0.19.1` and run
+   `colab/weak4_lane_preflight.py` before launch to lock GPU class, anchor, and
+   warm-start provenance.
 4. Run `[agent]` — runs `vm_agent.py daemon` synchronously (the session's last Quick
    Pick). The cell stays busy for the whole session; that is the keepalive. Colab's
    idle timer only counts executing cells — a detached daemon leaves the kernel idle

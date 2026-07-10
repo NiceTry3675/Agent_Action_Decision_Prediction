@@ -5,6 +5,7 @@ import json
 import os
 import pickle
 import re
+import time
 import traceback
 
 import torch
@@ -136,7 +137,7 @@ def save_submission(path, fieldnames, rows):
         writer.writerows(rows)
 
 
-def serialize_transformer_sample_current(sample):
+def serialize_transformer_sample_current_parts(sample):
     prompt = safe_text(sample.get("current_prompt", ""))
     history = sample.get("history") or []
     sm = sample.get("session_meta") or {}
@@ -178,7 +179,11 @@ def serialize_transformer_sample_current(sample):
         parts.append(f"args: {' | '.join(arg_bits[-10:])}")
     if result_bits:
         parts.append(f"results: {' | '.join(result_bits[-8:])}")
-    return "\n".join(parts)
+    return parts
+
+
+def serialize_transformer_sample_current(sample):
+    return "\n".join(serialize_transformer_sample_current_parts(sample))
 
 
 TURN_BIN_EDGES = (1, 2, 4, 6)
@@ -1114,6 +1119,85 @@ def route_arg_kind(last_event):
     return "none"
 
 
+def weak_nav_repeat_token(action_names):
+    if not action_names:
+        return "0"
+    last = action_names[-1]
+    count = 0
+    for name in reversed(action_names):
+        if name != last:
+            break
+        count += 1
+    return "3+" if count >= 3 else str(count)
+
+
+def weak_nav_line(sample):
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    action_events = [event for event in history if event.get("role") == "assistant_action"]
+    action_names = [safe_text(event.get("name")) for event in action_events]
+    last_event = action_events[-1] if action_events else None
+    prev_event = action_events[-2] if len(action_events) > 1 else None
+    last_action = action_names[-1] if action_names else "none"
+    prev_action = action_names[-2] if len(action_names) > 1 else "none"
+    last_bucket = route_count_bucket_from_result(last_event.get("result_summary") if last_event else "")
+    prev_bucket = route_count_bucket_from_result(prev_event.get("result_summary") if prev_event else "")
+    return (
+        f"nav: prev={prev_action}:{prev_bucket} last={last_action}:{last_bucket} "
+        f"repeat={weak_nav_repeat_token(action_names)} "
+        f"turn={turn_v6_token(sm.get('turn_index'))} arg={route_arg_kind(last_event)}"
+    )
+
+
+def weak_nav_path_values(sample, limit=4, char_limit=60):
+    history = sample.get("history") or []
+    path_keys = {
+        "path", "paths", "scope", "cwd", "directory", "dir",
+        "file", "filename", "target",
+    }
+    values = []
+    seen = set()
+    for event in reversed(history):
+        if event.get("role") != "assistant_action":
+            continue
+        args = event.get("args") or {}
+        if not isinstance(args, dict):
+            continue
+        for key, raw_value in args.items():
+            value = re.sub(r"\s+", " ", safe_text(raw_value)).strip()
+            if not value:
+                continue
+            key_l = safe_text(key).lower()
+            looks_path_like = bool(
+                "/" in value
+                or "\\" in value
+                or "*" in value
+                or re.search(r"(?:^|[/\\])[\w.-]+\.[A-Za-z0-9]{1,12}$", value)
+            )
+            if key_l not in path_keys and not (key_l == "pattern" and looks_path_like):
+                continue
+            if value in seen:
+                continue
+            seen.add(value)
+            values.append(value[:char_limit])
+            if len(values) >= limit:
+                return values
+    return values
+
+
+def serialize_transformer_sample_weak_nav_v1(sample):
+    parts = serialize_transformer_sample_current_parts(sample)
+    parts.insert(1, weak_nav_line(sample))
+    return "\n".join(parts)
+
+
+def serialize_transformer_sample_weak_nav_paths_v1(sample):
+    parts = serialize_transformer_sample_current_parts(sample)
+    paths = weak_nav_path_values(sample)
+    parts[1:1] = [weak_nav_line(sample), f"last_paths: {' | '.join(paths) if paths else 'none'}"]
+    return "\n".join(parts)
+
+
 def route_candidate_pool(last_event):
     if not last_event:
         return "none"
@@ -1694,6 +1778,10 @@ def serialize_transformer_sample_recent_pairs(sample, pair_count=3):
 def serialize_transformer_sample(sample, serializer_name="current_v1"):
     if serializer_name in ("current", "current_v1"):
         return serialize_transformer_sample_current(sample)
+    if serializer_name == "weak_nav_v1":
+        return serialize_transformer_sample_weak_nav_v1(sample)
+    if serializer_name == "weak_nav_paths_v1":
+        return serialize_transformer_sample_weak_nav_paths_v1(sample)
     if serializer_name == "current_v2":
         return serialize_transformer_sample_current_v2(sample)
     if serializer_name == "current_v5":
@@ -2349,6 +2437,285 @@ def model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
     return torch.stack(out, dim=0)
 
 
+def validate_weak4_specialist_config(config, class_names=ALL_CLASSES):
+    if not isinstance(config, dict):
+        raise TypeError("weak4_specialist must be an object")
+    classes = [int(value) for value in config.get("classes", [])]
+    if classes != list(range(4)):
+        raise ValueError(f"weak4_specialist classes must be canonical [0, 1, 2, 3], got {classes}")
+    if list(class_names[:4]) != ALL_CLASSES[:4]:
+        raise ValueError("model class order does not preserve the canonical Weak4 prefix")
+    alpha = float(config.get("alpha", -1.0))
+    route_fraction = float(config.get("route_fraction", -1.0))
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError(f"weak4_specialist alpha must be in [0, 1], got {alpha}")
+    if not 0.0 <= route_fraction <= 1.0:
+        raise ValueError(
+            f"weak4_specialist route_fraction must be in [0, 1], got {route_fraction}"
+        )
+    if not safe_text(config.get("lora_dir")).strip():
+        raise ValueError("weak4_specialist lora_dir is required")
+    serializer_name = config.get("serializer_name", "weak_nav_v1")
+    if serializer_name not in {"current_v1", "weak_nav_v1", "weak_nav_paths_v1"}:
+        raise ValueError(f"unsupported weak4 specialist serializer: {serializer_name}")
+    if int(config.get("max_length", 0)) <= 0 or int(config.get("batch_size", 0)) <= 0:
+        raise ValueError("weak4_specialist max_length and batch_size must be positive")
+    return classes, alpha, route_fraction
+
+
+def select_weak4_routes(main_logits, classes, route_fraction):
+    """Route raw-Weak4 predictions, capped by lowest conditional Weak4 margin."""
+    if main_logits.ndim != 2:
+        raise ValueError(f"main_logits must be rank 2, got shape={tuple(main_logits.shape)}")
+    classes = [int(value) for value in classes]
+    if len(classes) < 2 or len(classes) != len(set(classes)):
+        raise ValueError(f"classes must contain distinct class ids, got {classes}")
+    if min(classes) < 0 or max(classes) >= main_logits.shape[1]:
+        raise ValueError(f"classes out of range for logits shape {tuple(main_logits.shape)}: {classes}")
+    route_fraction = float(route_fraction)
+    if not 0.0 <= route_fraction <= 1.0:
+        raise ValueError(f"route_fraction must be in [0, 1], got {route_fraction}")
+
+    main_cpu = main_logits.detach().float().cpu()
+    main_pred = torch.argmax(main_cpu, dim=1)
+    class_set = set(classes)
+    candidates = [idx for idx, pred in enumerate(main_pred.tolist()) if pred in class_set]
+    cap = min(len(candidates), int(route_fraction * len(main_cpu)))
+    if cap <= 0:
+        return torch.empty(0, dtype=torch.long)
+
+    weak_probs = torch.softmax(main_cpu[:, classes], dim=1)
+    top2 = torch.topk(weak_probs, k=2, dim=1).values
+    margins = top2[:, 0] - top2[:, 1]
+    routed = sorted(candidates, key=lambda idx: (float(margins[idx]), idx))[:cap]
+    return torch.tensor(routed, dtype=torch.long)
+
+
+def weak4_family_locked_predictions(main_logits, specialist_logits, routed_indices, classes, alpha):
+    """Replace only routed Weak4 choices using a conditional four-way blend."""
+    if main_logits.ndim != 2 or specialist_logits.ndim != 2:
+        raise ValueError("main and specialist logits must both be rank 2")
+    classes = [int(value) for value in classes]
+    routed = torch.as_tensor(routed_indices, dtype=torch.long).cpu()
+    if specialist_logits.shape[0] != len(routed):
+        raise ValueError(
+            "specialist row count does not match routed indices: "
+            f"{specialist_logits.shape[0]} != {len(routed)}"
+        )
+    if len(routed) and (int(routed.min()) < 0 or int(routed.max()) >= main_logits.shape[0]):
+        raise ValueError("routed index is outside main_logits")
+    if len(routed) != len(set(routed.tolist())):
+        raise ValueError("routed indices contain duplicates")
+    alpha = float(alpha)
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError(f"alpha must be in [0, 1], got {alpha}")
+
+    main_cpu = main_logits.detach().float().cpu()
+    spec_cpu = specialist_logits.detach().float().cpu()
+    pred = torch.argmax(main_cpu, dim=1)
+    if not len(routed) or alpha == 0.0:
+        return pred
+    if spec_cpu.shape[1] == len(classes):
+        spec4_logits = spec_cpu
+    elif spec_cpu.shape[1] == main_cpu.shape[1]:
+        spec4_logits = spec_cpu[:, classes]
+    else:
+        raise ValueError(
+            f"specialist logits width must be {len(classes)} or {main_cpu.shape[1]}, "
+            f"got {spec_cpu.shape[1]}"
+        )
+    main4 = torch.softmax(main_cpu[routed][:, classes], dim=1)
+    spec4 = torch.softmax(spec4_logits, dim=1)
+    mixed4 = (1.0 - alpha) * main4 + alpha * spec4
+    local_pred = torch.argmax(mixed4, dim=1)
+    class_tensor = torch.tensor(classes, dtype=torch.long)
+    pred[routed] = class_tensor[local_pred]
+
+    routed_mask = torch.zeros(len(pred), dtype=torch.bool)
+    routed_mask[routed] = True
+    original = torch.argmax(main_cpu, dim=1)
+    if not torch.equal(pred[~routed_mask], original[~routed_mask]):
+        raise AssertionError("weak4 specialist changed a non-routed prediction")
+    if any(value not in set(classes) for value in pred[routed].tolist()):
+        raise AssertionError("weak4 specialist emitted a non-Weak4 label on a routed row")
+    return pred
+
+
+def _lora_target_module_names(model, target_modules):
+    if not isinstance(target_modules, (list, tuple, set)) or not target_modules:
+        raise ValueError(f"adapter target_modules must be a non-empty list, got {target_modules!r}")
+    targets = [safe_text(value) for value in target_modules]
+    modules = {}
+    matched_targets = {target: 0 for target in targets}
+    for name, module in model.named_modules():
+        for target in targets:
+            if name == target or name.endswith("." + target):
+                weight = getattr(module, "weight", None)
+                if not isinstance(weight, torch.Tensor) or weight.ndim != 2:
+                    raise ValueError(f"LoRA target {name} does not expose a rank-2 weight")
+                modules[name] = module
+                matched_targets[target] += 1
+                break
+    missing_targets = [target for target, count in matched_targets.items() if count == 0]
+    if missing_targets:
+        raise ValueError(f"adapter targets matched no model modules: {missing_targets}")
+    return modules
+
+
+def _match_adapter_module_key(key, module_names, marker):
+    marker_text = f".{marker}."
+    if marker_text not in f".{key}":
+        return None
+    matches = [
+        name
+        for name in module_names
+        if f".{name}.{marker}." in f".{key}"
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"adapter key must match exactly one target module: key={key} matches={matches}")
+    return matches[0]
+
+
+def merge_lora_inplace(model, lora_dir):
+    """Merge a PEFT LoRA adapter without importing PEFT at evaluation time."""
+    from safetensors.torch import load_file
+
+    lora_dir = os.path.abspath(lora_dir)
+    if getattr(model, "_weak4_lora_merged", False):
+        raise RuntimeError("refusing to merge a Weak4 LoRA adapter more than once")
+    config_path = os.path.join(lora_dir, "adapter_config.json")
+    weights_path = os.path.join(lora_dir, "adapter_model.safetensors")
+    if not os.path.isfile(config_path) or not os.path.isfile(weights_path):
+        raise FileNotFoundError(
+            f"LoRA directory must contain adapter_config.json and adapter_model.safetensors: {lora_dir}"
+        )
+    with open(config_path, encoding="utf-8") as f:
+        adapter_config = json.load(f)
+    if adapter_config.get("peft_type") != "LORA":
+        raise ValueError(f"unsupported PEFT adapter type: {adapter_config.get('peft_type')!r}")
+    if bool(adapter_config.get("fan_in_fan_out", False)):
+        raise ValueError("fan_in_fan_out LoRA adapters are unsupported")
+    if bool(adapter_config.get("use_rslora", False)):
+        raise ValueError("use_rslora adapters are unsupported")
+    if bool(adapter_config.get("use_dora", False)):
+        raise ValueError("DoRA adapters are unsupported")
+    if adapter_config.get("rank_pattern") or adapter_config.get("alpha_pattern"):
+        raise ValueError("per-module LoRA rank/alpha patterns are unsupported")
+    if safe_text(adapter_config.get("bias", "none")).lower() not in {"", "none"}:
+        raise ValueError("LoRA bias tensors are unsupported")
+    active_variant_fields = {
+        key: adapter_config.get(key)
+        for key in (
+            "alora_invocation_tokens",
+            "arrow_config",
+            "corda_config",
+            "eva_config",
+            "exclude_modules",
+            "layer_replication",
+            "layers_pattern",
+            "layers_to_transform",
+            "lora_ga_config",
+            "megatron_config",
+            "target_parameters",
+            "trainable_token_indices",
+        )
+        if adapter_config.get(key) not in (None, False, "", [], {})
+    }
+    for key in ("ensure_weight_tying", "lora_bias", "use_bdlora", "use_qalora"):
+        if bool(adapter_config.get(key, False)):
+            active_variant_fields[key] = adapter_config.get(key)
+    if adapter_config.get("loftq_config") not in (None, {}):
+        active_variant_fields["loftq_config"] = adapter_config.get("loftq_config")
+    if active_variant_fields:
+        raise ValueError(f"unsupported active LoRA variants: {sorted(active_variant_fields)}")
+
+    rank = int(adapter_config.get("r", 0))
+    lora_alpha = float(adapter_config.get("lora_alpha", 0.0))
+    if rank <= 0 or lora_alpha <= 0:
+        raise ValueError(f"invalid LoRA rank/alpha: r={rank} alpha={lora_alpha}")
+    modules = _lora_target_module_names(model, adapter_config.get("target_modules"))
+    state = load_file(weights_path, device="cpu")
+    pairs = {name: {} for name in modules}
+    unmatched = []
+    score_state = {}
+    module_names = sorted(modules, key=len, reverse=True)
+
+    for key, tensor in state.items():
+        marker = None
+        if ".lora_A." in f".{key}":
+            marker = "lora_A"
+        elif ".lora_B." in f".{key}":
+            marker = "lora_B"
+        if marker:
+            module_name = _match_adapter_module_key(key, module_names, marker)
+            if module_name is None or marker in pairs[module_name]:
+                raise ValueError(f"duplicate or unmatched LoRA tensor: {key}")
+            pairs[module_name][marker] = tensor
+            continue
+        if re.search(r"(?:^|\.)score(?:\.|$)", key):
+            parameter_name = key.rsplit(".", 1)[-1]
+            if parameter_name not in {"weight", "bias"} or parameter_name in score_state:
+                raise ValueError(f"unsupported or duplicate score tensor: {key}")
+            score_state[parameter_name] = tensor
+            continue
+        unmatched.append(key)
+
+    incomplete = [name for name, pair in pairs.items() if set(pair) != {"lora_A", "lora_B"}]
+    if incomplete:
+        details = {name: sorted(pairs[name]) for name in incomplete[:5]}
+        raise ValueError(f"adapter A/B tensors do not exactly cover target modules: {details}")
+    if unmatched:
+        raise ValueError(f"unmatched adapter tensors: {unmatched[:10]}")
+
+    score = getattr(model, "score", None)
+    if score is None or not isinstance(getattr(score, "weight", None), torch.Tensor):
+        raise ValueError("model has no score.weight to replace")
+    required_score = {"weight"} | ({"bias"} if score.bias is not None else set())
+    if set(score_state) != required_score:
+        raise ValueError(
+            f"adapter score tensors mismatch: expected={sorted(required_score)} actual={sorted(score_state)}"
+        )
+    if tuple(score_state["weight"].shape) != tuple(score.weight.shape):
+        raise ValueError(
+            f"adapter score.weight shape mismatch: {tuple(score_state['weight'].shape)} "
+            f"!= {tuple(score.weight.shape)}"
+        )
+    if score.bias is not None and tuple(score_state["bias"].shape) != tuple(score.bias.shape):
+        raise ValueError("adapter score.bias shape mismatch")
+
+    scale = lora_alpha / rank
+    for name, pair in pairs.items():
+        if tuple(pair["lora_A"].shape) != (rank, modules[name].weight.shape[1]):
+            raise ValueError(f"LoRA A shape mismatch for {name}: {tuple(pair['lora_A'].shape)}")
+        if tuple(pair["lora_B"].shape) != (modules[name].weight.shape[0], rank):
+            raise ValueError(f"LoRA B shape mismatch for {name}: {tuple(pair['lora_B'].shape)}")
+
+    merge_start = time.perf_counter()
+    with torch.no_grad():
+        for name, pair in pairs.items():
+            weight = modules[name].weight
+            a = pair["lora_A"].to(device=weight.device, dtype=torch.float32)
+            b = pair["lora_B"].to(device=weight.device, dtype=torch.float32)
+            delta = (b @ a).mul_(scale)
+            # Match PEFT's in-place merge: the FP32 delta participates in the
+            # addition before the result is stored back in the base dtype.
+            weight.add_(delta)
+            del a, b, delta
+        score.weight.copy_(score_state["weight"].to(device=score.weight.device, dtype=score.weight.dtype))
+        if score.bias is not None:
+            score.bias.copy_(score_state["bias"].to(device=score.bias.device, dtype=score.bias.dtype))
+    model._weak4_lora_merged = True
+    model._weak4_lora_merged_from = lora_dir
+    model._weak4_lora_merge_seconds = time.perf_counter() - merge_start
+    if next(model.parameters()).device.type == "cuda":
+        torch.cuda.synchronize()
+    print(
+        f"Merged LoRA adapter in place: modules={len(modules)} scale={scale:g} "
+        f"seconds={model._weak4_lora_merge_seconds:.2f} dir={lora_dir}"
+    )
+    return model
+
+
 def model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, device):
     """torch.compile(mode=reduce-overhead) + bucket-padded fixed-size batches.
 
@@ -2462,11 +2829,24 @@ def cascade_scores(model_dir, cascade, samples, base_texts, device):
 def run_hf_inference(model_dir, data_dir, output_path, device):
     from transformers import AutoTokenizer
 
+    inference_start = time.perf_counter()
     hf_dir = os.path.join(model_dir, "hf_model")
     with open(os.path.join(model_dir, "hf_meta.json"), encoding="utf-8") as f:
         meta = json.load(f)
     encoders = meta.get("encoders")
     cascade = meta.get("cascade")
+    weak4_specialist = meta.get("weak4_specialist") or {}
+    specialist_enabled = bool(weak4_specialist.get("enabled", False))
+    if specialist_enabled:
+        validate_weak4_specialist_config(weak4_specialist, meta.get("classes") or [])
+        if encoders or cascade:
+            raise ValueError("weak4_specialist requires the dedicated single-model inference path")
+        if meta.get("compile"):
+            raise ValueError("weak4_specialist does not support the compiled inference path")
+        if os.path.exists(os.path.join(model_dir, LEAK_LOOKUP_FILENAME)):
+            raise ValueError("weak4_specialist forbids train-derived leak overrides")
+        if (meta.get("test_batch_graph_backfill") or {}).get("enabled", False):
+            raise ValueError("weak4_specialist forbids test-batch graph backfill")
     tokenizer = None
     model = None
     if not encoders and not cascade:
@@ -2510,6 +2890,8 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         print("Leak override computation failed; falling back to model-only predictions")
         traceback.print_exc()
         leak_overrides = {}
+    if specialist_enabled and leak_overrides:
+        raise AssertionError("weak4 specialist must not have prediction overrides")
 
     serializer_name = meta.get("serializer_name", "current_v1")
     texts = [serialize_transformer_sample(sample, serializer_name) for sample in samples]
@@ -2564,7 +2946,7 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         device,
     )
 
-    preds = []
+    main_logits = torch.empty_like(base_scores, dtype=torch.float32, device="cpu")
     with torch.inference_mode():
         for start in range(0, len(texts), batch_size):
             batch_texts = texts[start:start + batch_size]
@@ -2574,8 +2956,52 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
                 sparse_batch = sparse_scores[start:start + len(batch_texts)].to(device)
                 sparse_batch = apply_sparse_controls(sparse_batch, logits, sparse_meta, meta["classes"])
                 logits = logits + sparse_weight * sparse_batch + sparse_bias
-            pred_ids = torch.argmax(logits, dim=1).detach().cpu().tolist()
-            preds.extend(meta["classes"][i] for i in pred_ids)
+            main_logits[start:start + len(batch_texts)] = logits.detach().float().cpu()
+
+    main_pred_ids = torch.argmax(main_logits, dim=1)
+    pred_ids = main_pred_ids
+    if specialist_enabled:
+        classes, alpha, route_fraction = validate_weak4_specialist_config(
+            weak4_specialist, meta["classes"]
+        )
+        routed = select_weak4_routes(main_logits, classes, route_fraction)
+        if len(routed):
+            lora_rel = safe_text(weak4_specialist["lora_dir"])
+            lora_dir = os.path.abspath(os.path.join(model_dir, lora_rel))
+            model_root = os.path.abspath(model_dir)
+            if os.path.commonpath([model_root, lora_dir]) != model_root:
+                raise ValueError(f"weak4_specialist lora_dir escapes model directory: {lora_rel}")
+            merge_lora_inplace(model, lora_dir)
+            model.eval()
+            serializer = weak4_specialist.get("serializer_name", "weak_nav_v1")
+            routed_texts = [
+                serialize_transformer_sample(samples[idx], serializer)
+                for idx in routed.tolist()
+            ]
+            specialist_logits = model_logits_sorted(
+                model,
+                tokenizer,
+                routed_texts,
+                int(weak4_specialist["max_length"]),
+                int(weak4_specialist["batch_size"]),
+                device,
+            )
+            pred_ids = weak4_family_locked_predictions(
+                main_logits,
+                specialist_logits,
+                routed,
+                classes,
+                alpha,
+            )
+        routed_mask = torch.zeros(len(main_pred_ids), dtype=torch.bool)
+        routed_mask[routed] = True
+        if not torch.equal(pred_ids[~routed_mask], main_pred_ids[~routed_mask]):
+            raise AssertionError("weak4 specialist violated non-routed prediction identity")
+        print(
+            "Weak4 specialist: "
+            f"routed={len(routed)}/{len(samples)} cap={route_fraction:.3f} alpha={alpha:.3f}"
+        )
+    preds = [meta["classes"][int(class_id)] for class_id in pred_ids.tolist()]
 
     fieldnames, rows = load_sample_submission(sample_submission_path, ids)
     pred_map = dict(zip(ids, preds))
@@ -2585,6 +3011,14 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
             row["action"] = pred_map[row["id"]]
     save_submission(output_path, fieldnames, rows)
     print(f"Saved {output_path} rows={len(rows)}")
+    return {
+        "rows": len(rows),
+        "wall_seconds": time.perf_counter() - inference_start,
+        "specialist_enabled": specialist_enabled,
+        "routed_rows": len(routed) if specialist_enabled else 0,
+        "route_fraction": float(weak4_specialist.get("route_fraction", 0.0)) if specialist_enabled else 0.0,
+        "lora_merge_seconds": float(getattr(model, "_weak4_lora_merge_seconds", 0.0)) if model is not None else 0.0,
+    }
 
 
 def main():
