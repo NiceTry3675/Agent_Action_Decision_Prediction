@@ -1,4 +1,5 @@
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -223,10 +224,10 @@ def replay_examples_for_sample(sample, pair_limit):
         if next_event.get("role") == "assistant_action":
             label = safe_text(next_event.get("name"))
             if label in CLASS_TO_ID:
-                candidates.append((idx, event, label))
+                candidates.append((idx, event, next_event, label))
 
     replay_samples = []
-    for idx, user_event, label in candidates[-pair_limit:]:
+    for idx, user_event, target_event, label in candidates[-pair_limit:]:
         replay_samples.append(
             (
                 CLASS_TO_ID[label],
@@ -235,6 +236,14 @@ def replay_examples_for_sample(sample, pair_limit):
                     "session_meta": sample.get("session_meta") or {},
                     "history": history[:idx],
                     "current_prompt": safe_text(user_event.get("content")),
+                    # Training-only target metadata.  Serializers intentionally
+                    # ignore private keys; only the privileged mode label
+                    # builder may read this event.
+                    "_privileged_target_event": {
+                        "name": label,
+                        "args": copy.deepcopy(target_event.get("args") or {}),
+                        "result_summary": safe_text(target_event.get("result_summary")),
+                    },
                 },
             )
         )

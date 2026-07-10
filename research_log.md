@@ -754,3 +754,122 @@ decide whether to refit, package, and spend a Public slot.
   the failure.
 - **Decision: the low-margin cap is not the cause of the specialist failure.
   Keep the recipe rejected and do not reopen final refit/Public.**
+
+### 2026-07-10 - generator-policy mixture CPU audit: real latent regime, no main-model lift
+
+- Added `audit_generator_policy_mixture.py` and audited all 70k rows with
+  deterministic session-hash 5-fold CV. Two coarse sources have usable support:
+  `sess_sim` 64,975 rows/8,330 sessions and `sess_au` 5,025 rows/1,099 sessions.
+  Full reports are `experiments/artifacts/20260710_generator_policy_mixture_audit.json`
+  plus split-seed replications `_s777.json` and `_s2026.json`.
+- The latent policy regime is real and stable. MI(label; source) is 0.0143 bits;
+  source adds 0.0460 bits over last-action alone and 0.0685 bits over prev-last.
+  Current-v1 Weak4 true-row error is 41.7% on sim versus 8.8% on au; the error
+  gap and source-conditioned confusion difference have the same direction in all
+  five held-out session folds. Source-specific transition matrices also differ
+  substantially.
+- Policy-only grouped OOF benefits from source interactions, but the strong main
+  already absorbs nearly all usable signal. Across fold seeds 42/777/2026,
+  source-prev-last versus raw main changes macro by `+0.00036/-0.00080/-0.00027`;
+  Weak4 changes `-0.00252/-0.00361/-0.00301`. Source alone is consistently
+  negative. The initially attractive gain over a prev-last control was only
+  recovery from that control's own degradation, not a gain over raw main.
+- Local test stub IDs parse with the same scheme but contain only five `sess_sim`
+  rows; hidden evaluation source coverage is not locally verifiable.
+- **Decision: do not open a GPU/model-training lane for coarse source-prefix
+  conditioning.** Preserve the audit because it verifies the generator-mixture
+  hypothesis, but the stated promotion condition (session-grouped improvement
+  over current main) fails. A future revisit needs a finer, test-available regime
+  identifier or a main error slice that source conditioning improves directly.
+
+### 2026-07-10 - 팀 공유(Slack) 반영: 교사축 격자 완결, 조건부 α 메커니즘·학생 의존성, llama 교사 레인
+
+- **균일 α 교사 서열 최종(HCX-0.5B 학생, seed42, Public)**: m8 `0.78913` >
+  q35 `0.78851` > coder `0.78805` > AX `0.78638` ≈ gemma `0.78627` — Qwen
+  혈통이 상단 독점. train 일치율·체형·헤드룸은 필요조건일 뿐 순위 예측기가
+  아님(3번째 확인; gemma는 train 0.856 골든존인데도 최하위권).
+- **exa2 교사 팩 전면 사용 금지** (팀 판정): Public `0.77875`(non-KD 이하),
+  원인은 세션 암기로 인한 홀드아웃 지표 인플레. q2b 팩도 캘리브레이션상 보류.
+- **조건부 α는 교사축으로 전이, 교사 weak-헤드룸에 비례**: gemma-ep3×조건부
+  (`gemca`) Public `0.78750` — 균일 gemma `0.78627` 대비 **+0.0012**로, m8의
+  +0.0005보다 2.4배. gemma의 weak 고침가능 2,400행 vs 망침 687행(m8은
+  689:781로 소진 상태)이 근거.
+- **메커니즘 규명(노진산, 교사-학생 분포 전수 대조)**: condalpha의 이득은
+  "약4를 잘 배워서"가 아님 — 조건부 α 후 weak train acc는 오히려 하락
+  (`0.6505→0.6461`)했고 대신 mid 클래스가 급등(ask_user `0.732→0.768`,
+  plan `0.869→0.886`, lint `0.779→0.787`). 약4 행(=정책 기록 = 라벨 노이즈)의
+  CE 압력을 낮추자 공유 표현이 풀려 mid가 좋아진 것 — **조건부 α = 노이즈
+  완충재**. 07-10 휴먼 리레이블 결론과 정합. 보조: solved 4종(edit/write/
+  apply/respond)은 교사-학생 KL~0.002로 α 무반응(rest α의 실효 대상은 mid
+  6종), weak 중 read_file만 교사 신호 잔존(+0.007).
+- **HCX 조건부 격자 완결(목원주)**: P1(rest0.4/weak0.7) Public `0.78768`,
+  P2(rest0.5/weak0.8) Public `0.78837` — 이웃(rest↓, weak↑, weak↓) 전부 하회,
+  **(0.5/0.7)=0.78962 국소최적 확정**. rest 0.4 차원 전부 폐쇄(비약4 4.1만
+  행의 KD 정규화 효과를 깎는 손실), P3(0.4/0.8) 영구 폐기. 미탐색 신좌표
+  (0.6/0.7)은 금요일 아침 배분 예정.
+- **조건부 α의 학생 의존성 발견(김태연)**: Qwen 학생×gemma 조건부 `0.78765`
+  vs 같은 조합 전역 α `0.78824` (**-0.0006, 부호 반전**). 전역 α로 이미 교사를
+  잘 흡수하는 학생(Qwen)에겐 조건부가 weak CE 삭감 비용만 남김. HCX +0.0012와의
+  부호 간극 0.0018은 노이즈 바닥보다 커서 "학생 의존" 작업가설 채택 —
+  김태연 llama 2종(전역+조건부)이 재검증점. 가이드: 전역 먼저, 전역이 0.789+
+  일 때만 조건부 시도.
+- **llama-3.1-8B 교사 팩 완성(노진산)**: `NousResearch/Meta-Llama-3.1-8B`,
+  train argmax `0.8574`, 홀드아웃 ep3 `0.7968`. m8과 same-alt 84%·유니크 9.3%
+  → HCX 학생에겐 중복 교사, Qwen 학생에겐 이질 1급이라 김태연 라인이 최적
+  수요처. 로짓 `teacher_llama_train70k_fp16.pt` 및 교사 아카이브 v2.1
+  (OneDrive `dacon_제출대기/teacher_archive_v21_20260710.zip`, 31파일) 공유됨.
+- 잔여 계획(참고): 오늘 밤 q35ca(q35 균일 `0.78851`+조건부 전이분으로 0.789+
+  도전), llama 균일→llama×조건부→(0.6/0.7) rest 상향 프로브, 내일 아침 제출
+  큐 5장 + 시드/머신 리롤(best-of-N) 축, 김태연 Qwen×llama 전역(내일, 12시
+  이후 llama 결과 보고 제출).
+
+### 2026-07-10 - v7r + R-Drop 논-KD 스택 스크린 게이트 실패 — 반려, refit 없음
+
+- 가설: 논-KD 라인에서 개별 검증된 두 레버(v7r +0.007 이중시드, R-Drop
+  +0.0064 ablation-분리)의 가산 스택. 스크린은 v7r 앵커 대비 단일 변수
+  (+R-Drop), G4(RTX PRO 6000 계열, 앵커와 동일 하드웨어 클래스), 65:58.
+- 결과: raw `0.768698`(-0.004319), 2stage `0.773597` vs 앵커 `0.776961`
+  (**-0.003364**), 통과선 `0.780961` 대비 -0.007364. R-Drop KL은 전 epoch
+  양수 — 구현 실패가 아닌 실제 성능 하락. list/grep 소폭 이득(+0.0098/+0.0033)
+  보다 ask_user(-0.0329)·web_search(-0.0141)·glob(-0.0073) 손실이 압도.
+- **Decision: v7r+R-Drop 반려, 후속 refit 없음, LANE A 해제.** R-Drop의
+  +0.0064는 v1 전용이며 v7r로 전이되지 않음 — "레버는 서로 스택되지 않는다"
+  패턴이 논-KD 라인에서도 재현. R-Drop은 어느 챔피언 후보 라인에도 미채택으로
+  최종 마감. 결과/로짓은 results.csv·artifacts에 pull 완료.
+
+### 2026-07-10 - KD 챔피언 × v7r 논-KD 블렌드 오프라인 프로브: 게인 없음, 캐스케이드 카드 폐기
+
+- 기존 s42 fixed val 로짓 두 벌(kd_hcx_m8_screen 2stage 0.787801, v7r 논-KD
+  0.776961)로 07-07 블렌드 프로브와 동일 방법론(softmax 가중 블렌드 스윕 +
+  2-stage 튜닝) 오프라인 측정. GPU/슬롯 비용 0.
+- 결과: 오류 중복 87.8%(HCX×Qwen 페어 82%보다 높음), rescue 380/497.
+  최적 w(kd)=0.70에서 raw 0.784148, 2stage 0.788422 — **kd 단독 대비
+  +0.000621**, w50은 -0.00147. 비교: 논-KD HCX×m7 +0.0086, kd×m7 -0.0027.
+- 해석: KD 학생은 v7r 직렬화기 다양성도 이미 흡수 — "KD가 교차 신호를
+  흡수한다"는 07-07 판정이 동일-베이스(HCX) 직렬화기 축에서도 재확인. kd 레그
+  로짓의 경미한 낙관(full-refit teacher가 val 행을 봄)을 감안해도 +0.004
+  기준선에 크게 미달.
+- **Decision: kd×v7r 라우티드 캐스케이드/통합팩 카드 폐기.** 아티팩트
+  `experiments/artifacts/20260710_kd_v7r_nonkd_blend_probe.json`.
+
+### 2026-07-10 - selective privileged mode residual frozen probe 실패 — full screen 없음
+
+- Leak-free `kd_hcx_m8_screen` fp16 checkpoint에서 70k pooled hidden/parent-logit
+  cache를 A100으로 export했다. 저장 전 historical anchor와 저장 후 fp16
+  artifact의 차이는 14,001행 중 6 argmax, max logit `0.015625`, raw macro
+  `-0.000017`이었다. Export된 parent 기준 zero-init residual은 14,001행 전부
+  logit exact/argmax 100%/correction 0을 통과했다.
+- Fixed-train session 3-fold의 fold-local StandardScaler + L2 logistic(`C=0.01`)
+  predictability는 prior NLL 대비 `read 1.3309→1.0556`, `edit 0.6928→0.4154`,
+  `run_bash 1.5777→1.1725`로 통과했다. 고정 taxonomy는 args/intention-only
+  `K=6/2/5`; result/count/raw identity는 사용하지 않았다.
+- Frozen arms 결과는 C0 `0.783834`, C1(λ=0) `0.783979`, actual mode M
+  `0.783688`; M은 C0 대비 `-0.000146`, C1 대비 `-0.000292`, 5개 permutation
+  최고점 대비 `-0.000331`, selected-action F1 합도 `-0.006902`였다. Mode
+  conditional NLL 자체는 validation에서 세 action 모두 개선됐지만 coarse
+  action 개선으로 전이되지 않아 7개 gate 중 핵심 G1–G4가 모두 실패했다.
+- **Decision: discrete selective event-mode lane 반려; matched full HCX screen,
+  refit, Public 제출 없음.** Cache는 continuous event embedding/future-trajectory
+  auxiliary target의 값싼 후속 검증용으로만 보존한다. 상세 결과:
+  `experiments/artifacts/20260710_selective_mode_probe_report.json`, taxonomy:
+  `experiments/artifacts/20260710_selective_mode_taxonomy.json`.

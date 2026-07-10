@@ -1,0 +1,376 @@
+제목	제출 일시	점수	소요 시간	제출선택
+30843	
+kd_hcx_q35ca.zip
+메모 추가	2026-07-10 17:43:58	0.7841247198	
+schedule
+6분 34초
+
+30805	
+submit_kd_p2_rest05_weak08.zip
+메모 추가	2026-07-10 16:34:42	0.7883741002	
+schedule
+6분 30초
+
+30788	
+qwen06b_kd_gemma_condalpha.zip
+Qwen3-0.6B × gemma-ep3 × 조건부 α(rest 0.5/weak 0.7), 전체 70k refit. 약4클래스 28782행 weak α 0.7. 전역 α 0.78824 + 조건부 기여. int8 fidelity 99.4%.  edit	2026-07-10 16:04:52	0.78765374	
+schedule
+8분 48초
+
+30728	
+submit_kd_p1_rest04_weak07.zip
+메모 추가	2026-07-10 14:32:18	0.7876781233	
+schedule
+6분 31초
+
+30709	
+kd_hcx_gemma.zip
+메모 추가	2026-07-10 14:07:48	0.7862738939	
+schedule
+6분 32초
+
+30695	
+qwen06b_kd_gemma_ep3.zip
+Qwen3-0.6B 학생 × gemma-ep3(비암기 0.8561) KD, 전체 70k refit. int8 fidelity 99.61%. 어제 HCX(0.7779) 대비 Qwen 학생 라인 gemma 교사 검증. epoch loss 0.169 edit	2026-07-10 13:50:08	0.7882425051	
+schedule
+8분 40초
+
+30650	
+kd_hcx_gemca.zip
+메모 추가	2026-07-10 12:22:19	0.7874963575	
+schedule
+6분 36초
+
+30594	
+kd_hcx_exa2ep3.zip
+exa2-ep3 교사 KD: EXAONE-1.2B 풀수렴(홀드아웃 0.8538 역대최고), 챔피언 레시피 α0.5/T3 균일 — 게이트 0.7452 edit	2026-07-10 10:18:51	0.7787511306	
+schedule
+6분 34초
+
+30493	
+kd_hcx_condalpha.zip
+조건부 α KD: 약4클래스(list/read/grep/glob) 행만 α0.5→0.7, 교사 m8·챔피언 레시피 동일 (준현 casebook #6 검증) — 게이트 0.7224 edit	2026-07-10 02:51:38	0.7896249247	
+schedule
+6분 31초
+
+30416	
+kd_hcx_aug.zip
+구조보존 익명화 증강 114k + m8-KD (게이트 0.777) edit	2026-07-10 00:13:41	0.7786710945	
+schedule
+6분 27초
+
+30401	
+qwen06b_kd_hcx15.zip
+Qwen3-0.6B 학생 × HCX-1.5B 교사 KD, 전체 70k refit. 로컬 2stage 0.7782 (no-KD 0.7715 대비 +0.0067). 약클래스 grep+0.013 list+0.010. 방향C Public 검증용 edit	2026-07-09 23:53:58	0.7779252299	
+schedule
+8분 48초
+
+30245	
+kd_hcx_q35rep2.zip
+q35 재학습 ep2(스윗스팟) 교사 KD — 홀드아웃 예측 0.788 edit	2026-07-09 21:15:02	0.785745271	
+schedule
+6분 38초
+
+30021	
+kd_hcx_ax.zip
+메모 추가	2026-07-09 14:41:07	0.7863781499	
+schedule
+6분 37초
+
+29889	
+kd_v7r_matched.zip
+메모 추가	2026-07-09 10:14:42	0.7870202734	
+schedule
+7분 57초
+
+29848	
+kd_hcx_ban.zip
+메모 추가	2026-07-09 07:18:16	0.7869034202	
+schedule
+6분 30초
+
+29827	
+kd_hcx_cwp07.zip
+cwp07: 챔피언 레시피에서 class-weight-power 0.5→0.7 단일 변경 (첫 손실가중 스윕) — 게이트 0.7279 역대최고, list_dir +0.048·희소군 일제 상승/read -0.019, 예측 0.7887±0.0010 edit	2026-07-09 04:34:11	0.7889212084	
+schedule
+6분 36초
+
+29798	
+kd_hcx_blend3.zip
+blend3: 교사 = 0.5×m8 + 0.5×coder_ep2 확률평균 (read-first↔grep-first 반대 편향 페어, 이견 disjoint 4.8%) — 게이트 0.7177, 예측 0.7893±0.0008, 경계 캘리브레이션 가설 판정용 edit	2026-07-09 02:44:42	0.7877888681	
+schedule
+6분 30초
+
+29742	
+kd_hcx_coder.zip
+젭알! edit	2026-07-09 00:44:22	0.7880486222	
+schedule
+6분 28초
+
+29706	
+kd_m8hcx_s42.zip
+m8+자기자신을 교사로 edit	2026-07-08 23:48:20	0.7879431852	
+schedule
+6분 37초
+
+29631	
+kdm8_pcal.zip
+Test-Batch Label-Shift / Prior Calibration edit	2026-07-08 22:33:54	0.7890595166	
+schedule
+6분 36초
+
+29618	
+kdm8_fvb_sp.zip
+1등 + bias + weak sparse (fixed-val로 튜닝) edit	2026-07-08 22:12:33	0.7864088491	
+schedule
+7분
+
+29583	
+kd_hcx_blend2.zip
+blend2: 교사 = m8(0.8B)+q35(4B) 승자 확률평균 블렌드, HCX 학생 α0.5/T3 seed42 — 게이트 0.7226, 이견 겹침 91%라 보수적 기대 edit	2026-07-08 20:55:29	0.7871948777	
+schedule
+6분 34초
+
+29503	
+kd_hcx_oof08.zip
+메모 추가	2026-07-08 18:18:32	0.7807062461	
+schedule
+6분 37초
+
+29284	
+kd_hcx_m9.zip
+결과 다른지 체크 29225와 edit	2026-07-08 12:14:06	0.7852881904	
+schedule
+6분 35초
+
+29231	
+kd_hcx_q35.zip
+Qwen3.5-4B-text-only (principled-intelligence 변환본 edit	2026-07-08 10:15:55	0.7885094965	
+schedule
+6분 36초
+
+29225	
+kd_m9_refit.zip
+메모 추가	2026-07-08 10:00:54	0.7028400094	
+schedule
+7분 26초
+
+29027	
+kd_rdrop_hcx_s42.zip
+kd_hcx_m8 + R-Drop 추가 edit	2026-07-07 23:34:15	0.7880393613	
+schedule
+6분 37초
+
+28981	
+kd_m8_a7t2.zip
+메모 추가	2026-07-07 22:35:57	0.7890843539	
+schedule
+6분 30초
+
+28879	
+submit_hcx_rules_mok.zip
+HCX-0.5B refit(0.7852 팩) + val bias/12rules 주입 (mok, in-sample +0.0125→기대 +0.0025) edit	2026-07-07 19:25:14	0.7793687986	
+schedule
+6분 42초
+
+28871	
+kd_hcx_t15.zip
+메모 추가	2026-07-07 19:14:44	0.7743502263	
+schedule
+6분 32초
+
+28722	
+hcx05_s777.zip
+시드체크 edit	2026-07-07 14:08:54	0.7659829321	
+schedule
+6분 27초
+
+28714	
+kd_hcx_m8.zip
+메모 추가	2026-07-07 13:57:31	0.7891279075	
+schedule
+6분 32초
+
+28641	
+kd_m8blend_qwen3_refit.zip
+메모 추가	2026-07-07 11:02:54	0.7824885894	
+schedule
+8분 54초
+
+28629	
+kd_hcx_a05t3.zip
+이번 KD(kd_hcx_a05t3)의 교사 = 준현 3-모델 앙상블 블렌드 — m7(Qwen3-0.6B) + m8(Qwen3.5-0.8B) + v6(직렬화 변형)의 softmax 블렌드 soft-label, 70000×14 fp16 edit	2026-07-07 10:39:34	0.7826591719	
+schedule
+6분 33초
+
+28574	
+hcx05_refit_s42.zip
+메모 추가	2026-07-07 06:58:39	0.7851528243	
+schedule
+6분 29초
+
+28504	
+casc_v6m7_r20.zip
+2-leg 캐스케이드. 품질보다는 시간 제한 확인용 edit	2026-07-07 01:03:59	0.7721105888	
+schedule
+9분 8초
+
+28428	
+v1_384_refit_s42.zip
+qwen 고점 len 384 edit	2026-07-06 23:24:40	0.7754300896	
+schedule
+8분 48초
+
+28374	
+v6_qwen3_refit.zip
+메모 추가	2026-07-06 21:55:10	0.7602097296	
+schedule
+7분 6초
+
+28098	
+v5_valmodel_s42.zip
+V5,80퍼학습-나머지동일 edit	2026-07-06 14:33:17	0.7488504676	
+schedule
+6분 55초
+
+27772	
+m7_qwen3_refit.zip
+27246 동일버전 점수 확인 edit	2026-07-05 23:19:13	0.7807288599	
+schedule
+8분 55초
+
+27759	
+m8_ep3_cc.zip
+compile+캐시 동봉판 edit	2026-07-05 23:06:55	
+제출 오류
+help
+제출하신 코드 실행 시간 제한 초과로 인해 실패했습니다.
+copy
+schedule
+10분
+
+27751	
+m8_ep3_probe.zip
+ep3 스크린 가중치(int8, 80%) + OOF 2stage bias + 12 rules, eager 추론(len400/b64). 어차피 실패할거지만 채점이 가능한지 보려고 넣음 edit	2026-07-05 22:57:57	
+제출 오류
+help
+제출하신 코드 실행 시간 제한 초과로 인해 실패했습니다.
+copy
+schedule
+10분
+
+27656	
+submit0705.zip
+large-kf ensemble edit	2026-07-05 20:55:09	0.771963849	
+schedule
+9분 13초
+
+27313	
+submit_state_v2_0705.zip
+직렬화방식체크, 80퍼 학습 edit	2026-07-05 09:18:45	0.7247208601	
+schedule
+5분 1초
+
+27246	
+m7_qwen3_refit.zip
+메모 추가	2026-07-05 02:26:26	0.7807288599	
+schedule
+8분 50초
+
+27060	
+m6_qwen05b_refit.zip
+Qwen2.5-0.5B ep3 int8 encoder-only edit	2026-07-04 22:18:25	0.7705827053	
+schedule
+8분 31초
+
+26935	
+submit_txonly_0704.zip
+0.7733 (full)  −  이 제출 점수  =  rules + SVC의 순수 Public 기여 edit	2026-07-04 19:02:24	0.7716474092	
+schedule
+6분 5초
+
+26928	
+submit.zip
+submit_large_len384_full_0704 edit	2026-07-04 18:47:49	0.7732655474	
+schedule
+6분 38초
+
+26923	
+submit.zip
+submit_large_len384_full_0704 edit	2026-07-04 18:41:38	
+제출 오류
+help
+제출하신 코드 실행 중 에러가 발생했습니다 - FileNotFoundError : Required ./model directory is missing. Place the trained model artifacts at ./model before inference. (File: /app/script.py, Line: 761)
+copy
+schedule
+2초
+
+26811	
+m4_large448_s42.zip
+xlm-r-large × len448 × focal, seed42: fixed 0.7567 (미튜닝), 80% edit	2026-07-04 15:02:09	0.7419635454	
+schedule
+7분 6초
+
+26784	
+leak_probe_0705.zip
+25262 제출 파일 그대로 + 테스트 누수 확인용 edit	2026-07-04 13:58:51	0.7107455566	
+schedule
+1분 45초
+
+26730	
+m3_len192_s42.zip
+테스트3. 비교용 len192 edit	2026-07-04 12:02:37	0.7250532948	
+schedule
+1분 5초
+
+26720	
+m3_focal_len448_seed43.zip
+테스트용2. 1과 동일, seed43 edit	2026-07-04 11:33:46	0.7140039679	
+schedule
+2분 20초
+
+26711	
+submit_m3_focal_len448.zip
+테스트용.  encoder-only, 학습 데이터의 80%로만 학습, seed 42 edit	2026-07-04 11:08:50	0.7352790392	
+schedule
+2분 22초
+
+26104	
+submit.zip
+xlmr-base focal(g2.0)+replay 80k refit + OOF rule boosts 12개 주입 (v2 0.7477 동일모델, 재학습X, 예상 +0.003~5) edit	2026-07-03 13:30:09	0.7498665818	
+schedule
+1분 11초
+
+26094	
+submit.zip
+노진산-제출오류 테스트 edit	2026-07-03 13:10:30	0.7477490723	
+schedule
+1분 6초
+
+25865	
+submit.zip
+submit_xlmr_focal_replay_s1 edit	2026-07-03 00:55:34	
+제출 오류
+help
+제출하신 코드 실행 중 에러가 발생했습니다 - FileNotFoundError : Required ./model directory is missing. Place the trained model artifacts at ./model before inference. (File: /app/script.py, Line: 903)
+copy
+schedule
+2초
+
+25262	
+submit.zip
+XLM-R 5ep replay_last1 cap10000 + OOF rule boosts + sparse SVC ensemble edit	2026-07-02 10:02:37	0.7430255165	
+schedule
+1분 43초
+
+25046	
+submit_xlmr.zip
+노진산-모델xlm-roberta-base edit	2026-07-01 23:43:24	0.7080569737	
+schedule
+1분 7초
+
+24802	
+submit.zip
+DistilBERT multilingual fine-tuning edit	2026-07-01 19:26:18	0.6983483342	
+schedule
+37초
