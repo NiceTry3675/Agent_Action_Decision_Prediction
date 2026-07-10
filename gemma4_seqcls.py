@@ -46,7 +46,13 @@ def build_gemma4_seqcls(config_path_or_id, num_labels, id2label, label2id, torch
             token_logits = self.score(hidden_states)
             batch_size = input_ids.shape[0]
             if attention_mask is not None:
-                last_idx = attention_mask.sum(dim=1) - 1
+                positions = torch.arange(input_ids.shape[1], device=input_ids.device)
+                last_idx = (
+                    positions.unsqueeze(0)
+                    .masked_fill(attention_mask.to(torch.bool).logical_not(), 0)
+                    .max(dim=1)
+                    .values
+                )
             else:
                 last_idx = torch.full((batch_size,), input_ids.shape[1] - 1, device=input_ids.device)
             logits = token_logits[torch.arange(batch_size, device=token_logits.device), last_idx]

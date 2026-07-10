@@ -942,6 +942,469 @@ def serialize_transformer_sample_current_v9h(sample):
     return "\n".join(out)
 
 
+ROUTE_USAGE_RE = re.compile(
+    r"\b(grep|search|find|lookup|reference|references|called|calls?|uses?|used|"
+    r"import|imports|hardcoded|occurrence|occurrences|where\s+.*\b(live|used|called|defined))\b|"
+    r"검색|찾아|어디서|쓰는지|부르는지|호출|참조|정의|남아|흩어|훑|긁",
+    re.IGNORECASE,
+)
+ROUTE_INVENTORY_RE = re.compile(
+    r"\b(all|every|recursive|full\s+list|which\s+files|what\s+files|files?\s+under|"
+    r"files?\s+matching|glob|pattern)\b|"
+    r"\*\*?[/.\w-]*|\*\.[A-Za-z0-9]{1,8}|"
+    r"전체|전부|몇\s*개|목록|어디어디|파일들|흩어져|패턴",
+    re.IGNORECASE,
+)
+ROUTE_STRONG_INVENTORY_RE = re.compile(
+    r"\b(recursive|full\s+list|which\s+files|what\s+files|files?\s+under|"
+    r"files?\s+matching|all\s+[\w\s.-]{0,32}files?|every\s+[\w\s.-]{0,32}files?|"
+    r"glob|pattern)\b|"
+    r"\*\*?[/.\w-]*|\*\.[A-Za-z0-9]{1,8}|"
+    r"전체|전부|몇\s*개|목록|어디어디|파일들|흩어져|패턴",
+    re.IGNORECASE,
+)
+ROUTE_DIR_RE = re.compile(
+    r"\b(list|ls|tree|directory|folder|top[- ]level|layout|what'?s\s+in|"
+    r"what\s+lives\s+under|contents?)\b|"
+    r"폴더|디렉토리|디렉터리|뭐뭐|들어있|구조|레이아웃",
+    re.IGNORECASE,
+)
+ROUTE_READ_RE = re.compile(
+    r"\b(open|show|read|inspect|look\s+at|pull\s+up|cat|view|current\s+impl|body)\b|"
+    r"열어|보여|읽어|본문|통째로|펼쳐|다시\s*봐|직접\s*보고|내용",
+    re.IGNORECASE,
+)
+
+
+def route_short(value, limit=48):
+    text = safe_text(value).replace("\n", " ").strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip()
+
+
+def route_target(prompt):
+    text = safe_text(prompt)
+    lower = text.lower()
+    mention = PATH_MENTION_RE.search(text)
+    if mention:
+        value = mention.group(0).replace("\\", "/")
+        if "*" in value or re.search(r"\b(glob|pattern|matching)\b", lower):
+            return "glob", route_short(value, 40)
+        if "/" in value:
+            return "exact_path", route_short(value, 40)
+        return "basename", route_short(value, 40)
+    if re.search(r"\b(that file|this file|same file|first one|second one|there|it)\b", lower):
+        return "pronoun", "it"
+    if re.search(r"그\s*파일|그거|거기|방금|첫\s*번째", lower):
+        return "pronoun", route_short(re.search(r"그\s*파일|그거|거기|방금|첫\s*번째", lower).group(0), 20)
+    tokens = TOKEN_RE.findall(text)
+    for token in tokens:
+        if "_" in token or re.search(r"[a-z][A-Z]", token) or re.search(r"\w+\(\)", token):
+            return "symbol", route_short(token, 40)
+    normalized = [token.strip(".,;:()[]{}'\"").lower() for token in tokens]
+    for token in normalized:
+        if token in COMMON_CODE_DIRS:
+            return "dir", token
+    return "none", "na"
+
+
+def route_first_cue(pattern, prompt):
+    match = pattern.search(safe_text(prompt))
+    return route_short(match.group(0), 36) if match else "na"
+
+
+def route_scope(op, target_kind, overlap):
+    if "open" in overlap.split("+"):
+        return "open"
+    if target_kind == "dir":
+        return "dir"
+    if target_kind in ("pronoun", "none") and op != "unknown":
+        return "candidate"
+    if op in ("content_search", "file_set"):
+        return "repo"
+    if op == "single_file_read":
+        return "repo"
+    return "unknown"
+
+
+def route_fields(sample):
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    last_event = last_action_event(history)
+    target_kind, target_value = route_target(prompt)
+    overlap = struct_overlap_token(prompt, ws, last_event)
+
+    has_usage = bool(ROUTE_USAGE_RE.search(prompt))
+    has_inventory = bool(ROUTE_INVENTORY_RE.search(prompt))
+    has_strong_inventory = target_kind == "glob" or bool(ROUTE_STRONG_INVENTORY_RE.search(prompt))
+    has_dir = bool(ROUTE_DIR_RE.search(prompt))
+    has_read = bool(ROUTE_READ_RE.search(prompt))
+
+    op = "unknown"
+    cue = "na"
+    if has_usage and not has_strong_inventory:
+        op = "content_search"
+        cue = route_first_cue(ROUTE_USAGE_RE, prompt)
+    elif has_inventory or has_strong_inventory:
+        op = "file_set"
+        cue = route_first_cue(ROUTE_STRONG_INVENTORY_RE if has_strong_inventory else ROUTE_INVENTORY_RE, prompt)
+    elif has_read and target_kind in ("exact_path", "basename", "pronoun", "symbol"):
+        op = "single_file_read"
+        cue = route_first_cue(ROUTE_READ_RE, prompt)
+    elif has_dir or target_kind == "dir":
+        op = "dir_children"
+        cue = route_first_cue(ROUTE_DIR_RE, prompt)
+
+    multiplicity = {
+        "single_file_read": "single",
+        "content_search": "occurrences",
+        "dir_children": "children",
+        "file_set": "all_files",
+    }.get(op, "unknown")
+    family = "file_nav" if op != "unknown" or target_kind != "none" else "unknown"
+    scope = route_scope(op, target_kind, overlap)
+    return family, op, target_kind, target_value, multiplicity, scope, cue
+
+
+def route_count_bucket_from_result(result):
+    lower = safe_text(result).lower()
+    if not lower:
+        return "na"
+    if re.search(r"\b(error|failed|failure|traceback|exception|permission denied|timed out|timeout|conflict)\b", lower):
+        return "error"
+    if re.search(r"\b(no matches?|not found|0 matches?|0 files?|0 entries|empty|no results?)\b", lower):
+        return "zero"
+    count = numeric_count_from_text(lower)
+    if count is not None and re.search(r"\b(matches?|occurrences?|files matched|entries|results?)\b", lower):
+        if count <= 0:
+            return "zero"
+        if count == 1:
+            return "one"
+        if count <= 5:
+            return "few"
+        return "many"
+    if re.search(r"\b(pass(?:ed)?|success(?:ful)?|succeeded|ok|clean|no errors?|read)\b", lower):
+        return "ok"
+    return "na"
+
+
+def route_arg_kind(last_event):
+    if not last_event:
+        return "none"
+    args = last_event.get("args") or {}
+    if not isinstance(args, dict) or not args:
+        return "none"
+    for key, value in args.items():
+        key_l = safe_text(key).lower()
+        value_l = safe_text(value).lower()
+        if key_l in ("cmd", "command"):
+            return "cmd"
+        if "*" in value_l or key_l == "pattern":
+            return "glob"
+        if key_l in ("scope", "cwd"):
+            return "dir"
+        if "/" in value_l or re.search(r"\b[\w.-]+\.[a-z0-9]{1,8}\b", value_l):
+            return "exact_path"
+        if key_l in ("symbol", "target_symbol") or "_" in value_l or re.search(r"[a-z][A-Z]", safe_text(value)):
+            return "symbol"
+    return "none"
+
+
+def route_candidate_pool(last_event):
+    if not last_event:
+        return "none"
+    name = safe_text(last_event.get("name"))
+    result = safe_text(last_event.get("result_summary"))
+    bucket = route_count_bucket_from_result(result)
+    if bucket in ("zero", "error"):
+        return "diagnostic" if bucket == "error" else "none"
+    if name == "list_directory":
+        return "dir_entries"
+    if name == "glob_pattern":
+        return "file_set"
+    if name == "grep_search":
+        return "content_hits"
+    if name == "read_file" and bucket == "ok":
+        return "single_file"
+    if name in ("run_bash", "run_tests", "lint_or_typecheck") or bucket == "ok":
+        return "diagnostic"
+    return "none"
+
+
+def route_open_relation(prompt, ws, target_kind, target_value):
+    open_files = [safe_text(path).replace("\\", "/") for path in (ws.get("open_files") or [])[:6]]
+    n_open = min(len(open_files), 6)
+    if target_kind == "none":
+        target_open = "unknown"
+    elif not open_files:
+        target_open = "no"
+    else:
+        target_terms = path_overlap_terms(target_value)
+        open_terms = set()
+        for path in open_files:
+            open_terms |= path_overlap_terms(path)
+        if target_kind in ("exact_path", "basename") and target_terms and target_terms <= open_terms:
+            target_open = "same"
+        elif target_terms & open_terms:
+            target_open = "overlap"
+        else:
+            prompt_terms = path_overlap_terms(prompt)
+            target_open = "overlap" if prompt_terms & open_terms else "no"
+
+    prompt_terms = path_overlap_terms(prompt)
+    open_dirs = set()
+    open_exts = set()
+    for path in open_files:
+        parts = [part for part in path.lower().split("/") if part]
+        open_dirs.update(parts[:-1])
+        if parts and "." in parts[-1]:
+            open_exts.add(parts[-1].rsplit(".", 1)[-1])
+    dir_overlap = "yes" if prompt_terms & open_dirs else "no"
+    target_ext = ""
+    if "." in target_value:
+        target_ext = target_value.lower().rsplit(".", 1)[-1].strip(".,;:()[]{}'\"")
+    ext_overlap = "yes" if target_ext and target_ext in open_exts else "no"
+    return n_open, target_open, dir_overlap, ext_overlap
+
+
+def serialize_transformer_sample_current_v10(sample):
+    """current_v1 plus typed route/trail/open_rel lines derived from weak-class
+    qualitative analysis. Keeps every current_v1 line intact while surfacing
+    file-navigation state that raw prompt/history text made hard to separate."""
+    base = serialize_transformer_sample_current(sample)
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_events = [event for event in history if event.get("role") == "assistant_action"]
+    action_names = [safe_text(event.get("name")) for event in action_events if safe_text(event.get("name"))]
+    last_event = action_events[-1] if action_events else None
+    last_action = action_names[-1] if action_names else "none"
+    prev_action = action_names[-2] if len(action_names) > 1 else "none"
+
+    family, op, target_kind, target_value, multiplicity, scope, cue = route_fields(sample)
+    n_open, target_open, dir_overlap, ext_overlap = route_open_relation(prompt, ws, target_kind, target_value)
+    trail = (
+        f"trail: pair={prev_action}>{last_action} "
+        f"last_result={route_count_bucket_from_result(last_event.get('result_summary') if last_event else '')} "
+        f"last_arg={route_arg_kind(last_event)} candidate_pool={route_candidate_pool(last_event)}"
+    )
+    route = (
+        f"route: family={family} op={op} target={target_kind}:{route_short(target_value, 40)} "
+        f"multiplicity={multiplicity} scope={scope} cue={cue}"
+    )
+    open_rel = (
+        f"open_rel: n={n_open} target_open={target_open} "
+        f"dir_overlap={dir_overlap} ext_overlap={ext_overlap}"
+    )
+    lines = base.split("\n")
+    return "\n".join([lines[0], route, trail, open_rel] + lines[1:])
+
+
+V11S_REGISTER = "$" * 16
+V11S_HINT_ALL_RE = re.compile(
+    r"\*\.[A-Za-z0-9]{1,8}|\*\*|"
+    r"\b(glob|pattern|recursive|full\s+list|all\s+(?:the\s+)?files?|"
+    r"every\s+file|which\s+files|what\s+files|files?\s+under|files?\s+matching)\b|"
+    r"전체|전부|파일\s*다|파일들|목록|노트북\s*파일\s*다",
+    re.IGNORECASE,
+)
+V11S_HINT_CHILD_RE = re.compile(
+    r"\b(list|ls|tree|directory|folder|layout|structure|what'?s\s+in|"
+    r"what\s+lives\s+under|contents?)\b|"
+    r"구조|폴더|디렉토리|디렉터리|뭐뭐|들어있|구성",
+    re.IGNORECASE,
+)
+V11S_HINT_OCC_RE = re.compile(
+    r"\b(grep|search|reference|references|occurrence|occurrences|uses?|used|"
+    r"calls?|called|where\s+.*\b(used|called|defined|referenced))\b|"
+    r"어디서|어디에|어디\s+.*(쓰|사용|호출|참조)|검색|문자열|참조|호출|쓰는지|사용처|레퍼런스",
+    re.IGNORECASE,
+)
+V11S_LITERAL_RE = re.compile(r"`([^`\n]{1,32})`|\"([^\"\n]{1,32})\"|'([^'\n]{1,32})'")
+
+
+def v11s_num_bin(value, cuts, names):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "u"
+    for high, name in zip(cuts, names):
+        if number <= high:
+            return name
+    return names[-1]
+
+
+def v11s_turn_token(turn_value):
+    exact = turn_exact_token(turn_value)
+    phase = turn_bin_token(turn_value)
+    if exact == "na":
+        exact = "xx"
+    if phase == "na":
+        phase = "u"
+    return f"{exact}/{phase}"
+
+
+def v11s_budget_bin(value):
+    return v11s_num_bin(value, (25000, 100000, float("inf")), ("low", "mid", "high"))
+
+
+def v11s_elapsed_bin(value):
+    return v11s_num_bin(value, (300, 1200, float("inf")), ("short", "mid", "long"))
+
+
+def v11s_bool_token(value):
+    if isinstance(value, bool):
+        return "T" if value else "F"
+    text = safe_text(value).lower()
+    if text in ("true", "t", "1", "yes"):
+        return "T"
+    if text in ("false", "f", "0", "no"):
+        return "F"
+    return "u"
+
+
+def v11s_ci_token(value):
+    text = safe_text(value).lower()
+    if text in ("passed", "pass", "ok", "clean", "success"):
+        return "pass"
+    if text in ("failed", "fail", "error", "errored", "red"):
+        return "fail"
+    if text in ("none", "na", ""):
+        return "none"
+    return "u"
+
+
+def v11s_basename(value):
+    text = safe_text(value).replace("\\", "/").strip()
+    if not text:
+        return ""
+    return route_short(text.rsplit("/", 1)[-1], 32)
+
+
+def v11s_open_token(ws):
+    open_files = ws.get("open_files") or []
+    count = min(len(open_files), 6)
+    bases = [v11s_basename(path) for path in open_files[:2]]
+    bases = [base for base in bases if base]
+    return f"{count}:{'|'.join(bases) if bases else 'na'}"
+
+
+def v11s_hint_token(prompt):
+    text = safe_text(prompt)
+    if V11S_HINT_ALL_RE.search(text):
+        return "a"
+    if V11S_HINT_OCC_RE.search(text):
+        return "o"
+    if V11S_HINT_CHILD_RE.search(text):
+        return "c"
+    return ""
+
+
+def v11s_literal_token(prompt):
+    match = V11S_LITERAL_RE.search(safe_text(prompt))
+    if not match:
+        return ""
+    value = next((group for group in match.groups() if group), "")
+    return route_short(value, 32)
+
+
+def v11s_qp_tokens(prompt):
+    target_kind, target_value = route_target(prompt)
+    q_kind, q_value = "none", "na"
+    p_kind, p_value = "none", "na"
+    if target_kind == "symbol":
+        q_kind, q_value = "sym", route_short(target_value, 32)
+    elif target_kind == "exact_path":
+        p_kind, p_value = "exact", route_short(target_value, 32)
+    elif target_kind == "basename":
+        p_kind, p_value = "base", route_short(target_value, 32)
+    elif target_kind == "glob":
+        p_kind, p_value = "glob", route_short(target_value, 32)
+    elif target_kind == "dir":
+        p_kind, p_value = "dir", route_short(target_value, 32)
+    elif target_kind == "pronoun":
+        p_kind, p_value = "pro", "it"
+    literal = v11s_literal_token(prompt)
+    if q_kind == "none" and literal:
+        q_kind, q_value = "lit", literal
+    return q_kind, q_value, p_kind, p_value, target_kind, target_value
+
+
+def v11s_arg_token(arg_kind):
+    return {
+        "exact_path": "path",
+        "glob": "glob",
+        "symbol": "sym",
+        "none": "none",
+    }.get(arg_kind, arg_kind)
+
+
+def v11s_nav_line(sample):
+    prompt = safe_text(sample.get("current_prompt", ""))
+    history = sample.get("history") or []
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    action_events = [event for event in history if event.get("role") == "assistant_action"]
+    action_names = [safe_text(event.get("name")) for event in action_events if safe_text(event.get("name"))]
+    last_event = action_events[-1] if action_events else None
+    last_action = action_names[-1] if action_names else "none"
+    prev_action = action_names[-2] if len(action_names) > 1 else "none"
+
+    q_kind, q_value, p_kind, p_value, target_kind, target_value = v11s_qp_tokens(prompt)
+    hint = v11s_hint_token(prompt)
+    n_open, target_open, dir_overlap, ext_overlap = route_open_relation(prompt, ws, target_kind, target_value)
+    open_token = "0" if n_open <= 0 else f"{n_open}/{target_open}/{dir_overlap}/{ext_overlap}"
+    pieces = [
+        f"q={q_kind}:{q_value}",
+        f"p={p_kind}:{p_value}",
+    ]
+    if hint:
+        pieces.append(f"h={hint}")
+    pieces.extend([
+        f"c={prev_action}>{last_action}",
+        f"r={route_count_bucket_from_result(last_event.get('result_summary') if last_event else '')}@{route_candidate_pool(last_event)}",
+        f"a={v11s_arg_token(route_arg_kind(last_event))}",
+        f"o={open_token}",
+    ])
+    return f"nav: {' '.join(pieces)}"
+
+
+def serialize_transformer_sample_current_v11s(sample):
+    """Scaffold-preserving v1 variant: constant register + compact navigation
+    evidence + masked high-entropy meta/workspace values."""
+    base = serialize_transformer_sample_current(sample)
+    sm = sample.get("session_meta") or {}
+    ws = sm.get("workspace") or {}
+    meta = (
+        f"meta: tier=x lang=x turn={v11s_turn_token(sm.get('turn_index'))} "
+        f"budget={v11s_budget_bin(sm.get('budget_tokens_remaining'))} "
+        f"elapsed={v11s_elapsed_bin(sm.get('elapsed_session_sec'))}"
+    )
+    workspace = (
+        f"workspace: dirty={v11s_bool_token(ws.get('git_dirty'))} "
+        f"ci={v11s_ci_token(ws.get('last_ci_status'))} loc=x "
+        f"langs={top_language_pair(ws)} open={v11s_open_token(ws)}"
+    )
+    out = []
+    for line in base.split("\n"):
+        if line.startswith("current: "):
+            out.append(line)
+            out.append(f"reg: {V11S_REGISTER}")
+            out.append(v11s_nav_line(sample))
+        elif line.startswith("meta: "):
+            out.append(meta)
+        elif line.startswith("workspace: "):
+            out.append(workspace)
+        else:
+            out.append(line)
+    return "\n".join(out)
+
+
 def serialize_transformer_sample_current_v2(sample):
     """Priority-ordered rewrite of current_v1: highest-signal fields first so
     right-truncation drops the oldest history pairs instead of args/results,
@@ -1269,6 +1732,10 @@ def serialize_transformer_sample(sample, serializer_name="current_v1"):
         return serialize_transformer_sample_current_v9f(sample)
     if serializer_name == "current_v9h":
         return serialize_transformer_sample_current_v9h(sample)
+    if serializer_name == "current_v10":
+        return serialize_transformer_sample_current_v10(sample)
+    if serializer_name == "current_v11s":
+        return serialize_transformer_sample_current_v11s(sample)
     if serializer_name == "state_v2":
         return serialize_transformer_sample_state_v2(sample)
     if serializer_name == "recent_pairs_v1":

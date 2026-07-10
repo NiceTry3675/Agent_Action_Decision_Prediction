@@ -28,6 +28,15 @@ from train import (
     tune_class_bias_two_stage,
 )
 
+EXPLORER4_CLASSES = [
+    "list_directory",
+    "read_file",
+    "grep_search",
+    "glob_pattern",
+]
+EXPLORER4_CLASS_IDS = [ALL_CLASSES.index(label) for label in EXPLORER4_CLASSES]
+EXPLORER4_CLASS_ID_SET = set(EXPLORER4_CLASS_IDS)
+
 
 def safe_slug(value):
     value = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value)).strip("-")
@@ -505,6 +514,13 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
     model = load_sequence_classifier(args, tokenizer, label_kwargs).to(device)
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
+    explorer4_ids = torch.tensor(EXPLORER4_CLASS_IDS, dtype=torch.long, device=device)
+    explorer4_local_targets = torch.full((len(ALL_CLASSES),), -1, dtype=torch.long, device=device)
+    explorer4_local_targets[explorer4_ids] = torch.arange(len(EXPLORER4_CLASS_IDS), device=device)
+    explorer4_weights = None
+    if args.explorer4_loss_balance:
+        explorer4_weights = weights[explorer4_ids]
+        explorer4_weights = explorer4_weights / torch.clamp(explorer4_weights.mean(), min=1e-8)
     trainable_params = [param for param in model.parameters() if param.requires_grad]
     if args.optim == "adamw8bit":
         import bitsandbytes as bnb
@@ -523,7 +539,9 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
 
     def optimizer_step():
         scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+        if not scaler.is_enabled() and not torch.isfinite(grad_norm):
+            raise FloatingPointError(f"non-finite grad norm: {float(grad_norm.detach().cpu())}")
         scaler.step(optimizer)
         scaler.update()
         scheduler.step()
@@ -543,6 +561,18 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             # ce -> focal changes exactly one thing
             pt = F.log_softmax(logits.float(), dim=-1).gather(1, labels.view(-1, 1)).squeeze(1).exp()
             loss_values = (1.0 - pt) ** args.focal_gamma * loss_values
+        if args.explorer4_loss_weight > 0:
+            explorer4_targets = explorer4_local_targets[labels]
+            explorer4_mask = explorer4_targets >= 0
+            if bool(explorer4_mask.any()):
+                explorer4_loss_values = torch.zeros_like(loss_values)
+                explorer4_loss_values[explorer4_mask] = F.cross_entropy(
+                    logits.float()[explorer4_mask][:, explorer4_ids],
+                    explorer4_targets[explorer4_mask],
+                    weight=explorer4_weights,
+                    reduction="none",
+                )
+                loss_values = loss_values + args.explorer4_loss_weight * explorer4_loss_values
         if teacher is not None:
             temp = args.distill_temp
             teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
@@ -600,6 +630,8 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
                     loss_values = 0.5 * (loss_values + per_row_loss(logits2, labels, batch_idx)) + args.rdrop_alpha * rdrop_kl
                     total_kl += float(rdrop_kl.detach().mean().cpu()) * len(batch_idx)
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"non-finite loss at epoch={epoch} step={step}")
             scaler.scale(loss / accum).backward()
             if step % accum == 0:
                 optimizer_step()
@@ -680,6 +712,8 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "base_model": args.base_model,
         "model_class": getattr(args, "model_class", "auto"),
         "lora_r": int(getattr(args, "lora_r", 0) or 0),
+        "explorer4_loss_weight": float(args.explorer4_loss_weight),
+        "explorer4_loss_balance": bool(args.explorer4_loss_balance),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
         "saved_fp16": bool(args.save_fp16),
@@ -705,6 +739,55 @@ def dir_size_mb(path):
 
 def summarize_weak_classes(metrics, count=5):
     return ";".join(f"{name}:{score:.4f}" for name, score in sorted(metrics["per_class_f1"].items(), key=lambda kv: kv[1])[:count])
+
+
+def explorer4_metrics(y_true, y_pred, full_metrics=None):
+    if full_metrics is None:
+        full_metrics = f1_metrics(y_true, y_pred)
+    per_class = {
+        label: float(full_metrics["per_class_f1"].get(label, 0.0))
+        for label in EXPLORER4_CLASSES
+    }
+    confusion = [[0 for _ in EXPLORER4_CLASSES] for _ in EXPLORER4_CLASSES]
+    true_explorer4 = 0
+    true_explorer4_pred_non = 0
+    true_non_explorer4 = 0
+    true_non_pred_explorer4 = 0
+    pair_confusions = Counter()
+    for true_id, pred_id in zip(y_true, y_pred):
+        true_is_e4 = true_id in EXPLORER4_CLASS_ID_SET
+        pred_is_e4 = pred_id in EXPLORER4_CLASS_ID_SET
+        if true_is_e4:
+            true_explorer4 += 1
+            if pred_is_e4:
+                confusion[EXPLORER4_CLASS_IDS.index(true_id)][EXPLORER4_CLASS_IDS.index(pred_id)] += 1
+                if true_id != pred_id:
+                    pair_confusions[(ALL_CLASSES[true_id], ALL_CLASSES[pred_id])] += 1
+            else:
+                true_explorer4_pred_non += 1
+        else:
+            true_non_explorer4 += 1
+            if pred_is_e4:
+                true_non_pred_explorer4 += 1
+    explorer4_sum = sum(per_class.values())
+    return {
+        "explorer4_classes": EXPLORER4_CLASSES,
+        "explorer4_macro_f1": explorer4_sum / len(EXPLORER4_CLASSES),
+        "explorer4_sum_f1": explorer4_sum,
+        "explorer4_per_class": per_class,
+        "explorer4_confusion_4x4": confusion,
+        "true_explorer4_pred_non_explorer_rate": true_explorer4_pred_non / max(1, true_explorer4),
+        "true_non_explorer_pred_explorer4_rate": true_non_pred_explorer4 / max(1, true_non_explorer4),
+        "explorer4_pair_confusions": [
+            {"count": count, "true": true_label, "pred": pred_label}
+            for (true_label, pred_label), count in pair_confusions.most_common(12)
+        ],
+    }
+
+
+def explorer4_metrics_from_logits(logits, y_true, bias, full_metrics=None):
+    pred = predict_with_bias(logits, bias)
+    return explorer4_metrics(y_true, pred, full_metrics=full_metrics)
 
 
 def load_tokenizer_for_args(args):
@@ -772,7 +855,7 @@ def append_log(
         "",
         f"- Date/time: {now}",
         "- Hypothesis: A cached multilingual transformer pipeline should make fixed-session screening faster without changing the model family.",
-        f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}, bucket_multiplier={args.bucket_multiplier}.",
+        f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}, bucket_multiplier={args.bucket_multiplier}, explorer4_loss={args.explorer4_loss_weight}, explorer4_balance={args.explorer4_loss_balance}.",
         f"- Validation setup: {args.split}{fold_note}{quick_note}",
         f"- Raw Macro-F1: {raw_metrics['macro_f1']:.6f}",
         f"- Old bias-tuned Macro-F1: {old_bias_metrics['macro_f1']:.6f}" if old_bias_metrics else "- Old bias-tuned Macro-F1: not run",
@@ -809,6 +892,7 @@ def save_val_logits(
         return ""
     path = Path(args.logits_dir) / f"{experiment_id}_val_logits.pt"
     path.parent.mkdir(parents=True, exist_ok=True)
+    zero_bias = torch.zeros(len(ALL_CLASSES), dtype=torch.float32)
     torch.save(
         {
             "logits": logits.float().cpu(),
@@ -821,6 +905,13 @@ def save_val_logits(
             "raw_metrics": raw_metrics,
             "old_bias_metrics": old_bias_metrics,
             "metrics": metrics,
+            "raw_explorer4_metrics": explorer4_metrics_from_logits(logits, y_true, zero_bias, full_metrics=raw_metrics),
+            "old_bias_explorer4_metrics": (
+                explorer4_metrics_from_logits(logits, y_true, old_bias, full_metrics=old_bias_metrics)
+                if old_bias is not None and old_bias_metrics is not None
+                else None
+            ),
+            "explorer4_metrics": explorer4_metrics_from_logits(logits, y_true, bias, full_metrics=metrics),
             "base_model": args.base_model,
             "serializer_name": args.serializer,
             "max_length": args.max_length,
@@ -992,6 +1083,8 @@ def run(args):
                     "replay_size": final_replay_size,
                     "artifact_size_mb": artifact_size,
                     "rule_boosts_path": args.rule_boosts_path,
+                    "explorer4_loss_weight": args.explorer4_loss_weight,
+                    "explorer4_loss_balance": args.explorer4_loss_balance,
                 },
                 f,
                 ensure_ascii=False,
@@ -1002,7 +1095,7 @@ def run(args):
             "",
             f"- Date/time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             "- Validation setup: final refit on all labeled rows; no validation rows used.",
-            f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}.",
+            f"- Code/config changes: `{args.base_model}`, serializer={args.serializer}, replay={args.replay_mode}, max_length={args.max_length}, epochs={args.epochs}, lr={args.lr}, batch={args.batch_size}, explorer4_loss={args.explorer4_loss_weight}, explorer4_balance={args.explorer4_loss_balance}.",
             f"- OOF class-bias source: {args.class_bias_artifact or 'none'}",
             f"- Rule boosts source: {args.rule_boosts_path or 'none'}",
             f"- Runtime or package-size concerns: runtime={runtime['total_sec']:.1f}s, tokenize={runtime['tokenize_sec']:.1f}s, train={runtime['train_sec']:.1f}s, artifact_size_mb={artifact_size:.1f}.",
@@ -1052,11 +1145,14 @@ def run(args):
     old_bias = None
     old_bias_metrics = None
     metrics = raw_metrics
+    raw_explorer4_metrics = explorer4_metrics_from_logits(logits, y_val, bias, full_metrics=raw_metrics)
+    old_bias_explorer4_metrics = None
     if args.tune_bias:
         print("  tuning old class bias")
         old_bias, _ = tune_class_bias(logits, y_val, rounds=2)
         old_pred = predict_with_bias(logits, old_bias)
         old_bias_metrics = f1_metrics(y_val, old_pred)
+        old_bias_explorer4_metrics = explorer4_metrics(y_val, old_pred, full_metrics=old_bias_metrics)
         print(f"  old_tuned_macro_f1={old_bias_metrics['macro_f1']:.6f}")
         print("  tuning 2-stage class bias")
         bias, _ = tune_class_bias_two_stage(
@@ -1069,6 +1165,13 @@ def run(args):
         pred = predict_with_bias(logits, bias)
         metrics = f1_metrics(y_val, pred)
         print(f"  tuned_2stage_macro_f1={metrics['macro_f1']:.6f}")
+    final_explorer4_metrics = explorer4_metrics_from_logits(logits, y_val, bias, full_metrics=metrics)
+    print(
+        "  explorer4 "
+        f"raw={raw_explorer4_metrics['explorer4_macro_f1']:.6f} "
+        f"final={final_explorer4_metrics['explorer4_macro_f1']:.6f} "
+        f"sum={final_explorer4_metrics['explorer4_sum_f1']:.6f}"
+    )
 
     experiment_id = experiment_id_for(args)
     val_logits_path = save_val_logits(
@@ -1192,6 +1295,9 @@ def run(args):
                 "raw_metrics": raw_metrics,
                 "old_bias_metrics": old_bias_metrics,
                 "metrics": metrics,
+                "raw_explorer4_metrics": raw_explorer4_metrics,
+                "old_bias_explorer4_metrics": old_bias_explorer4_metrics,
+                "explorer4_metrics": final_explorer4_metrics,
                 "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in bias.tolist()])),
                 "old_class_bias": dict(zip(ALL_CLASSES, [float(x) for x in old_bias.tolist()])) if old_bias is not None else None,
                 "device": str(device),
@@ -1206,6 +1312,8 @@ def run(args):
                 "n_folds": args.n_folds if args.split == "session_oof" else None,
                 "replay_size": replay_size,
                 "replay_sample_weight": args.replay_sample_weight,
+                "explorer4_loss_weight": args.explorer4_loss_weight,
+                "explorer4_loss_balance": args.explorer4_loss_balance,
             },
             f,
             ensure_ascii=False,
@@ -1224,7 +1332,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
@@ -1243,6 +1351,10 @@ def parse_args():
                         help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
     parser.add_argument("--distill-alpha", type=float, default=0.5)
     parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument("--explorer4-loss-weight", type=float, default=0.0,
+                        help="extra plain CE on true list/read/grep/glob rows, restricted to those four logits")
+    parser.add_argument("--explorer4-loss-balance", action="store_true",
+                        help="normalize existing main class weights inside the Explorer4 auxiliary CE")
     parser.add_argument("--optim", choices=["adamw", "adamw8bit"], default="adamw",
                         help="adamw8bit (bitsandbytes) fits 0.6B training in 8GB VRAM")
     parser.add_argument("--bf16", action="store_true",
@@ -1306,6 +1418,8 @@ def parse_args():
             "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "
             "to 0.0, so both R-Drop passes would be identical (KL=0) at 2x train cost"
         )
+    if args.explorer4_loss_weight < 0:
+        parser.error("--explorer4-loss-weight must be >= 0")
     return args
 
 

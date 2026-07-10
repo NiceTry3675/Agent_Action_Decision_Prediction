@@ -29,8 +29,7 @@ single auth surface, and it can ship uncommitted experiment code (bundles are ta
    finish the browser OAuth. Verify with `rclone lsd gdrive:`.
    (Different remote name: export `AADP_RCLONE_REMOTE`.)
 2. Install the Google Colab VS Code extension and sign in. Create a GPU runtime
-   (**default to L4** for base runs — user preference, ~1.5-2x faster than T4 with
-   24GB VRAM; A100 for xlm-roberta-large) and attach it as the kernel of
+   (**default to A100** for base runs) and attach it as the kernel of
    `colab/colab_runner.ipynb`.
 3. Upload the dataset once: `python colab/cloud_sync.py push --data`.
 
