@@ -1,0 +1,739 @@
+{
+  "source_logit_path": "experiments/logits/20260707_100521_gpu_transformer_session_current_v1_len384_replay-last1_kd_hcx_m8_screen_s42_val_logits.pt",
+  "classes": [
+    "read_file",
+    "grep_search",
+    "list_directory",
+    "glob_pattern",
+    "edit_file",
+    "write_file",
+    "apply_patch",
+    "run_bash",
+    "run_tests",
+    "lint_or_typecheck",
+    "ask_user",
+    "plan_task",
+    "web_search",
+    "respond_only"
+  ],
+  "weak_labels": [
+    "list_directory",
+    "read_file",
+    "grep_search",
+    "glob_pattern"
+  ],
+  "n_val": 14001,
+  "macro_raw": 0.7838517354251339,
+  "macro_2stage": 0.7878011826944412,
+  "per_class_raw": {
+    "list_directory": 0.5167037861915368,
+    "read_file": 0.6219081272084805,
+    "grep_search": 0.6328217237308147,
+    "glob_pattern": 0.6504751847940866
+  },
+  "per_class_2stage": {
+    "list_directory": 0.5181159420289855,
+    "read_file": 0.6128686327077748,
+    "grep_search": 0.6493927125506073,
+    "glob_pattern": 0.6540335679480238
+  },
+  "top_confusions_raw": [
+    {
+      "true": "grep_search",
+      "pred": "read_file",
+      "count": 495
+    },
+    {
+      "true": "read_file",
+      "pred": "list_directory",
+      "count": 324
+    },
+    {
+      "true": "grep_search",
+      "pred": "list_directory",
+      "count": 286
+    },
+    {
+      "true": "read_file",
+      "pred": "grep_search",
+      "count": 202
+    },
+    {
+      "true": "list_directory",
+      "pred": "read_file",
+      "count": 181
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "read_file",
+      "count": 176
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "list_directory",
+      "count": 165
+    },
+    {
+      "true": "ask_user",
+      "pred": "plan_task",
+      "count": 154
+    },
+    {
+      "true": "read_file",
+      "pred": "glob_pattern",
+      "count": 102
+    },
+    {
+      "true": "plan_task",
+      "pred": "ask_user",
+      "count": 100
+    },
+    {
+      "true": "run_bash",
+      "pred": "run_tests",
+      "count": 90
+    },
+    {
+      "true": "run_bash",
+      "pred": "lint_or_typecheck",
+      "count": 90
+    },
+    {
+      "true": "grep_search",
+      "pred": "glob_pattern",
+      "count": 88
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "grep_search",
+      "count": 85
+    },
+    {
+      "true": "list_directory",
+      "pred": "grep_search",
+      "count": 78
+    },
+    {
+      "true": "run_tests",
+      "pred": "run_bash",
+      "count": 70
+    },
+    {
+      "true": "lint_or_typecheck",
+      "pred": "run_tests",
+      "count": 61
+    },
+    {
+      "true": "run_tests",
+      "pred": "lint_or_typecheck",
+      "count": 51
+    },
+    {
+      "true": "lint_or_typecheck",
+      "pred": "run_bash",
+      "count": 47
+    },
+    {
+      "true": "ask_user",
+      "pred": "web_search",
+      "count": 45
+    },
+    {
+      "true": "list_directory",
+      "pred": "glob_pattern",
+      "count": 40
+    },
+    {
+      "true": "edit_file",
+      "pred": "apply_patch",
+      "count": 34
+    },
+    {
+      "true": "web_search",
+      "pred": "plan_task",
+      "count": 27
+    },
+    {
+      "true": "web_search",
+      "pred": "ask_user",
+      "count": 26
+    },
+    {
+      "true": "plan_task",
+      "pred": "web_search",
+      "count": 16
+    },
+    {
+      "true": "apply_patch",
+      "pred": "edit_file",
+      "count": 12
+    },
+    {
+      "true": "run_bash",
+      "pred": "list_directory",
+      "count": 5
+    },
+    {
+      "true": "edit_file",
+      "pred": "read_file",
+      "count": 4
+    },
+    {
+      "true": "read_file",
+      "pred": "run_tests",
+      "count": 3
+    },
+    {
+      "true": "ask_user",
+      "pred": "read_file",
+      "count": 3
+    }
+  ],
+  "weak_confusions_raw": {
+    "list_directory": {
+      "list_directory": 580,
+      "read_file": 181,
+      "grep_search": 78,
+      "glob_pattern": 40,
+      "edit_file": 1,
+      "plan_task": 1,
+      "run_bash": 1
+    },
+    "read_file": {
+      "read_file": 1232,
+      "list_directory": 324,
+      "grep_search": 202,
+      "glob_pattern": 102,
+      "run_tests": 3,
+      "edit_file": 2,
+      "run_bash": 1,
+      "respond_only": 1
+    },
+    "grep_search": {
+      "grep_search": 1072,
+      "read_file": 495,
+      "list_directory": 286,
+      "glob_pattern": 88,
+      "run_bash": 2,
+      "run_tests": 2,
+      "plan_task": 1,
+      "lint_or_typecheck": 1
+    },
+    "glob_pattern": {
+      "glob_pattern": 616,
+      "read_file": 176,
+      "list_directory": 165,
+      "grep_search": 85,
+      "run_bash": 2,
+      "edit_file": 2,
+      "run_tests": 1,
+      "web_search": 1
+    }
+  },
+  "top_confusions_bias2stage": [
+    {
+      "true": "grep_search",
+      "pred": "read_file",
+      "count": 394
+    },
+    {
+      "true": "read_file",
+      "pred": "list_directory",
+      "count": 314
+    },
+    {
+      "true": "read_file",
+      "pred": "grep_search",
+      "count": 313
+    },
+    {
+      "true": "grep_search",
+      "pred": "list_directory",
+      "count": 276
+    },
+    {
+      "true": "ask_user",
+      "pred": "plan_task",
+      "count": 165
+    },
+    {
+      "true": "list_directory",
+      "pred": "read_file",
+      "count": 158
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "list_directory",
+      "count": 157
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "read_file",
+      "count": 156
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "grep_search",
+      "count": 125
+    },
+    {
+      "true": "list_directory",
+      "pred": "grep_search",
+      "count": 112
+    },
+    {
+      "true": "read_file",
+      "pred": "glob_pattern",
+      "count": 91
+    },
+    {
+      "true": "run_tests",
+      "pred": "run_bash",
+      "count": 80
+    },
+    {
+      "true": "plan_task",
+      "pred": "ask_user",
+      "count": 78
+    },
+    {
+      "true": "run_bash",
+      "pred": "run_tests",
+      "count": 77
+    },
+    {
+      "true": "lint_or_typecheck",
+      "pred": "run_bash",
+      "count": 76
+    },
+    {
+      "true": "lint_or_typecheck",
+      "pred": "run_tests",
+      "count": 70
+    },
+    {
+      "true": "grep_search",
+      "pred": "glob_pattern",
+      "count": 67
+    },
+    {
+      "true": "ask_user",
+      "pred": "web_search",
+      "count": 45
+    },
+    {
+      "true": "run_bash",
+      "pred": "lint_or_typecheck",
+      "count": 41
+    },
+    {
+      "true": "run_tests",
+      "pred": "lint_or_typecheck",
+      "count": 37
+    },
+    {
+      "true": "list_directory",
+      "pred": "glob_pattern",
+      "count": 37
+    },
+    {
+      "true": "edit_file",
+      "pred": "apply_patch",
+      "count": 34
+    },
+    {
+      "true": "web_search",
+      "pred": "plan_task",
+      "count": 27
+    },
+    {
+      "true": "web_search",
+      "pred": "ask_user",
+      "count": 26
+    },
+    {
+      "true": "plan_task",
+      "pred": "web_search",
+      "count": 15
+    },
+    {
+      "true": "apply_patch",
+      "pred": "edit_file",
+      "count": 9
+    },
+    {
+      "true": "run_bash",
+      "pred": "list_directory",
+      "count": 4
+    },
+    {
+      "true": "glob_pattern",
+      "pred": "run_bash",
+      "count": 3
+    },
+    {
+      "true": "grep_search",
+      "pred": "run_bash",
+      "count": 3
+    },
+    {
+      "true": "run_bash",
+      "pred": "read_file",
+      "count": 3
+    }
+  ],
+  "weak_confusions_bias2stage": {
+    "list_directory": {
+      "list_directory": 572,
+      "read_file": 158,
+      "grep_search": 112,
+      "glob_pattern": 37,
+      "run_bash": 2,
+      "plan_task": 1
+    },
+    "read_file": {
+      "read_file": 1143,
+      "list_directory": 314,
+      "grep_search": 313,
+      "glob_pattern": 91,
+      "run_tests": 3,
+      "run_bash": 2,
+      "edit_file": 1
+    },
+    "grep_search": {
+      "grep_search": 1203,
+      "read_file": 394,
+      "list_directory": 276,
+      "glob_pattern": 67,
+      "run_bash": 3,
+      "run_tests": 2,
+      "plan_task": 1,
+      "lint_or_typecheck": 1
+    },
+    "glob_pattern": {
+      "glob_pattern": 604,
+      "list_directory": 157,
+      "read_file": 156,
+      "grep_search": 125,
+      "run_bash": 3,
+      "run_tests": 1,
+      "web_search": 1,
+      "edit_file": 1
+    }
+  },
+  "list_directory_raw_counts": {
+    "total": 882,
+    "correct": 580,
+    "errors": 302,
+    "preds": {
+      "list_directory": 580,
+      "read_file": 181,
+      "grep_search": 78,
+      "glob_pattern": 40,
+      "edit_file": 1,
+      "plan_task": 1,
+      "run_bash": 1
+    }
+  },
+  "list_directory_error_features": {
+    "read_word": 98,
+    "question": 86,
+    "file_like": 77,
+    "prev=none": 63,
+    "last=list_directory": 59,
+    "scope_word": 51,
+    "prev=edit_file": 40,
+    "last=edit_file": 39,
+    "path_sep": 36,
+    "last=grep_search": 33,
+    "prev=list_directory": 32,
+    "last=read_file": 30,
+    "prev=grep_search": 26,
+    "last=glob_pattern": 24,
+    "prev=read_file": 22,
+    "last=apply_patch": 20,
+    "prev=run_bash": 20,
+    "last=run_tests": 18,
+    "prev=ask_user": 17,
+    "last=ask_user": 17,
+    "last=run_bash": 17,
+    "prev=plan_task": 15,
+    "prev=run_tests": 15,
+    "prev=glob_pattern": 14,
+    "last=plan_task": 14,
+    "prev=apply_patch": 13,
+    "list_word": 11,
+    "grep_word": 10,
+    "prev=write_file": 10,
+    "last=none": 10
+  },
+  "list_directory_correct_features": {
+    "prev=none": 510,
+    "last=none": 353,
+    "read_word": 214,
+    "file_like": 163,
+    "question": 160,
+    "scope_word": 96,
+    "last=plan_task": 79,
+    "last=run_bash": 53,
+    "path_sep": 52,
+    "last=glob_pattern": 42,
+    "casual": 35,
+    "grep_word": 32,
+    "last=ask_user": 26,
+    "prev=run_bash": 25,
+    "prev=plan_task": 24,
+    "list_word": 20,
+    "plan_word": 19,
+    "edit_word": 10,
+    "last=apply_patch": 9,
+    "prev=glob_pattern": 9,
+    "prev=ask_user": 8,
+    "last=run_tests": 6,
+    "last=web_search": 4,
+    "last=list_directory": 3,
+    "glob_word": 3,
+    "prev=apply_patch": 2,
+    "last=read_file": 2,
+    "prev=run_tests": 1,
+    "last=edit_file": 1,
+    "prev=lint_or_typecheck": 1
+  },
+  "read_file_raw_counts": {
+    "total": 1867,
+    "correct": 1232,
+    "errors": 635,
+    "preds": {
+      "read_file": 1232,
+      "list_directory": 324,
+      "grep_search": 202,
+      "glob_pattern": 102,
+      "run_tests": 3,
+      "edit_file": 2,
+      "run_bash": 1,
+      "respond_only": 1
+    }
+  },
+  "read_file_error_features": {
+    "prev=none": 307,
+    "read_word": 223,
+    "last=none": 201,
+    "question": 184,
+    "file_like": 177,
+    "scope_word": 128,
+    "last=glob_pattern": 80,
+    "path_sep": 69,
+    "last=grep_search": 62,
+    "prev=grep_search": 54,
+    "prev=glob_pattern": 51,
+    "prev=read_file": 50,
+    "last=edit_file": 48,
+    "last=run_bash": 45,
+    "prev=edit_file": 44,
+    "last=plan_task": 41,
+    "last=read_file": 37,
+    "last=ask_user": 30,
+    "last=list_directory": 29,
+    "prev=plan_task": 28,
+    "grep_word": 28,
+    "prev=run_bash": 24,
+    "prev=ask_user": 23,
+    "casual": 23,
+    "last=apply_patch": 22,
+    "prev=apply_patch": 19,
+    "edit_word": 19,
+    "last=run_tests": 19,
+    "list_word": 17,
+    "plan_word": 17
+  },
+  "read_file_correct_features": {
+    "read_word": 467,
+    "file_like": 378,
+    "prev=none": 350,
+    "last=grep_search": 300,
+    "question": 293,
+    "scope_word": 237,
+    "prev=list_directory": 225,
+    "last=read_file": 207,
+    "last=list_directory": 186,
+    "prev=run_bash": 151,
+    "prev=run_tests": 128,
+    "path_sep": 114,
+    "last=none": 96,
+    "last=edit_file": 93,
+    "prev=glob_pattern": 92,
+    "last=glob_pattern": 85,
+    "last=run_bash": 68,
+    "prev=edit_file": 54,
+    "prev=ask_user": 51,
+    "grep_word": 44,
+    "casual": 42,
+    "prev=plan_task": 39,
+    "last=run_tests": 39,
+    "prev=lint_or_typecheck": 37,
+    "last=ask_user": 37,
+    "last=plan_task": 37,
+    "prev=write_file": 32,
+    "edit_word": 32,
+    "last=apply_patch": 28,
+    "list_word": 23
+  },
+  "grep_search_raw_counts": {
+    "total": 1947,
+    "correct": 1072,
+    "errors": 875,
+    "preds": {
+      "grep_search": 1072,
+      "read_file": 495,
+      "list_directory": 286,
+      "glob_pattern": 88,
+      "run_bash": 2,
+      "run_tests": 2,
+      "plan_task": 1,
+      "lint_or_typecheck": 1
+    }
+  },
+  "grep_search_error_features": {
+    "prev=none": 402,
+    "read_word": 312,
+    "file_like": 258,
+    "question": 215,
+    "last=none": 192,
+    "scope_word": 174,
+    "last=list_directory": 132,
+    "last=grep_search": 117,
+    "prev=glob_pattern": 100,
+    "last=glob_pattern": 94,
+    "path_sep": 92,
+    "last=read_file": 71,
+    "last=plan_task": 58,
+    "prev=plan_task": 57,
+    "prev=list_directory": 57,
+    "last=edit_file": 54,
+    "prev=run_bash": 48,
+    "prev=grep_search": 46,
+    "last=ask_user": 44,
+    "grep_word": 41,
+    "last=run_bash": 39,
+    "prev=ask_user": 36,
+    "prev=edit_file": 32,
+    "casual": 30,
+    "list_word": 25,
+    "prev=run_tests": 24,
+    "prev=apply_patch": 22,
+    "edit_word": 21,
+    "last=apply_patch": 20,
+    "prev=lint_or_typecheck": 20
+  },
+  "grep_search_correct_features": {
+    "prev=read_file": 438,
+    "read_word": 340,
+    "prev=edit_file": 328,
+    "file_like": 278,
+    "question": 275,
+    "last=grep_search": 206,
+    "last=read_file": 178,
+    "scope_word": 177,
+    "last=edit_file": 141,
+    "last=glob_pattern": 129,
+    "path_sep": 114,
+    "prev=apply_patch": 103,
+    "last=run_tests": 100,
+    "prev=none": 82,
+    "grep_word": 78,
+    "last=run_bash": 58,
+    "last=apply_patch": 55,
+    "last=ask_user": 50,
+    "last=list_directory": 44,
+    "last=none": 35,
+    "casual": 32,
+    "last=plan_task": 32,
+    "edit_word": 26,
+    "last=web_search": 24,
+    "list_word": 24,
+    "prev=ask_user": 23,
+    "prev=plan_task": 22,
+    "prev=glob_pattern": 21,
+    "last=lint_or_typecheck": 19,
+    "plan_word": 14
+  },
+  "glob_pattern_raw_counts": {
+    "total": 1048,
+    "correct": 616,
+    "errors": 432,
+    "preds": {
+      "glob_pattern": 616,
+      "read_file": 176,
+      "list_directory": 165,
+      "grep_search": 85,
+      "run_bash": 2,
+      "edit_file": 2,
+      "run_tests": 1,
+      "web_search": 1
+    }
+  },
+  "glob_pattern_error_features": {
+    "prev=none": 200,
+    "read_word": 142,
+    "file_like": 112,
+    "last=none": 109,
+    "question": 104,
+    "last=list_directory": 75,
+    "scope_word": 74,
+    "prev=edit_file": 39,
+    "last=glob_pattern": 38,
+    "path_sep": 36,
+    "prev=list_directory": 35,
+    "last=grep_search": 32,
+    "last=run_bash": 31,
+    "last=edit_file": 28,
+    "last=read_file": 27,
+    "prev=run_bash": 26,
+    "last=plan_task": 24,
+    "prev=run_tests": 21,
+    "grep_word": 20,
+    "prev=ask_user": 20,
+    "prev=glob_pattern": 19,
+    "last=ask_user": 19,
+    "last=run_tests": 18,
+    "casual": 17,
+    "prev=apply_patch": 17,
+    "last=apply_patch": 17,
+    "prev=plan_task": 17,
+    "prev=read_file": 13,
+    "edit_word": 12,
+    "prev=write_file": 9
+  },
+  "glob_pattern_correct_features": {
+    "prev=grep_search": 505,
+    "read_word": 212,
+    "last=grep_search": 204,
+    "file_like": 162,
+    "question": 159,
+    "last=glob_pattern": 130,
+    "scope_word": 113,
+    "last=read_file": 86,
+    "last=edit_file": 72,
+    "prev=glob_pattern": 58,
+    "path_sep": 52,
+    "casual": 28,
+    "last=ask_user": 25,
+    "edit_word": 24,
+    "grep_word": 23,
+    "prev=none": 21,
+    "last=apply_patch": 18,
+    "last=list_directory": 16,
+    "last=plan_task": 16,
+    "list_word": 16,
+    "last=run_bash": 14,
+    "last=web_search": 11,
+    "plan_word": 11,
+    "last=none": 11,
+    "prev=plan_task": 9,
+    "last=run_tests": 8,
+    "glob_word": 7,
+    "prev=ask_user": 7,
+    "prev=edit_file": 6,
+    "prev=web_search": 5
+  }
+}

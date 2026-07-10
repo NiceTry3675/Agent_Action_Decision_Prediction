@@ -1,0 +1,204 @@
+{
+  "n_unique_rows": 248,
+  "generator_target_action_recovery": {
+    "count": 225,
+    "total": 248,
+    "rate": 0.907258064516129
+  },
+  "recovered_action_matches_dataset_true": {
+    "count": 225,
+    "total": 225,
+    "rate": 1.0
+  },
+  "annotation_file_counts": {
+    "primary_00.jsonl": 42,
+    "primary_01.jsonl": 42,
+    "primary_02.jsonl": 41,
+    "primary_03.jsonl": 41,
+    "primary_04.jsonl": 41,
+    "primary_05.jsonl": 41
+  },
+  "human_label_counts": {
+    "other": 12,
+    "list_directory": 14,
+    "read_file": 60,
+    "grep_search": 100,
+    "glob_pattern": 24,
+    "underdetermined": 38
+  },
+  "information_need_counts": {
+    "other": 12,
+    "orient_layout": 14,
+    "inspect_known_file": 60,
+    "locate_content_occurrence": 100,
+    "enumerate_path_candidates": 24,
+    "unclear": 38
+  },
+  "identifiability_counts": {
+    "clear": 155,
+    "plausible_multi": 55,
+    "underdetermined": 38
+  },
+  "confidence_counts": {
+    "high": 157,
+    "medium": 65,
+    "low": 26
+  },
+  "dataset_true_primary_agreement": {
+    "count": 50,
+    "total": 248,
+    "rate": 0.20161290322580644
+  },
+  "dataset_true_acceptable_agreement": {
+    "count": 77,
+    "total": 248,
+    "rate": 0.31048387096774194
+  },
+  "model_raw_primary_agreement": {
+    "count": 57,
+    "total": 248,
+    "rate": 0.22983870967741934
+  },
+  "model_raw_acceptable_agreement": {
+    "count": 93,
+    "total": 248,
+    "rate": 0.375
+  },
+  "clear_rows": {
+    "n": 155,
+    "dataset_true_primary_agreement": {
+      "count": 37,
+      "total": 155,
+      "rate": 0.23870967741935484
+    },
+    "dataset_true_acceptable_agreement": {
+      "count": 37,
+      "total": 155,
+      "rate": 0.23870967741935484
+    }
+  },
+  "by_dataset_true": {
+    "glob_pattern": {
+      "n": 60,
+      "human_label_counts": {
+        "grep_search": 28,
+        "glob_pattern": 8,
+        "underdetermined": 11,
+        "read_file": 9,
+        "list_directory": 2,
+        "other": 2
+      },
+      "identifiability_counts": {
+        "clear": 41,
+        "underdetermined": 11,
+        "plausible_multi": 8
+      },
+      "primary_agreement": {
+        "count": 8,
+        "total": 60,
+        "rate": 0.13333333333333333
+      },
+      "acceptable_agreement": {
+        "count": 15,
+        "total": 60,
+        "rate": 0.25
+      }
+    },
+    "grep_search": {
+      "n": 67,
+      "human_label_counts": {
+        "other": 4,
+        "list_directory": 7,
+        "read_file": 16,
+        "grep_search": 24,
+        "underdetermined": 10,
+        "glob_pattern": 6
+      },
+      "identifiability_counts": {
+        "clear": 40,
+        "plausible_multi": 17,
+        "underdetermined": 10
+      },
+      "primary_agreement": {
+        "count": 24,
+        "total": 67,
+        "rate": 0.3582089552238806
+      },
+      "acceptable_agreement": {
+        "count": 30,
+        "total": 67,
+        "rate": 0.44776119402985076
+      }
+    },
+    "list_directory": {
+      "n": 60,
+      "human_label_counts": {
+        "read_file": 18,
+        "grep_search": 26,
+        "glob_pattern": 7,
+        "underdetermined": 8,
+        "list_directory": 1
+      },
+      "identifiability_counts": {
+        "clear": 34,
+        "plausible_multi": 18,
+        "underdetermined": 8
+      },
+      "primary_agreement": {
+        "count": 1,
+        "total": 60,
+        "rate": 0.016666666666666666
+      },
+      "acceptable_agreement": {
+        "count": 5,
+        "total": 60,
+        "rate": 0.08333333333333333
+      }
+    },
+    "read_file": {
+      "n": 60,
+      "human_label_counts": {
+        "read_file": 17,
+        "grep_search": 22,
+        "list_directory": 4,
+        "underdetermined": 9,
+        "other": 5,
+        "glob_pattern": 3
+      },
+      "identifiability_counts": {
+        "clear": 39,
+        "plausible_multi": 12,
+        "underdetermined": 9
+      },
+      "primary_agreement": {
+        "count": 17,
+        "total": 60,
+        "rate": 0.2833333333333333
+      },
+      "acceptable_agreement": {
+        "count": 27,
+        "total": 60,
+        "rate": 0.45
+      }
+    },
+    "run_bash": {
+      "n": 1,
+      "human_label_counts": {
+        "other": 1
+      },
+      "identifiability_counts": {
+        "clear": 1
+      },
+      "primary_agreement": {
+        "count": 0,
+        "total": 1,
+        "rate": 0.0
+      },
+      "acceptable_agreement": {
+        "count": 0,
+        "total": 1,
+        "rate": 0.0
+      }
+    }
+  }
+}

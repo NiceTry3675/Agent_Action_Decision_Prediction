@@ -546,6 +546,24 @@ decide whether to refit, package, and spend a Public slot.
   `35,629/70,000` correct, and p=0.2 subsample `6,592/14,090` correct; all had
   zero wrong rows. This is infrastructure only, not yet a Public result.
 
+### 2026-07-09 - Explorer4 conditional CE w0.40 failed on the KD champion screen
+
+- Implemented loss-only Explorer4 conditional CE for true-label
+  `list_directory/read_file/grep_search/glob_pattern` rows, with optional
+  balanced 4-way class weights and no inference/script.py changes.
+- First card `kd_v1_e4w040_screen` used the current v1 KD champion recipe plus
+  `--explorer4-loss-weight 0.40 --explorer4-loss-balance` on C lane.
+- Result versus `kd_hcx_m8_screen_s42` anchor: raw macro `0.783852 -> 0.782105`
+  (`-0.001746`), 2stage `0.787801 -> 0.784597` (`-0.003204`). Raw Explorer4 sum
+  was flat (`2.421909 -> 2.421670`), while 2stage Explorer4 sum fell
+  `2.434411 -> 2.424220` (`-0.010191`). Class movement was not the desired
+  broad lift: final `grep_search -0.014845`, `list_directory -0.003856`,
+  `read_file +0.005341`, `glob_pattern +0.003169`.
+- Decision: reject Explorer4 w0.40 on the v1 KD champion. Do not try the stronger
+  `0.55` card. Any further Explorer4 attempt needs a different target, likely a
+  much lighter weight or targeted pair treatment, and should first show raw
+  improvement rather than only bias-surface reshuffling.
+
 ### 2026-07-08 - v7r-matched KD 스크린 결과: 가설 확인, 승격 기준 미달 — v7r 레인 최종 마감
 
 - **2stage 0.788443** vs v1-teacher KD 앵커 0.787801 — **+0.000642**, 게이트(+0.002=0.789801) 미달, 노이즈 플로어(0.002) 안. **refit/패키징/Public 없음.**
@@ -582,3 +600,73 @@ decide whether to refit, package, and spend a Public slot.
 - Public **0.787** / runtime **7:57/10:00** (`kd_v7r_matched.zip`). vs 챔피언 `kd_m8_refit` 0.7891 → **-0.0021**, 0.002 노이즈 플로어를 근소하게 넘는 음(-) 방향. 사전등록 기대치(스크린 델타 +0.000642는 노이즈권 → 결과가 어느 방향이든 놀랍지 않음)와 부합.
 - 런타임은 토큰비 기반 투영(~8:30-8:35)보다 여유 있게 나옴(7:57) — 투영이 보수적이었음.
 - **Decision: `kd_v7r_matched` 반려, 챔피언 유지(`kd_m8_refit` 0.7891). v7r 직렬화기 레인 전체 최종 종료.** 논-KD 티어의 확정 레버(+0.007, s777로 재현)는 여전히 유효한 사실이나 챔피언이 KD 라인이라 배포 경로가 없었고, 유일한 스택 경로였던 matched-teacher KD도 스크린(게이트 미달)과 Public(음의 델타) 양쪽에서 승격 실패를 확인. 추가 v7r 계열 작업 없음.
+
+### 2026-07-09 - current_v10 route/trail/open_rel serializer screen rejected; G4 bf16 lane requires controls
+
+- Implemented `current_v10`: `current_v1` plus explicit `route`, `trail`, and `open_rel` lines from weak-class qualitative analysis. Token audit with HCX tokenizer on 70k train rows: `current_v1` mean/p95/max `200.5/294/386`; `current_v10` `265.2/359/454`; `current_v10 >384` only 531 rows and `>416` 30 rows, so first screen used len416.
+- Lane C G4/Blackwell could not run the normal fp16 path: `kd_v10_route416_hcx05b_screen` failed at the first optimizer step with `non-finite grad norm: nan`. Retried as `--bf16` under a distinct suffix.
+- `kd_v10_route416_bf16_hcx05b_screen`: raw `0.753897`, 2stage `0.756603`, Explorer4 macro `0.577376`.
+- Because bf16 changed the training path, ran same-lane control `kd_v1_len384_bf16_g4_control`: raw `0.755598`, 2stage `0.759469`, Explorer4 macro `0.582852`. This shows most of the large gap vs the fp16 KD anchor (`0.787801`) is BF16/G4-path mismatch, not solely the serializer.
+- Same-path delta still rejects the serializer as implemented: `current_v10_len416_bf16 - current_v1_len384_bf16 = -0.002866` macro. Weak class movement was not the desired broad lift: `list_directory -0.0154`, `read_file -0.0077`, `grep_search +0.0062`, `glob_pattern -0.0050`.
+- **Decision: reject `current_v10` route/trail/open_rel schema in its current verbose form; no refit/Public.** Future serializer attempts should be shorter and pair-targeted, or must be tested on a comparable fp16-capable lane. G4/Blackwell `--bf16` results are not directly comparable to existing fp16 screens without a same-lane control.
+
+### 2026-07-09 - current_v11s compact nav/scaffold serializer rejected on same-lane A100 control
+
+- Implemented `current_v11s`: `current_v1` line skeleton plus early constant
+  `reg:`, compact `nav:` evidence (`q/p/h/c/r/a/o`), and masked/bin
+  `meta/workspace` values. Token audit with HCX tokenizer on 70k rows:
+  mean/p95/p99/max `224.9/318/338/406`; no row exceeded len416 and only five
+  rows exceeded len384.
+- A100 lane B fp16 screen completed after patching the non-finite grad guard to
+  let `GradScaler` skip/back off fp16 overflows while preserving the hard fail
+  for non-scaler paths.
+- Initial result versus `kd_hcx_m8_screen_s42` historical fp16 anchor: raw macro
+  `0.783852 -> 0.779544`, 2stage `0.787801 -> 0.782107`
+  (`-0.005694`). Explorer4 sum fell `2.434411 -> 2.410723`
+  (`-0.023688`): `list_directory -0.0113`, `read_file -0.0078`,
+  `grep_search -0.0069`, `glob_pattern +0.0023`.
+- Same-lane A100 fp16 `current_v1` control (`kd_v1_len384_a100_b_control`)
+  reproduced above the historical anchor: raw `0.785381`, 2stage `0.790594`,
+  Explorer4 sum `2.446432`. Against this matched control, `current_v11s` is
+  decisively lower: 2stage `0.790594 -> 0.782107` (`-0.008486`), Explorer4 sum
+  `2.446432 -> 2.410723` (`-0.035709`).
+- Prediction distribution shifted toward `grep_search` (`+71`) and away from
+  `list_directory` (`-89`), while unrelated priors also moved (`web_search`
+  F1 `-0.031`, `run_tests -0.0065`). This suggests the compact nav/masked-meta
+  package disrupts the broader v1 representation rather than cleanly improving
+  weak-class boundaries.
+- Same-lane weak-class deltas confirm the failure mode: `list_directory -0.0166`,
+  `read_file -0.0129`, `grep_search -0.0046`, `glob_pattern -0.0016`; predicted
+  `grep_search` rose `+169` while `list_directory/read_file/glob_pattern` all
+  fell.
+- **Decision: reject `current_v11s`; no refit/Public.** Any next serializer probe
+  should preserve raw v1 meta/workspace first and test only one additive cue
+  family. The coupled package of masked meta/workspace plus compact nav is too
+  disruptive even though the token profile is acceptable.
+
+### 2026-07-10 - 휴먼 시맨틱 리레이블: 약클래스 라벨은 생성기 정책 기록, 의미 이해 레인 개념적 종료
+
+- 07-09 약클래스 케이스북의 248개 고유 행을 블라인드 리레이블
+  (`experiments/artifacts/20260710_human_relabel/`): 1차 6청크 + 독립 감사 2인
+  (80행) + 불일치 8행 판정. 어노테이터 간 신뢰도는 높음(감사자 상호 91.3%,
+  3자 만장일치 81.3%)인데 데이터셋 라벨과의 정확 일치는 21.0%, acceptable
+  허용 시 31.0%. `list_directory`는 60행 중 정확 일치 1행.
+- 결정적 검증: 225/248행에서 train 세션의 다음 스텝을 재구성했고 225건 전부
+  `train_labels.csv`와 일치 — 조인/조립 버그 배제. 라벨은 합성 에이전트가
+  실제 취한 행동이며, 그 행동이 요청 의미와 자주 단절됨(예: "airflow 참조 다
+  찾아줘" → `list_directory(path=models)`). 약클래스 타깃은 의미적 액션 선택이
+  아니라 **합성 에이전트 정책 모방** 문제.
+- 케이스북의 정답-행 feature 통계가 같은 결론을 독립적으로 지지: glob 정답의
+  82%가 `prev=grep_search`, list 정답의 88%가 콜드스타트(`prev=none`) — 모델의
+  약클래스 정답은 프롬프트 의미가 아닌 직전-액션 전이 사전확률에서 나옴.
+  07-09 v10/v11s 직렬화기 실패(의미 강화 → grep 쏠림 → 약클래스 하락)를
+  구조적으로 설명.
+- 한계: 오류-편중 층화 표본이므로 21%는 전체 라벨 품질 추정치가 아님. 전역
+  노이즈율 주장 전에 정답-행 매칭 표본 어노테이션이 선행돼야 함(미수행).
+- **Decision: 프롬프트 의미 이해 강화 레인(의미 지향 직렬화기, 휴먼 라벨 학습
+  타깃) 개념적 종료. 휴먼 라벨(`human_relabels_final.jsonl`)은 진단 감사
+  세트로만 사용 — 최적화 타깃은 원 라벨 유지.** 후보 변경은 이 248행에서
+  데이터셋 일치/휴먼 라벨 일치를 이중 리포팅해 정책 학습인지 의미 학습인지
+  구분. 잔여 헤드룸 탐색은 생성기 상태(직전 액션·경로·결과 요약) 조건부
+  방향 — 학습 개입(조건부 CE)은 07-09에 실패했으므로, 시도한다면 기존 OOF
+  툴체인 기반 prev-action 조건부 바이어스/룰의 로짓 후처리가 우선 경로.

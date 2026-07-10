@@ -1,0 +1,96 @@
+{
+  "source": "experiments/logits/20260707_100521_gpu_transformer_session_current_v1_len384_replay-last1_kd_hcx_m8_screen_s42_val_logits.pt",
+  "macro_f1": 0.7878011826944412,
+  "pairs": {
+    "run_bash__run_tests": {
+      "wrong_counts": {
+        "run_bash->run_tests": 77,
+        "run_tests->run_bash": 80
+      },
+      "true_counts": {
+        "run_bash": 1038,
+        "run_tests": 890
+      }
+    },
+    "list_directory__read_file": {
+      "wrong_counts": {
+        "list_directory->read_file": 158,
+        "read_file->list_directory": 314
+      },
+      "true_counts": {
+        "list_directory": 882,
+        "read_file": 1867
+      }
+    },
+    "read_file__grep_search": {
+      "wrong_counts": {
+        "read_file->grep_search": 313,
+        "grep_search->read_file": 394
+      },
+      "true_counts": {
+        "read_file": 1867,
+        "grep_search": 1947
+      }
+    },
+    "list_directory__grep_search": {
+      "wrong_counts": {
+        "list_directory->grep_search": 112,
+        "grep_search->list_directory": 276
+      },
+      "true_counts": {
+        "list_directory": 882,
+        "grep_search": 1947
+      }
+    },
+    "glob_pattern__read_file": {
+      "wrong_counts": {
+        "glob_pattern->read_file": 156,
+        "read_file->glob_pattern": 91
+      },
+      "true_counts": {
+        "glob_pattern": 1048,
+        "read_file": 1867
+      }
+    },
+    "glob_pattern__list_directory": {
+      "wrong_counts": {
+        "glob_pattern->list_directory": 157,
+        "list_directory->glob_pattern": 37
+      },
+      "true_counts": {
+        "glob_pattern": 1048,
+        "list_directory": 882
+      }
+    },
+    "glob_pattern__grep_search": {
+      "wrong_counts": {
+        "glob_pattern->grep_search": 125,
+        "grep_search->glob_pattern": 67
+      },
+      "true_counts": {
+        "glob_pattern": 1048,
+        "grep_search": 1947
+      }
+    },
+    "run_bash__lint_or_typecheck": {
+      "wrong_counts": {
+        "run_bash->lint_or_typecheck": 41,
+        "lint_or_typecheck->run_bash": 76
+      },
+      "true_counts": {
+        "run_bash": 1038,
+        "lint_or_typecheck": 435
+      }
+    },
+    "run_tests__lint_or_typecheck": {
+      "wrong_counts": {
+        "run_tests->lint_or_typecheck": 37,
+        "lint_or_typecheck->run_tests": 70
+      },
+      "true_counts": {
+        "run_tests": 890,
+        "lint_or_typecheck": 435
+      }
+    }
+  }
+}

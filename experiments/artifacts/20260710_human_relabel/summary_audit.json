@@ -1,0 +1,39 @@
+{
+  "n_audited": 80,
+  "primary_vs_a": {
+    "count": 70,
+    "total": 80,
+    "rate": 0.875
+  },
+  "primary_vs_b": {
+    "count": 67,
+    "total": 80,
+    "rate": 0.8375
+  },
+  "audit_a_vs_b": {
+    "count": 73,
+    "total": 80,
+    "rate": 0.9125
+  },
+  "three_way_unanimous": {
+    "count": 65,
+    "total": 80,
+    "rate": 0.8125
+  },
+  "majority_exists": {
+    "count": 80,
+    "total": 80,
+    "rate": 1.0
+  },
+  "all_three_different": {
+    "count": 0,
+    "total": 80,
+    "rate": 0.0
+  },
+  "auditors_agree_against_primary": {
+    "count": 8,
+    "total": 80,
+    "rate": 0.1
+  },
+  "needs_adjudication": 8
+}

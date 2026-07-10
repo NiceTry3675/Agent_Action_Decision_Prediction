@@ -1,0 +1,237 @@
+{
+  "n_unique_rows": 248,
+  "sampling_note": "Error-enriched stratified weak-class casebook; these rates do not estimate label quality over the full training or validation set.",
+  "human_label_counts": {
+    "other": 12,
+    "list_directory": 13,
+    "read_file": 58,
+    "grep_search": 99,
+    "glob_pattern": 26,
+    "underdetermined": 40
+  },
+  "information_need_counts": {
+    "other": 12,
+    "orient_layout": 13,
+    "inspect_known_file": 58,
+    "locate_content_occurrence": 99,
+    "enumerate_path_candidates": 26,
+    "unclear": 40
+  },
+  "identifiability_counts": {
+    "clear": 154,
+    "plausible_multi": 54,
+    "underdetermined": 40
+  },
+  "confidence_counts": {
+    "high": 156,
+    "medium": 63,
+    "low": 29
+  },
+  "review_status_counts": {
+    "not_audited": 168,
+    "three_way_unanimous": 65,
+    "two_of_three_primary": 7,
+    "manually_adjudicated": 8
+  },
+  "dataset_true_primary_agreement": {
+    "count": 52,
+    "total": 248,
+    "rate": 0.20967741935483872
+  },
+  "dataset_true_acceptable_agreement": {
+    "count": 77,
+    "total": 248,
+    "rate": 0.31048387096774194
+  },
+  "model_raw_primary_agreement": {
+    "count": 54,
+    "total": 248,
+    "rate": 0.21774193548387097
+  },
+  "model_raw_acceptable_agreement": {
+    "count": 92,
+    "total": 248,
+    "rate": 0.3709677419354839
+  },
+  "clear_rows": {
+    "n": 154,
+    "dataset_true_primary_agreement": {
+      "count": 37,
+      "total": 154,
+      "rate": 0.24025974025974026
+    },
+    "dataset_true_acceptable_agreement": {
+      "count": 37,
+      "total": 154,
+      "rate": 0.24025974025974026
+    },
+    "model_raw_primary_agreement": {
+      "count": 43,
+      "total": 154,
+      "rate": 0.2792207792207792
+    }
+  },
+  "by_dataset_true": {
+    "glob_pattern": {
+      "n": 60,
+      "human_label_counts": {
+        "grep_search": 28,
+        "glob_pattern": 11,
+        "underdetermined": 9,
+        "read_file": 8,
+        "list_directory": 2,
+        "other": 2
+      },
+      "identifiability_counts": {
+        "clear": 41,
+        "plausible_multi": 10,
+        "underdetermined": 9
+      },
+      "primary_agreement": {
+        "count": 11,
+        "total": 60,
+        "rate": 0.18333333333333332
+      },
+      "acceptable_agreement": {
+        "count": 15,
+        "total": 60,
+        "rate": 0.25
+      }
+    },
+    "grep_search": {
+      "n": 67,
+      "human_label_counts": {
+        "other": 4,
+        "list_directory": 6,
+        "read_file": 16,
+        "underdetermined": 12,
+        "grep_search": 24,
+        "glob_pattern": 5
+      },
+      "identifiability_counts": {
+        "clear": 39,
+        "plausible_multi": 16,
+        "underdetermined": 12
+      },
+      "primary_agreement": {
+        "count": 24,
+        "total": 67,
+        "rate": 0.3582089552238806
+      },
+      "acceptable_agreement": {
+        "count": 30,
+        "total": 67,
+        "rate": 0.44776119402985076
+      }
+    },
+    "list_directory": {
+      "n": 60,
+      "human_label_counts": {
+        "read_file": 18,
+        "grep_search": 25,
+        "glob_pattern": 7,
+        "underdetermined": 9,
+        "list_directory": 1
+      },
+      "identifiability_counts": {
+        "clear": 34,
+        "plausible_multi": 17,
+        "underdetermined": 9
+      },
+      "primary_agreement": {
+        "count": 1,
+        "total": 60,
+        "rate": 0.016666666666666666
+      },
+      "acceptable_agreement": {
+        "count": 5,
+        "total": 60,
+        "rate": 0.08333333333333333
+      }
+    },
+    "read_file": {
+      "n": 60,
+      "human_label_counts": {
+        "read_file": 16,
+        "grep_search": 22,
+        "list_directory": 4,
+        "underdetermined": 10,
+        "glob_pattern": 3,
+        "other": 5
+      },
+      "identifiability_counts": {
+        "clear": 39,
+        "plausible_multi": 11,
+        "underdetermined": 10
+      },
+      "primary_agreement": {
+        "count": 16,
+        "total": 60,
+        "rate": 0.26666666666666666
+      },
+      "acceptable_agreement": {
+        "count": 27,
+        "total": 60,
+        "rate": 0.45
+      }
+    },
+    "run_bash": {
+      "n": 1,
+      "human_label_counts": {
+        "other": 1
+      },
+      "identifiability_counts": {
+        "clear": 1
+      },
+      "primary_agreement": {
+        "count": 0,
+        "total": 1,
+        "rate": 0.0
+      },
+      "acceptable_agreement": {
+        "count": 0,
+        "total": 1,
+        "rate": 0.0
+      }
+    }
+  },
+  "audit_reliability": {
+    "n_audited": 80,
+    "primary_vs_a": {
+      "count": 70,
+      "total": 80,
+      "rate": 0.875
+    },
+    "primary_vs_b": {
+      "count": 67,
+      "total": 80,
+      "rate": 0.8375
+    },
+    "audit_a_vs_b": {
+      "count": 73,
+      "total": 80,
+      "rate": 0.9125
+    },
+    "three_way_unanimous": {
+      "count": 65,
+      "total": 80,
+      "rate": 0.8125
+    },
+    "majority_exists": {
+      "count": 80,
+      "total": 80,
+      "rate": 1.0
+    },
+    "all_three_different": {
+      "count": 0,
+      "total": 80,
+      "rate": 0.0
+    },
+    "auditors_agree_against_primary": {
+      "count": 8,
+      "total": 80,
+      "rate": 0.1
+    },
+    "needs_adjudication": 8
+  }
+}

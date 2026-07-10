@@ -1,0 +1,162 @@
+{
+  "created": "2026-07-07",
+  "source_artifact": "experiments/artifacts/kd_m8blend_oof_len416_ep3_rules_rule_boosts.json",
+  "fold_logits": [
+    "experiments/logits/20260706_172553_gpu_transformer_session_oof_current_v1_len416_fold0-of3_replay-last1_kd_oof_len416_ep3_fold0_val_logits.pt",
+    "experiments/logits/20260706_175902_gpu_transformer_session_oof_current_v1_len416_fold1-of3_replay-last1_kd_oof_len416_ep3_fold1_val_logits.pt",
+    "experiments/logits/20260706_183147_gpu_transformer_session_oof_current_v1_len416_fold2-of3_replay-last1_kd_oof_len416_ep3_fold2_val_logits.pt"
+  ],
+  "row_count": 70000,
+  "classes": [
+    "read_file",
+    "grep_search",
+    "list_directory",
+    "glob_pattern",
+    "edit_file",
+    "write_file",
+    "apply_patch",
+    "run_bash",
+    "run_tests",
+    "lint_or_typecheck",
+    "ask_user",
+    "plan_task",
+    "web_search",
+    "respond_only"
+  ],
+  "base_macro_f1_before_rules_recomputed": 0.7835398981015996,
+  "rules_macro_f1_recomputed": 0.7869837479044335,
+  "artifact_rules_macro_f1": 0.7869837479044335,
+  "pairs": {
+    "run_bash__run_tests": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__run_tests.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__run_tests_preview.md",
+      "wrong_counts": {
+        "run_bash->run_tests": 450,
+        "run_tests->run_bash": 402
+      },
+      "hard_correct_counts": {
+        "run_bash": 600,
+        "run_tests": 600
+      },
+      "total_records": 2052,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__run_tests_token_lift.tsv"
+    },
+    "list_directory__read_file": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__read_file.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__read_file_preview.md",
+      "wrong_counts": {
+        "list_directory->read_file": 860,
+        "read_file->list_directory": 1579
+      },
+      "hard_correct_counts": {
+        "list_directory": 600,
+        "read_file": 600
+      },
+      "total_records": 3639,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__read_file_token_lift.tsv"
+    },
+    "read_file__grep_search": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/read_file__grep_search.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/read_file__grep_search_preview.md",
+      "wrong_counts": {
+        "read_file->grep_search": 1258,
+        "grep_search->read_file": 2470
+      },
+      "hard_correct_counts": {
+        "read_file": 600,
+        "grep_search": 600
+      },
+      "total_records": 4928,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/read_file__grep_search_token_lift.tsv"
+    },
+    "list_directory__grep_search": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__grep_search.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__grep_search_preview.md",
+      "wrong_counts": {
+        "list_directory->grep_search": 476,
+        "grep_search->list_directory": 1295
+      },
+      "hard_correct_counts": {
+        "list_directory": 600,
+        "grep_search": 600
+      },
+      "total_records": 2971,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/list_directory__grep_search_token_lift.tsv"
+    },
+    "glob_pattern__read_file": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__read_file.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__read_file_preview.md",
+      "wrong_counts": {
+        "glob_pattern->read_file": 767,
+        "read_file->glob_pattern": 434
+      },
+      "hard_correct_counts": {
+        "glob_pattern": 600,
+        "read_file": 600
+      },
+      "total_records": 2401,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__read_file_token_lift.tsv"
+    },
+    "glob_pattern__list_directory": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__list_directory.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__list_directory_preview.md",
+      "wrong_counts": {
+        "glob_pattern->list_directory": 746,
+        "list_directory->glob_pattern": 211
+      },
+      "hard_correct_counts": {
+        "glob_pattern": 600,
+        "list_directory": 600
+      },
+      "total_records": 2157,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__list_directory_token_lift.tsv"
+    },
+    "glob_pattern__grep_search": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__grep_search.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__grep_search_preview.md",
+      "wrong_counts": {
+        "glob_pattern->grep_search": 497,
+        "grep_search->glob_pattern": 449
+      },
+      "hard_correct_counts": {
+        "glob_pattern": 600,
+        "grep_search": 600
+      },
+      "total_records": 2146,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/glob_pattern__grep_search_token_lift.tsv"
+    },
+    "run_bash__lint_or_typecheck": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__lint_or_typecheck.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__lint_or_typecheck_preview.md",
+      "wrong_counts": {
+        "run_bash->lint_or_typecheck": 353,
+        "lint_or_typecheck->run_bash": 278
+      },
+      "hard_correct_counts": {
+        "run_bash": 600,
+        "lint_or_typecheck": 600
+      },
+      "total_records": 1831,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/run_bash__lint_or_typecheck_token_lift.tsv"
+    },
+    "run_tests__lint_or_typecheck": {
+      "jsonl": "experiments/artifacts/oof_error_text_signals_20260707/run_tests__lint_or_typecheck.jsonl",
+      "preview_md": "experiments/artifacts/oof_error_text_signals_20260707/run_tests__lint_or_typecheck_preview.md",
+      "wrong_counts": {
+        "run_tests->lint_or_typecheck": 283,
+        "lint_or_typecheck->run_tests": 319
+      },
+      "hard_correct_counts": {
+        "run_tests": 600,
+        "lint_or_typecheck": 600
+      },
+      "total_records": 1802,
+      "token_lift_tsv": "experiments/artifacts/oof_error_text_signals_20260707/run_tests__lint_or_typecheck_token_lift.tsv"
+    }
+  },
+  "notes": [
+    "Predictions use logits + artifact class_bias + the 12 deterministic rule boosts from kd_m8blend_oof_len416_ep3_rules_rule_boosts.json.",
+    "Each pair JSONL contains all bidirectional wrong rows plus up to 600 lowest pair-margin correct rows per class as contrast examples.",
+    "This is a 70k session-aware OOF surface, not the current HCX KD refit model. It is used for broad text-signal mining because current HCX KD has only fixed-session screen logits in this repo."
+  ]
+}

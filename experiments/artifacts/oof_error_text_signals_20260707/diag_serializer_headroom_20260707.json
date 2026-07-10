@@ -1,0 +1,128 @@
+{
+  "date": "2026-07-07",
+  "question": "Does current_v1 leave feature-side headroom (information or representation), and where?",
+  "diag1_information_inventory": {
+    "method": "exact-normalized duplicate decomposition + v1 truncation-cap coverage on train 70k",
+    "prompt_only_exact_dups": {
+      "rows_in_multi_groups": 10510,
+      "pct": 15.01,
+      "label_conflict_share_pct": 55.19,
+      "explore_cluster_conflict_pct": 83.21
+    },
+    "full_v1_text_exact_dups": 0,
+    "note_v1_dups_zero_because": "continuous session_meta fields (budget/elapsed/loc) are near-unique per row",
+    "v1_dropped_info_coverage": {
+      "rows_with_earlier_user_turns_dropped": "52203 (74.6%) — tested by current_v2 screen, null",
+      "rows_with_gt8_actions": 0,
+      "rows_with_gt8_results": 0,
+      "rows_with_result_summary_gt120c": 11,
+      "rows_with_gt4_arg_keys": 0,
+      "rows_with_gt6_open_files": 0
+    },
+    "verdict": "v1 is information-complete except earlier user turns (already null via v2). The add-information v7 direction is empty by inventory."
+  },
+  "diag1b_prompt_conflict_group_split": {
+    "population": "2221 prompt-identical label-conflicted groups, 5800 rows",
+    "majority_error_prompt_only_pct": 45.4,
+    "after_split_last_action_pct": 7.8,
+    "after_split_last_action_plus_result_bucket_pct": 5.1,
+    "after_split_full_v1_visible_state_pct": 0.4,
+    "after_adding_v1_dropped_info_pct": 0.4,
+    "caveat": "small groups (mean 2.6 rows) inflate fine-key splits via singleton fragmentation; coarse keys (last_action, result bucket) are the meaningful rows. Zero delta from dropped info confirms diag1 verdict.",
+    "verdict": "disambiguating signal exists and is v1-VISIBLE; the question is model exploitation, not information."
+  },
+  "diag2_pair_boundary_incremental_auc": {
+    "method": "per-pair LogisticRegression, session-level GroupKFold(5); population = extraction jsonl (bidirectional wrong + hard-correct contrast); M = pre-rule pair logit_diff + base margin; S = ~30 state/text features (last/prev action, result bucket, path-type, intent flags EN+KO, overlaps)",
+    "results_group_cv": [
+      {"pair": "read_file__grep_search", "n": 4928, "auc_m": 0.857, "auc_ms": 0.851, "dauc": -0.0054, "dacc": 0.005},
+      {"pair": "list_directory__read_file", "n": 3639, "auc_m": 0.816, "auc_ms": 0.836, "dauc": 0.0202, "dacc": 0.046},
+      {"pair": "list_directory__grep_search", "n": 2971, "auc_m": 0.719, "auc_ms": 0.727, "dauc": 0.0075, "dacc": 0.042},
+      {"pair": "glob_pattern__read_file", "n": 2401, "auc_m": 0.580, "auc_ms": 0.680, "dauc": 0.0995, "dacc": 0.139},
+      {"pair": "glob_pattern__list_directory", "n": 2157, "auc_m": 0.699, "auc_ms": 0.771, "dauc": 0.0717, "dacc": 0.030},
+      {"pair": "glob_pattern__grep_search", "n": 2146, "auc_m": 0.511, "auc_ms": 0.630, "dauc": 0.1187, "dacc": 0.101},
+      {"pair": "run_bash__run_tests", "n": 2052, "auc_m": 0.544, "auc_ms": 0.636, "dauc": 0.0920, "dacc": 0.167},
+      {"pair": "run_bash__lint_or_typecheck", "n": 1831, "auc_m": 0.640, "auc_ms": 0.664, "dauc": 0.0236, "dacc": -0.021},
+      {"pair": "run_tests__lint_or_typecheck", "n": 1802, "auc_m": 0.697, "auc_ms": 0.701, "dauc": 0.0040, "dacc": -0.046}
+    ],
+    "weighted_mean_dauc": 0.040,
+    "weighted_mean_dacc": 0.048,
+    "dominant_features": "action-transition context (last_action, prev_action) + result buckets, gated by the model logit; lexical prompt flags are secondary. State-only AUC is weak (0.59-0.67) — explains why single lexical masks capped at +0.0001.",
+    "dead_pairs": ["read_file__grep_search", "run_tests__lint_or_typecheck", "list_directory__grep_search"],
+    "live_pairs": ["glob_pattern__grep_search", "glob_pattern__read_file", "run_bash__run_tests", "glob_pattern__list_directory", "list_directory__read_file (modest)"],
+    "nominal_net_corrected_rows_on_boundary_population": "~1100/70000 (sum of dacc*n over live pairs)",
+    "deflated_estimate_macro_f1": "SUPERSEDED by planA_deployment_eval below: the boundary population is error-enriched (41-76% wrong) vs the real top2-gate population (14-26% wrong); at deployment scale the signal nets to ~+0.0003"
+  },
+  "planA_deployment_eval": {
+    "method": "gated per-pair LR referee (logit_diff + margin + state features), gate = top1/top2 == pair on raw logits, flip at tuned tau; trained on kd_m8blend 70k OOF, evaluated three ways (script refA_pair_referee.py)",
+    "oof_groupkfold_cv_stacked_delta": "+0.00019",
+    "oof_trained_to_screen_transfer_stacked_delta": "+0.00026 (0.783852 -> 0.784115 on the 14k lane-C kd_hcx_m8 matched screen)",
+    "screen_in_surface_cv_stacked_delta": "-0.00247 (thin-data overfit)",
+    "help_harm_on_screen": "flips 23 total across 5 pairs: help 7, harm 3 — too few safe flips at the real error density",
+    "why_diag2_looked_bigger": "diag2's jsonl population was wrong+hard-correct (error-enriched, 41-76% wrong); the deployment gate population is 14-26% wrong, where the model logit is already sufficient. The report's '+0.0001 best masks' was the honest number for this whole post-hoc family.",
+    "verdict": "post-hoc referee/rule lane CLOSED at deployment scale; do not spend a Public slot",
+    "referee_weights": "pair_referee_oof_trained.json (kept for reference)"
+  },
+  "strategic_verdict": {
+    "serializer_add_information": "closed (diag1: nothing left to add except user turns already null via v2)",
+    "post_hoc_pair_referee": "CLOSED (planA_deployment_eval: +0.0003 at deployment scale, 1/10 of the noise floor)",
+    "serializer_representation_aid_v7": "last remaining feature cell, REDESIGNED 2026-07-08 under the attention findings: current_v7 = v1 (byte-preserved) + early state line (line 2: last/prev action WITH result buckets, ptype WITH literal target anchor e.g. ptype=exact:src/main.py, rerun) + compact tail echo as the final line (state2: last:bucket + ptype:anchor + rerun). Placement is measurement-driven: early copy gets causal exposure + truncation safety; the echo sits in the classification token's local window (last-40 tokens carry 0.263 of its non-sink mass while mid-sequence lines get ~0.01-0.03 direct mass). All 70k rows validated (v1 lines byte-identical, state/echo invariants); ptype dist none 52%/symbol 15%/basename 11%/dir 9%/pronoun 7%/exact 6%/glob 0.5%; HCX tokens mean +40.6 (241.3), p99 358, max 402 -> 0.075% of rows exceed len384 and lose only part of the redundant echo (early copy survives; acceptable). Inference cost ~+20% tokens, projected ~7:50/10:00 on the HCX line. Expectation still DOWNGRADED by planA (+0.0003 post-hoc ceiling for linear use); the bet is in-training nonlinear use + attention-contrast mechanism. Run only on an idle lane; gate: non-KD seed42 fixed screen vs anchor 0.769796, then KD screen vs 0.787801 before any refit/slot.",
+    "note_markov": "the 07-04 global Markov-prior rejection does not cover this: transitions are useless standalone (macro-F1 0.137) but carry real conditional signal inside pair boundaries combined with logits — yet planA shows the deployed model already exploits nearly all of it at distribution scale",
+    "v7_heuristic_coverage_audit_20260708": {
+      "rerun": "extended regex: +478 rows via 한번만 더/한 번만 더, +21 via 'one more time'; REJECTED retry(230)/재시도(150) — measured to overwhelmingly mean 'implement retry logic', not 'run again' (false positives). Final rerun=y 4328/70000; label signal real: run_tests 15.8%/run_bash 14.7%/lint 14.0% vs read_file 4.3%/list 4.4%",
+      "ptype_discriminative_power": "WEAK across the exploration cluster: P(ptype|label) nearly identical for glob/grep/list/read (~44% none, ~15% basename, ~13% symbol, ~12% dir each). ptype's justification is the redundant-anchor/attention-contrast role plus run-cluster separation (run_bash/run_tests 80% none), NOT exploration-class discrimination. Korean glob phrasings (전부/흩어져) are not covered by the glob branch (352 rows fire overall) — extension deliberately skipped: no discriminative evidence to support it",
+      "bucket_semantics_mixing": "bucket meaning is action-conditioned (read_file 'many'=line count 71%, run_bash exit0 79%) — harmless because the emitted token is always the action:bucket JOINT; low-variance cases act as benign filler under the attention hypothesis. Informative minority confirmed where the report predicted: grep zero 7%/one 3%/few 14%"
+    }
+  },
+  "attention_sink_probe_20260707": {
+    "hypothesis": "removing low-information tokens (v5/v6 compression) flattens attention over the remaining high-information tokens; filler tokens matter structurally even when their content is useless (reconciles xmeta-null with v5<v1)",
+    "method": "deployed kd_m8_refit fp16 weights, CPU fp32 eager, 64 random train rows, layer/head-averaged attention; token categories via offset mapping (script attn_sink_probe.py)",
+    "v1_mass_distribution": {
+      "first_token_sink": "0.609 of all attention mass (0.544 from the final classification token's view) — dominant sink is position 0, classic Llama sink",
+      "budget_elapsed_loc_numerals": "0.018 mass on 5.5% of tokens — meta numerals are NOT a major sink individually",
+      "by_line": {"current(incl. sink)": 0.717, "workspace": 0.060, "args": 0.050, "results": 0.048, "last_user": 0.046, "newline": 0.041, "meta": 0.033, "actions": 0.026}
+    },
+    "v1_vs_v5_flatness": "paired normalized attention entropy v5-v1 = +0.0243, flatter in 63/64 rows (v5 166 tok vs v1 200 tok; normalization accounts for length). CAVEAT: v1-trained model on v5 text is OOD — direction supports the flattening story but causality for the v5/v6 quality loss is not established.",
+    "design_principles_adopted": [
+      "never remove tokens from a proven serializer (compression lane failures now have a mechanistic candidate, not just empirics)",
+      "additions must be short, schema-consistent, placed early (causal exposure: every later token can attend)",
+      "give load-bearing prompt signals redundant anchors rather than denoising context",
+      "current_v7 already conforms (v1 untouched + early state line); v6e's failure sat on the compressed v5 base and does not condemn the v7 cell"
+    ]
+  },
+  "filler_substitution_probe_20260708": {
+    "question": "if low-info tokens' role is dispersion, can uniform '$' filler substitute for them (replace meta values) or restore compressed v5 (pad with $-wall)?",
+    "method": "deployed kd_m8_refit fp16, CPU, 48 rows x 3 conditions, token-count-matched $-walls (script filler_probe.py)",
+    "results": {
+      "C1_v1_natural": {"entropy": 0.4898, "sink": 0.603, "meta_region_mass_all": 0.033, "meta_region_mass_last": 0.010},
+      "C2_v1_dollar_meta": {"entropy": 0.4906, "sink": 0.602, "region_mass_all": 0.038, "region_mass_last": 0.011, "paired_entropy_delta_vs_C1": "+0.0008 (32/48 flatter — a wash)"},
+      "C3_v5_plus_dollar_pad_at_end": {"entropy": 0.4980, "region_mass_all": 0.039, "region_mass_last": 0.250, "paired_entropy_delta_vs_C1": "+0.0082 (45/48)", "v5_bare_reference": 0.5125}
+    },
+    "findings": [
+      "mechanical substitutability CONFIRMED mid-sequence: $-wall absorbs the same attention mass as natural meta junk (0.038 vs 0.033) and preserves entropy/sink almost exactly — the structural-role hypothesis holds at the mechanical level",
+      "v5+$pad recovers ~64% of the entropy gap toward v1 — partial mechanical restoration of what compression destroyed",
+      "PLACEMENT IS CRITICAL: the end-of-sequence pad hijacks 0.250 of the classification token's attention (vs 0.010-0.011 for mid-sequence regions) — junk at the tail poisons the classifier's local window; this is the same measurement that justifies v7's signal echo being the final line",
+      "deployment verdict: option A (replace meta with $) is strictly dominated — best case ties v1 while discarding weak-but-real content (turn: v6 exact-turn evidence); option B (v5+filler) restores token count so the speed motivation of compression evaporates, and is only relevant if timing ever binds again (currently 6:32/10:00). Both are science screens that cannot beat v1 — ranked below the v7 screen which bets on signal addition instead"
+    ],
+    "correction_20260708": "the 'ties-at-best' ceiling was later retracted for the ADDITION form: a constant wall has two theoretical win channels the substitution analysis missed — (1) constant-K/V registers convert row-varying filler noise into a learnable constant bias (ViT-register precedent, where dedicated junk BEAT natural junk), (2) end-position registers could act as trained aggregation buffers (the classifier reads the tail, 0.250 measured). This spawned current_v7r (v1 preserved + early register line) as a separate screen candidate; the substitution/padding forms remain dominated."
+  },
+  "v7r_register_design_20260708": {
+    "definition": "current_v7r = current_v7 + constant line 'reg: ' + '$'*64 inserted after the state line (16 identical '$$$$' tokens on the HCX tokenizer)",
+    "wall_token_audit": {
+      "eliminated_run_collapse": "#, ~, %, *, -, _, . — a 16-char run collapses to ONE token (single slot, no register capacity)",
+      "eliminated_collision": "| (v1 field separator), @ (1.17% of serialized rows)",
+      "finalists_probe_32rows_v7r_config": {
+        "$": {"reg_mass_all": 0.034, "reg_mass_last": 0.013, "corpus_collision_pct": 0.02},
+        "^": {"reg_mass_all": 0.028, "corpus_collision_pct": 0.02},
+        "&": {"reg_mass_all": 0.025, "corpus_collision_pct": 0.06},
+        "░": {"reg_mass_all": 0.029, "corpus_collision_pct": 0.0, "caveat": "near-init embedding (byte-level piece), less portable across tokenizers"}
+      },
+      "winner": "$ — highest absorption (matches natural meta junk's 0.033), negligible collision, well-trained neutral embedding, portable BPE merging; no disruption to sink/entropy/classifier window"
+    },
+    "token_stats_8k_sample": {"mean": 261.3, "p99": 378, "max": 422, "over_len384_pct": 0.625, "note": "overflow clips only the redundant echo line"},
+    "open_question": "whether 3-epoch fine-tuning learns to exploit constant registers (ViT registers were trained from scratch) — exactly what the v7r-vs-v7 screen measures",
+    "plan_doc": "handoff_20260708_v7_serializer_screens.md"
+  },
+  "scripts": [
+    "diag1_dup_decomposition.py, diag1b_dropped_inventory_and_group_split.py, diag2_pair_incremental_auc.py (+ GroupKFold variant) — run from session scratchpad 2026-07-07; feature definitions preserved in this JSON's method fields"
+  ]
+}

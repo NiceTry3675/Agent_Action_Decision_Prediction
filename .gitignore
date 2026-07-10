@@ -1,7 +1,13 @@
 .venv/
 __pycache__/
 *.pyc
-experiments/artifacts/
+experiments/artifacts/*
+!experiments/artifacts/20260709_weak_qual_casebook/
+!experiments/artifacts/20260709_weak_qual_casebook/**
+!experiments/artifacts/20260710_human_relabel/
+!experiments/artifacts/20260710_human_relabel/**
+!experiments/artifacts/oof_error_text_signals_20260707/
+!experiments/artifacts/oof_error_text_signals_20260707/**
 experiments/incoming/
 output/
 data/
