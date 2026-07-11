@@ -8,8 +8,12 @@ experiments/artifacts/*
 !experiments/artifacts/20260710_human_relabel/**
 !experiments/artifacts/20260711_sonnet_relabel/
 !experiments/artifacts/20260711_sonnet_relabel/**
-#!experiments/artifacts/20260711_gpt56_relabel_rerun/
-#!experiments/artifacts/20260711_gpt56_relabel_rerun/**
+!experiments/artifacts/20260711_gpt56_relabel_rerun/
+experiments/artifacts/20260711_gpt56_relabel_rerun/*
+!experiments/artifacts/20260711_gpt56_relabel_rerun/README.md
+!experiments/artifacts/20260711_gpt56_relabel_rerun/REPORT.md
+!experiments/artifacts/20260711_gpt56_relabel_rerun/DESIGN.md
+!experiments/artifacts/20260711_gpt56_relabel_rerun/DEVIATIONS.md
 !experiments/artifacts/oof_error_text_signals_20260707/
 !experiments/artifacts/oof_error_text_signals_20260707/**
 

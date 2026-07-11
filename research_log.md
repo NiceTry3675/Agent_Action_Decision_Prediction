@@ -1151,3 +1151,28 @@ decide whether to refit, package, and spend a Public slot.
   42.5%·다봉/미결정 39.2% → H2(정책 확률성) 우세, H1(오라벨) 기각.
 - **Decision: "약클래스 라벨 = 생성기 정책 기록, 의미 계열 종료" 도크트린
   유지** — 이제 교차-가문 재현과 대조군을 갖춘 근거로 격상.
+
+### 2026-07-11 - GPT-5.6 fresh-population 리레이블: Sonnet 비중복 결론은 `sess_sim` 한정과 프롬프트 강건성
+
+- Sonnet이 이미 확인한 교차-가문 재현과 c=0 H2 판정은 반복하지 않았다. 기존
+  GPT-5.6 주석 Weak4 247행을 제외한 28,535행에서 클래스당 60행을 무작위
+  추출하고 전 행을 3회 판정한 새 모집단 감사에서 consensus acceptable macro
+  `29.8%` (95% `24.7-35.1`), 자연빈도 가중 `36.7%` (`30.6-43.1`). 제외
+  247행을 전부 acceptable로 두어도 전체-frame 가중 상한은 `43.6%`라 강한
+  의미 불일치 판정은 표본 선택에 의존하지 않았다.
+- **새 범위 제한:** 설계가중 acceptable은 `sess_sim=32.9%` (`26.7-39.2`) 대
+  `sess_au=88.2%` (`68.6-100`, n=14). AU는 소표본 탐색 신호지만, Sonnet
+  원자료의 학생-정답 대조군도 sim `41.3%` 대 AU `90.9%`로 같은 방향이며 c=0
+  H2 표본 120행은 전부 sim이었다. 따라서 기존 "전역 정책 기록" 문구를
+  **dominant simulated-session regime, 특히 list/glob의 현상**으로 좁힌다.
+- 즉시 의미 계약 대신 합리적 workflow 선행 행동을 허용해도 paired macro
+  acceptable 변화 `-1.18%p` (95% `-6.25~+3.95`), consensus top 일치
+  `96.2%` (`κ=0.947`) — 테스트한 두 지침 범위에서는 프롬프트 강제성이 원인이
+  아니었다.
+- 방법론 주의: Sonnet R2의 사전 endpoint는 exact였고 실제 `32.5%`는 `≤45%`
+  기각 band에 해당한다. 보고서의 acceptable `45.8%` 경계 및 클래스별 해석은
+  사후 분석으로 취급하며, R2를 형식적 사전등록 통과로 세지 않는다.
+- **Decision: 원 라벨 유지·리레이블 학습 금지와 sim/list-glob 정책 모방 방향은
+  유지하되, AU까지 의미 계열을 전역 폐쇄하지 않는다.** AU는 별도 충분표본 전
+  미결정이며, 본 진단만으로 Public/학습 레인을 변경하지 않는다. 상세:
+  `experiments/artifacts/20260711_gpt56_relabel_rerun/REPORT.md`.
