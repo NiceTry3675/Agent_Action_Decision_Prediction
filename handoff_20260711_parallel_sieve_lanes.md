@@ -147,8 +147,9 @@ AADP_EXCHANGE_DIR=AADP_exchange_b python colab/cloud_sync.py launch train_transf
   동시 적용) 한 장 — 두 축이 직교라 가산 기대. 이때 KD weights의
   reliability도 v2 payload를 그대로 공유한다(코드상 같은 artifact에서 읽음).
 - **한쪽만 승리:** 승자만 새 챔피언·베이스로. 패자 축은 grid 연명 금지.
-- **둘 다 실패:** 시브 축 포화로 판정. 잔여 후보는 챔피언 second seed(레시피
-  확인+인스턴스 추첨 겸용), 교사축 전파(팀원 레인).
+- **둘 다 실패:** 시브 축 포화로 판정. 잔여 후보는 교사축 전파(팀원 레인).
+  챔피언 second seed / best-of-N 시드 수확은 **사용자 지시(07-11)로 마지막
+  날(07-15, 마감 10:00 KST) 전까지 실행 금지** — 최후 카드로만.
 - kNN 애드온(하단 §5)은 v2 결과가 양성일 때만 검토.
 
 ## 4. 닫힌 레인 — 재개 금지

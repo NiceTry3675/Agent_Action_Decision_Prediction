@@ -1061,3 +1061,55 @@ decide whether to refit, package, and spend a Public slot.
   full-refit-only Public 단발 판정. 정확한 launch 커맨드·프로토콜·이후 카드
   분기는 `handoff_20260711_parallel_sieve_lanes.md`. **실행은 별도 에이전트
   인계.**
+
+### 2026-07-11 - 시브 병렬 2레인 리핏·패키징 완료 — Public 제출 대기
+
+- Colab CLI 마이그레이션 경로를 실전 canary로 먼저 검증했다. A100 lane A/B의
+  fresh CLI heartbeat, detached launch, epoch checkpoint, auto-collect,
+  `release_safe`, 결과 pull, 검증 반납까지 모두 통과했고 두 backend assignment는
+  종료 후 0개임을 확인했다. 실행 코드/수집 manifest commit은 `44d0b5c`.
+- Lane A `kd_sieve_ca_kdsv_refit_s42`: 챔피언에
+  `--consensus-kd-weights 0,0.25,0.75,1`만 추가. 런 로그에서 distill
+  `70000/80000`, Weak4 `28,782`, hard/KD histogram
+  `12,776/3,806/4,811/48,607`, KD weights 적용을 확인했다. 전량 리핏
+  `3654.990s`, 최종 fp16 `1090.6MB`; int8 `170/219` tensors,
+  argmax `512/512`.
+- Lane B `kd_sieve_ca_v2rows_refit_s42`: 챔피언의 consensus payload만 고정 SHA
+  `8fcd4bb9...5719` v2 row-reassignment payload로 교체했고 KD branch sieve는
+  미설정임을 로그로 확인했다. histogram은 챔피언과 비트 동일. 전량 리핏
+  `3656.941s`, 최종 fp16 `1090.6MB`; int8 `170/219` tensors,
+  argmax `511/512`.
+- 제출 팩 `submissions/kdsv_s42.zip`과 `submissions/v2rows_s42.zip`은 각각
+  512MB이며 archive root가 `script.py`, `requirements.txt`, `model/`뿐이고
+  fp16 없이 int8 codec만 포함한다. 둘 다 클린 5행 GPU/CPU offline smoke에서
+  열, ID 순서, 14-label 계약을 통과했다.
+- **Decision: 두 팩 모두 로컬 점수를 주장하지 않는 Public-only 후보.** 비교
+  기준은 `kd_sieve_ca_s42` Public `0.7938`; 사전 기대값이 더 높은 KD-branch
+  lane A를 먼저 제출하고 v2 row lane B를 별도 단일변수 슬롯으로 제출한다.
+  둘 다 승리해도 두 축의 단순 가산을 전제하지 말고, v2 payload가 hard/KD gate
+  모두의 행 배정을 바꾸는 별도 interaction 스택으로 판정한다. Public 결과 전
+  baseline 문서는 변경하지 않는다.
+
+### 2026-07-11 - 시브 병렬 2레인 Public 모두 음성 — 축 종료, 챔피언 유지
+
+- Lane A `kdsv_s42.zip` Public `0.7896`, runtime `6:04`. 챔피언 `0.7938`
+  대비 `-0.0042`; KD-backbone branch sieve는 승격 실패. Lane B
+  `v2rows_s42.zip` Public `0.7915`, runtime `6:03`, 챔피언 대비 `-0.0023`;
+  histogram-preserving soft/source-aware 행 재배정도 승격 실패.
+- 두 결과 모두 사전 등록한 `0.002` promotion floor를 음의 방향으로 넘었다.
+  다만 HCX 인스턴스 분산이 더 넓다는 기존 교훈상 이 두 단발 결과를 메커니즘의
+  보편적 반증으로 과해석하지 않고, Public 최적화 의사결정에 한해 반려한다.
+- **Decision: 사전 등록 분기대로 시브 세부축을 운영상 포화로 닫는다.** KD
+  branch weight grid, v2 공식/가중 grid, v2 후속 hidden-kNN, A×B interaction
+  stack을 모두 열지 않는다. 팀·로컬 챔피언은 `kd_sieve_ca_s42.zip`
+  Public `0.7938` 그대로이며 `final_summary.md`는 변경하지 않는다. 다음 열린
+  경로는 챔피언 second-seed best-of-N 또는 팀 교사축 전파뿐이다.
+
+### 2026-07-11 - 시드 수확(best-of-N) 마지막 날 전까지 금지 — 사용자 지시
+
+- **Decision (사용자 지시): 챔피언 레시피 second-seed / best-of-N 시드 수확은
+  마지막 날(2026-07-15, 마감 10:00 KST) 전까지 실행하지 않는다.** 시브 축
+  포화 후 열린 경로 중 시드 추첨은 최후 카드로 봉인; 그 전까지의 A100/슬롯은
+  교사축 전파(팀원 레인) 등 레시피성 경로에만 쓴다. best-of-N의 정당성
+  자체(Public=100%, HCX 시드 분산 ~0.02)는 유지 — 금지는 EV 판단이 아니라
+  실행 시점 지정.

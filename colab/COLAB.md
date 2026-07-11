@@ -46,42 +46,54 @@ Normal ownership is:
 If Drive is already mounted in an existing session, the agent may use recovery
 commands with `--skip-mount` instead of invoking the interactive mount again.
 
+Run repository wrappers with `.venv/bin/python` locally. This workspace does
+not assume a separate `python` executable is on `PATH`; VM-side commands still
+use the bootstrap environment's `python`.
+
 ## Fast path
 
 One-time for this repository:
 
 ```bash
 uv tool install --force 'google-colab-cli==0.6.0'
-python colab/aadp_colab.py doctor a
+.venv/bin/python colab/aadp_colab.py doctor a
 ```
 
 Prepare the lane:
 
 ```bash
 # Agent; add --data only on the first use of this exchange folder.
-python colab/aadp_colab.py push a --data
+.venv/bin/python colab/aadp_colab.py push a --data
 
 # Human terminal; complete Drive approval when prompted.
-python colab/aadp_colab.py up a --gpu A100
+.venv/bin/python colab/aadp_colab.py up a --gpu A100
 ```
 
 Operate the ready lane:
 
 ```bash
-python colab/aadp_colab.py launch a train_transformer.py -- \
+.venv/bin/python colab/aadp_colab.py launch a train_transformer.py -- \
   --device cuda \
   --quick-val-size 600 \
   --epochs 1 \
   --experiment-suffix cli_canary
 
-python colab/aadp_colab.py status a
-python colab/aadp_colab.py pull a
-python colab/aadp_colab.py down a
+.venv/bin/python colab/aadp_colab.py status a
+.venv/bin/python colab/aadp_colab.py down a
+.venv/bin/python colab/aadp_colab.py list a
+.venv/bin/python colab/aadp_colab.py pull a <run-name>
 ```
 
-`pull a` selects the latest collected run. `down a --pull-latest` pulls before
-release. `down a --force` is only for intentionally terminating a live or
-unverifiable job.
+On a long-lived exchange, always use `list` and pass the collected run name
+explicitly. A bare `pull a` can select a lexically last legacy/manual directory
+(observed with `maxpack_mirror`) instead of the newest run by wall time.
+
+Once heartbeat reports `run.alive=false`, successful auto-collect, and
+`release_safe=true`, prefer `down` before `pull` or `pull-model`. Results and
+models are already persisted on Drive, so releasing first avoids paying for an
+idle VM during a large local download. `down a --pull-latest` remains available
+for a clean exchange, while `down a --force` is only for intentionally
+terminating a live or unverifiable job.
 
 ## Lane map
 
@@ -101,19 +113,19 @@ exactly one runtime; paired comparisons stay on the same lane/GPU class.
 ## Repository wrapper commands
 
 ```bash
-python colab/aadp_colab.py doctor [lane]
-python colab/aadp_colab.py push <lane> [--data]
-python colab/aadp_colab.py up <lane> [--gpu GPU] [--reuse]
-python colab/aadp_colab.py probe <lane>
-python colab/aadp_colab.py mount <lane>                 # human terminal only
-python colab/aadp_colab.py bootstrap <lane> [--force]
-python colab/aadp_colab.py daemon <lane>
-python colab/aadp_colab.py launch <lane> SCRIPT -- ARGS...
-python colab/aadp_colab.py status <lane>
-python colab/aadp_colab.py list <lane>
-python colab/aadp_colab.py pull <lane> [RUN_NAME]
-python colab/aadp_colab.py pull-model <lane> MODEL_NAME
-python colab/aadp_colab.py down <lane> [--pull-latest] [--force]
+.venv/bin/python colab/aadp_colab.py doctor [lane]
+.venv/bin/python colab/aadp_colab.py push <lane> [--data]
+.venv/bin/python colab/aadp_colab.py up <lane> [--gpu GPU] [--reuse]
+.venv/bin/python colab/aadp_colab.py probe <lane>
+.venv/bin/python colab/aadp_colab.py mount <lane>       # human terminal only
+.venv/bin/python colab/aadp_colab.py bootstrap <lane> [--force]
+.venv/bin/python colab/aadp_colab.py daemon <lane>
+.venv/bin/python colab/aadp_colab.py launch <lane> SCRIPT -- ARGS...
+.venv/bin/python colab/aadp_colab.py status <lane>
+.venv/bin/python colab/aadp_colab.py list <lane>
+.venv/bin/python colab/aadp_colab.py pull <lane> [RUN_NAME]
+.venv/bin/python colab/aadp_colab.py pull-model <lane> MODEL_NAME
+.venv/bin/python colab/aadp_colab.py down <lane> [--pull-latest] [--force]
 ```
 
 Recovery of an existing session should run only the required stage. `up
@@ -146,9 +158,10 @@ Screens must write submittable weights directly to Drive:
 --output-dir /content/drive/MyDrive/<exchange>/models/<experiment-suffix>
 ```
 
-Fetch them with `pull-model`, then use the normal
-`package_submission.py --no-sparse` path. Cloud experiment rows enter the local
-ledger only through `cloud_sync.py pull` or the wrapper; never hand-copy them.
+After verified auto-collect, release the lane and fetch them with `pull-model`,
+then use the normal `.venv/bin/python package_submission.py --no-sparse` path.
+Cloud experiment rows enter the local ledger only through `cloud_sync.py pull`
+or the wrapper; never hand-copy them.
 
 Multi-run plans continue through `chain_runs.py`; its default heartbeat poll is
 60 seconds and is configurable with `--poll-seconds`.
@@ -172,28 +185,46 @@ Multi-run plans continue through `chain_runs.py`; its default heartbeat poll is
 - `/content` is ephemeral. Models, checkpoints, and irreplaceable artifacts must
   be written to Drive before release.
 
-## Minimal live canary
+## End-to-end live validation
 
 Last verified on 2026-07-11:
 
-- `doctor` passed through CLI `whoami` plus account-wide `sessions`.
-- A lifecycle-only `aadp-a` T4 session was created without Drive/bootstrap,
-  and the remote probe reported Python 3.12.13, CUDA available, and a Tesla T4
-  with 15,360 MiB.
-- `status` and structured CLI log worked; `down --force` was used because the
-  lifecycle canary intentionally skipped the project daemon/heartbeat.
-- Stop verification passed: no server assignment, no keep-alive PID, and empty
-  local session state remained.
-- Drive mount, bootstrap, auto-collect, and a real quick screen still require
-  the next live canary.
+- `doctor` passed through CLI `whoami` plus account-wide `sessions` for lanes A
+  and B. Human-approved `up` mounted Drive, bootstrapped the latest clean bundle
+  at commit `44d0b5c`, and started fresh CLI-mode daemons on two A100 sessions.
+- A real `--quick-val-size 600 --epochs 1` canary completed on lane A. Detached
+  launch, authoritative heartbeat PID/GPU state, auto-collect, explicit result
+  pull, and manifest commit verification all passed.
+- Lanes A and B then ran parallel three-epoch full refits for about 61 minutes
+  each. All epoch checkpoints reached Drive, both final fp16 models were saved,
+  auto-collect produced one result row per run, and the manifests recorded
+  commit `44d0b5c`.
+- Both lanes reached `run.alive=false`, successful `collect_note`, and
+  `release_safe=true`. They were released with normal `down`; account-wide
+  verification ended with no active server assignment or keep-alive state.
+  Results and 1.1 GB models were successfully pulled from Drive after release.
+- The run confirmed that CLI `status` may show the kernel as `IDLE` while the
+  detached trainer saturates the GPU; `heartbeat.run.alive` remains the source
+  of truth. Occasional empty rclone heartbeat reads were transient and
+  succeeded on immediate retry, so retry once before diagnosing a stale daemon.
 
-After CLI/auth changes, keep validation short:
+The complete AADP CLI path is therefore production-validated: `doctor`, `push`,
+human `up`/Drive approval, bootstrap, daemon, launch, status/heartbeat,
+checkpoint persistence, auto-collect, explicit pull, pull-model, and verified
+down. The lane B default can also be overridden with `--gpu A100` for a matched
+parallel comparison.
+
+Do not repeat the full lifecycle canary before every experiment. Repeat this
+short validation after a CLI/auth, wrapper, bootstrap, daemon, or Drive-contract
+change:
 
 1. `doctor a`.
-2. Human runs `up a --gpu T4`.
-3. Check `status a`, then `down a`.
-4. Re-open and run one real `--quick-val-size 600 --epochs 1` screen.
-5. Confirm heartbeat PID/GPU, auto-collect, pull, and verified release.
+2. Push the current bundle; human runs `up a --gpu T4` and approves Drive.
+3. Check the fresh CLI heartbeat and run one real
+   `--quick-val-size 600 --epochs 1` screen.
+4. Confirm the trainer PID/GPU, auto-collect, and `release_safe=true`.
+5. Run normal `down`, confirm no server assignment, then pull the explicit run
+   name from Drive.
 
 Local unit tests mock Colab/rclone and do not allocate a VM.
 
