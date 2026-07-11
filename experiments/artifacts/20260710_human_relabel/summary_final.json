@@ -1,4 +1,10 @@
 {
+  "annotator_provenance": {
+    "model": "GPT-5.6",
+    "execution": "parallel model agents",
+    "human_annotators": 0,
+    "note": "Legacy human_* file, field, and metric names denote GPT-5.6 semantic judgments in this artifact."
+  },
   "n_unique_rows": 248,
   "sampling_note": "Error-enriched stratified weak-class casebook; these rates do not estimate label quality over the full training or validation set.",
   "human_label_counts": {

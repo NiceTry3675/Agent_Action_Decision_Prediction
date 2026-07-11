@@ -1,0 +1,159 @@
+{
+ "n_annotated": 488,
+ "n_missing": 0,
+ "problems": [],
+ "R1": {
+  "n": 248,
+  "sonnet_vs_gpt56_exact": 198,
+  "sonnet_vs_gpt56_exact_pct": 0.7983870967741935,
+  "sonnet_vs_gpt56_either_acceptable": 240,
+  "sonnet_vs_dataset_exact": 58,
+  "sonnet_vs_dataset_exact_pct": 0.23387096774193547,
+  "sonnet_vs_dataset_acceptable": 87,
+  "gpt56_vs_dataset_exact_ref": "52/248 (21.0%) from the original report",
+  "confusion_top": [
+   {
+    "sonnet6": "grep_search",
+    "gpt56": "grep_search",
+    "n": 95
+   },
+   {
+    "sonnet6": "read_file",
+    "gpt56": "read_file",
+    "n": 52
+   },
+   {
+    "sonnet6": "glob_pattern",
+    "gpt56": "glob_pattern",
+    "n": 23
+   },
+   {
+    "sonnet6": "underdetermined",
+    "gpt56": "underdetermined",
+    "n": 13
+   },
+   {
+    "sonnet6": "list_directory",
+    "gpt56": "list_directory",
+    "n": 10
+   },
+   {
+    "sonnet6": "grep_search",
+    "gpt56": "underdetermined",
+    "n": 8
+   },
+   {
+    "sonnet6": "list_directory",
+    "gpt56": "underdetermined",
+    "n": 6
+   },
+   {
+    "sonnet6": "read_file",
+    "gpt56": "underdetermined",
+    "n": 6
+   },
+   {
+    "sonnet6": "other",
+    "gpt56": "other",
+    "n": 5
+   },
+   {
+    "sonnet6": "other",
+    "gpt56": "underdetermined",
+    "n": 4
+   },
+   {
+    "sonnet6": "grep_search",
+    "gpt56": "other",
+    "n": 4
+   },
+   {
+    "sonnet6": "glob_pattern",
+    "gpt56": "underdetermined",
+    "n": 3
+   },
+   {
+    "sonnet6": "grep_search",
+    "gpt56": "read_file",
+    "n": 3
+   },
+   {
+    "sonnet6": "read_file",
+    "gpt56": "other",
+    "n": 2
+   },
+   {
+    "sonnet6": "list_directory",
+    "gpt56": "read_file",
+    "n": 2
+   }
+  ]
+ },
+ "R2": {
+  "n": 120,
+  "exact": 39,
+  "exact_pct": 0.325,
+  "acceptable": 55,
+  "acceptable_pct": 0.4583333333333333,
+  "by_class": {
+   "list_directory": {
+    "n": 30,
+    "exact": 5,
+    "acceptable": 6
+   },
+   "read_file": {
+    "n": 30,
+    "exact": 15,
+    "acceptable": 21
+   },
+   "grep_search": {
+    "n": 30,
+    "exact": 15,
+    "acceptable": 21
+   },
+   "glob_pattern": {
+    "n": 30,
+    "exact": 4,
+    "acceptable": 7
+   }
+  },
+  "b_underdetermined": 3
+ },
+ "R3": {
+  "n": 120,
+  "top_eq_committee_alt": 29,
+  "top_eq_committee_alt_pct": 0.24166666666666667,
+  "committee_alt_acceptable": 39,
+  "top_eq_official": 33,
+  "official_acceptable": 51,
+  "official_acceptable_pct": 0.425,
+  "identifiability_underdetermined": 6,
+  "plausible_multi": 41,
+  "und_or_multi_pct": 0.39166666666666666
+ },
+ "sonnet_label_dist": {
+  "grep_search": 191,
+  "list_directory": 41,
+  "read_file": 153,
+  "underdetermined": 22,
+  "run_bash": 6,
+  "ask_user": 2,
+  "glob_pattern": 43,
+  "plan_task": 3,
+  "run_tests": 14,
+  "respond_only": 4,
+  "lint_or_typecheck": 4,
+  "web_search": 2,
+  "edit_file": 3
+ },
+ "identifiability_dist": {
+  "plausible_multi": 175,
+  "clear": 287,
+  "underdetermined": 26
+ },
+ "confidence_dist": {
+  "medium": 144,
+  "high": 273,
+  "low": 71
+ }
+}

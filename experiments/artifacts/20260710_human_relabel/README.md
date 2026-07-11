@@ -1,8 +1,21 @@
-# Human Semantic Relabel - 2026-07-10
+# GPT-5.6 Parallel-Agent Semantic Relabel - 2026-07-10
 
 This audit relabels the unique rows in the weak-class stratified casebook from
-a human information-need perspective. Annotators are blinded to the dataset
-label, model prediction, and logits.
+a semantic information-need perspective. Relabeling was performed entirely by
+GPT-5.6 model agents running in parallel; no human annotators participated. The
+agents were blinded to the dataset label, model prediction, and logits.
+
+## Annotator provenance
+
+- Six primary GPT-5.6 agents each labeled a disjoint blinded chunk in parallel.
+- Two additional GPT-5.6 audit agents independently reviewed the same 80
+  priority rows, followed by a separate GPT-5.6 adjudication pass for the eight
+  disputed rows.
+- Reported agreement rates measure consistency among independently executed
+  GPT-5.6 agents. They are not inter-human reliability estimates.
+- Existing `human_*` file and field names are retained as legacy schema names
+  for artifact compatibility. In this directory, they mean GPT-5.6 semantic
+  judgments, not labels supplied by people.
 
 ## Labels
 
@@ -19,7 +32,7 @@ label, model prediction, and logits.
 
 ## Annotation fields
 
-- `human_label`: one label above.
+- `human_label`: legacy field name for the GPT-5.6 agent's semantic label above.
 - `acceptable_labels`: every label a reasonable coding agent could choose next.
 - `information_need`: `orient_layout`, `inspect_known_file`,
   `locate_content_occurrence`, `enumerate_path_candidates`, `other`, or
@@ -34,10 +47,12 @@ contract of `current_prompt` takes priority over the user's distant end goal.
 
 ## Outputs
 
-- `human_relabels_final.jsonl`: final 248-row annotation set with original
-  truth/prediction, reconstructed generator action when available, human label,
-  acceptable labels, confidence, rationale, and review status.
-- `summary_final.json`: aggregate human-label, agreement, and audit statistics.
+- `human_relabels_final.jsonl`: legacy-named final 248-row annotation set with
+  original truth/prediction, reconstructed generator action when available,
+  GPT-5.6 semantic label, acceptable labels, confidence, rationale, and review
+  status.
+- `summary_final.json`: aggregate GPT-5.6 semantic-label, agreement, and audit
+  statistics.
 - `human_relabel_report.md`: methodology, representative cases, interpretation,
   and testable consequences.
 - `annotations/`: six blinded primary chunks and two independent 80-row audits.

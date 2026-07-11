@@ -1,0 +1,4193 @@
+{
+ "sess_sim_20260522_013695-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_015539-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_026850-step_17": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_000568-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022436-step_09": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_039976-step_09": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_012857-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_000639-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_024323-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_016312-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_027335-step_04": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_025877-step_09": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_044381-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041363-step_09": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 3,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_002389-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_016249-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_002883-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 3,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034855-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_039087-step_07": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_001246-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022211-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041962-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_019028-step_16": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "other"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_034654-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_006601-step_08": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033630-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_037915-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_012932-step_12": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_036169-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_036050-step_12": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_039976-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_015476-step_12": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 3,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_009673-step_06": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_013604-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_037513-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041681-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034654-step_04": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_002225-step_08": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_023658-step_01": {
+  "stratum": "A",
+  "official": "run_bash",
+  "c": 3,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_042100-step_10": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_017230-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "grep_search",
+   "glob_pattern",
+   "list_directory"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_043035-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_001634-step_10": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_026165-step_12": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_044409-step_08": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_035152-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_044128-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_017224-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_009097-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "grep_search",
+   "glob_pattern",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041219-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_009620-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022082-step_01": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_014477-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_020610-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_023769-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_028341-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033359-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_au_550259_005-step_09": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_018879-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_005394-step_13": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_021797-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_au_845677_004-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_009282-step_06": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_006344-step_09": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_028684-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "other"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_006548-step_01": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_013762-step_01": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_012857-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_029593-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_028684-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_014396-step_06": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041108-step_05": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_025749-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014590-step_08": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034257-step_09": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_005079-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_023769-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_017963-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_047058-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038266-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "list_directory",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_041019-step_09": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_036693-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_037225-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_012868-step_10": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_016833-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_012503-step_10": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_026307-step_07": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_015957-step_10": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "grep_search",
+   "glob_pattern",
+   "list_directory",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_027003-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_046077-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_043735-step_12": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_029465-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_045650-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041363-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_046336-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_000932-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_039927-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_008814-step_01": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_024430-step_10": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_020515-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "list_directory",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_015757-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_045529-step_04": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_023031-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_019423-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_031859-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_039501-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041291-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033250-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_001558-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_016819-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 3,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "list_directory",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_009286-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041240-step_04": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_046771-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_007611-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_039422-step_15": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_016108-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_007134-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_040797-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_046317-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_027541-step_06": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022546-step_06": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_028222-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_030443-step_06": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_029717-step_08": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_022066-step_06": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_021041-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_005794-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_015793-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_044739-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_015167-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041466-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_024244-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014323-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034862-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034746-step_12": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038428-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_043870-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_002584-step_06": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_044737-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_009136-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "list_directory"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_037154-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038875-step_07": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_046674-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_012067-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_011434-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_046107-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033534-step_07": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "glob_pattern",
+   "list_directory"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_021918-step_06": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_000568-step_08": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_006991-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_037047-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_010360-step_06": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_012517-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033448-step_15": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_036195-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014240-step_07": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_013695-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "medium"
+ },
+ "sess_au_550259_000-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014621-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022623-step_01": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_037723-step_04": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_012761-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_026274-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_040607-step_12": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_009071-step_07": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_au_630561_013-step_01": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_026177-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "other"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_018775-step_01": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_001361-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_023620-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038341-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_036555-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_001233-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_038547-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_003186-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_003725-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_001274-step_11": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_018460-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_027490-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_015838-step_12": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_011468-step_10": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_031159-step_08": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 1,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_au_289234_000-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_024430-step_01": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "glob_pattern",
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_023648-step_02": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_001715-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_031581-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_034701-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_017995-step_08": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_032287-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_041896-step_05": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_032085-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_029224-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_032498-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_037930-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_042100-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_042570-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_030328-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038802-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_022439-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014757-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other",
+   "glob_pattern",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_028913-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_015725-step_09": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_033956-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_036992-step_10": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_008481-step_02": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_000639-step_07": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_013862-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_024596-step_06": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_021034-step_05": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_027442-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_045191-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_028963-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_044127-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_004210-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_au_577649_000-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_006548-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_039242-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_035377-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_018459-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_035342-step_05": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_007009-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_036555-step_03": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "other",
+  "gpt56_acceptable": [
+   "other"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038461-step_09": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_000639-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_028590-step_05": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "read_file"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_044381-step_04": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_003315-step_06": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_016714-step_02": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_038547-step_08": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_008959-step_01": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_024926-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_021188-step_12": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 1,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_047191-step_06": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 3,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_007150-step_04": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_037898-step_14": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "glob_pattern",
+  "gpt56_acceptable": [
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_013453-step_04": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 2,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file",
+   "grep_search"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_030056-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_043434-step_01": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "list_directory",
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_024926-step_03": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 0,
+  "gpt56_label": "list_directory",
+  "gpt56_acceptable": [
+   "list_directory",
+   "grep_search",
+   "underdetermined"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_033606-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_018945-step_03": {
+  "stratum": "A",
+  "official": "read_file",
+  "c": 0,
+  "gpt56_label": "read_file",
+  "gpt56_acceptable": [
+   "read_file"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_044759-step_03": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 2,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "glob_pattern"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_043618-step_02": {
+  "stratum": "A",
+  "official": "list_directory",
+  "c": 3,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_012503-step_07": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search",
+   "read_file"
+  ],
+  "gpt56_identifiability": "plausible_multi",
+  "gpt56_confidence": "medium"
+ },
+ "sess_sim_20260522_027541-step_07": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 0,
+  "gpt56_label": "underdetermined",
+  "gpt56_acceptable": [
+   "underdetermined",
+   "other"
+  ],
+  "gpt56_identifiability": "underdetermined",
+  "gpt56_confidence": "low"
+ },
+ "sess_sim_20260522_034285-step_10": {
+  "stratum": "A",
+  "official": "grep_search",
+  "c": 1,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_014284-step_06": {
+  "stratum": "A",
+  "official": "glob_pattern",
+  "c": 0,
+  "gpt56_label": "grep_search",
+  "gpt56_acceptable": [
+   "grep_search"
+  ],
+  "gpt56_identifiability": "clear",
+  "gpt56_confidence": "high"
+ },
+ "sess_sim_20260522_045697-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_015342-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 2
+ },
+ "sess_sim_20260522_014757-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 1
+ },
+ "sess_sim_20260522_029747-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_035513-step_05": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 2
+ },
+ "sess_sim_20260522_024487-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_012894-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_039087-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 2
+ },
+ "sess_sim_20260522_011847-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_023654-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 1
+ },
+ "sess_sim_20260522_025914-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_020636-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_019742-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_041756-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_038875-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_012857-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_044481-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 1
+ },
+ "sess_sim_20260522_037357-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_au_592783_004-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 1
+ },
+ "sess_sim_20260522_028493-step_04": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_011366-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_003534-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_025100-step_02": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_016544-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_005471-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_037930-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_027465-step_03": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_014396-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 2
+ },
+ "sess_sim_20260522_023031-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 3
+ },
+ "sess_sim_20260522_032828-step_01": {
+  "stratum": "B",
+  "official": "list_directory",
+  "c": 2
+ },
+ "sess_sim_20260522_030314-step_05": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_au_910500_003-step_01": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_042954-step_08": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_016714-step_13": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_026177-step_05": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_001071-step_04": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_au_007752_002-step_01": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_033885-step_03": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_au_744961_003-step_03": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_023713-step_09": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_015118-step_03": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_au_242697_001-step_02": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_038875-step_02": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_016117-step_02": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_sim_20260522_044386-step_04": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_au_952430_013-step_01": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_022732-step_04": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_au_299069_011-step_01": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_sim_20260522_015476-step_08": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_au_764144_003-step_01": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_040664-step_04": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_004270-step_07": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_sim_20260522_028844-step_02": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_021807-step_05": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 1
+ },
+ "sess_sim_20260522_035060-step_06": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 2
+ },
+ "sess_sim_20260522_037432-step_03": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_006933-step_03": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_012286-step_04": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_000299-step_08": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_006261-step_08": {
+  "stratum": "B",
+  "official": "read_file",
+  "c": 3
+ },
+ "sess_sim_20260522_031505-step_12": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 2
+ },
+ "sess_sim_20260522_027693-step_07": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_007964-step_08": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_026279-step_12": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_015369-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_005394-step_05": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_007578-step_07": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_026073-step_05": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_012515-step_07": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_au_375329_009-step_01": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_037955-step_07": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_036351-step_06": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 1
+ },
+ "sess_sim_20260522_037660-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_001634-step_05": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_038428-step_06": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_044209-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_001685-step_11": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_025148-step_09": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_005723-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_042425-step_05": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_003536-step_03": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_034674-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_030793-step_06": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_023647-step_06": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 0
+ },
+ "sess_sim_20260522_030126-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_044492-step_07": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_036555-step_04": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 2
+ },
+ "sess_sim_20260522_005825-step_09": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_014987-step_03": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 1
+ },
+ "sess_sim_20260522_019238-step_10": {
+  "stratum": "B",
+  "official": "grep_search",
+  "c": 3
+ },
+ "sess_sim_20260522_018619-step_05": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_020150-step_09": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_022623-step_03": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_012220-step_08": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_028071-step_03": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_019028-step_13": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_000365-step_08": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_au_820844_005-step_01": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 2
+ },
+ "sess_sim_20260522_029908-step_10": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_028861-step_11": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_003529-step_07": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_010114-step_06": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_009097-step_05": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_003493-step_05": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 2
+ },
+ "sess_sim_20260522_021797-step_04": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_046107-step_09": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_002499-step_03": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_au_356945_005-step_01": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 1
+ },
+ "sess_sim_20260522_042395-step_07": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_017242-step_08": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_033351-step_06": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_007794-step_06": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_030575-step_04": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_008382-step_08": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_008959-step_05": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_045357-step_13": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_034801-step_04": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_027734-step_06": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_018460-step_06": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_022318-step_05": {
+  "stratum": "B",
+  "official": "glob_pattern",
+  "c": 3
+ },
+ "sess_sim_20260522_001133-step_03": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_004523-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_000225-step_08": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_004256-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_028701-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_010633-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_007505-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_014910-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_020387-step_03": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_015824-step_04": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_037678-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_029806-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_008117-step_12": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_047085-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_015789-step_05": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_039570-step_04": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_030314-step_16": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_026902-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_026002-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_039500-step_03": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_017727-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_045414-step_06": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_022362-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_004299-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_019254-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_003986-step_11": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_043771-step_01": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_035798-step_10": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_003401-step_05": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_021117-step_06": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_029465-step_04": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_019698-step_02": {
+  "stratum": "C",
+  "official": "grep_search",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_034305-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_026540-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_045015-step_14": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_039858-step_04": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_002247-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_040664-step_06": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_044408-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_019410-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_000861-step_04": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_000779-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_031746-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_042898-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_025635-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_000932-step_05": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_022657-step_06": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_037373-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_044259-step_04": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_019057-step_12": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_016938-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_032326-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_040593-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_025480-step_15": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_015961-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_025844-step_06": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_030846-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_010708-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_035421-step_07": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_023972-step_02": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_025480-step_12": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_023518-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_004885-step_01": {
+  "stratum": "C",
+  "official": "read_file",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_002298-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_022233-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_014415-step_09": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_023655-step_07": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_002699-step_04": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_037723-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_034301-step_04": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_005487-step_04": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_012583-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_043106-step_05": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_024556-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_032900-step_03": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_042752-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_047302-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_009273-step_07": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_003297-step_05": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_007048-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_008378-step_06": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_047032-step_01": {
+  "stratum": "C",
+  "official": "glob_pattern",
+  "c": 0,
+  "committee_alt": "list_directory"
+ },
+ "sess_sim_20260522_004658-step_02": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_014430-step_04": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_043699-step_12": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_035753-step_04": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_005685-step_07": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_028753-step_03": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_024193-step_05": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_018692-step_04": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_047407-step_02": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_021619-step_04": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_008103-step_08": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "glob_pattern"
+ },
+ "sess_sim_20260522_020326-step_07": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "grep_search"
+ },
+ "sess_sim_20260522_018273-step_02": {
+  "stratum": "C",
+  "official": "list_directory",
+  "c": 0,
+  "committee_alt": "read_file"
+ },
+ "sess_sim_20260522_047258-step_04": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_028862-step_08": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_044161-step_08": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "lint_or_typecheck"
+ },
+ "sess_sim_20260522_020494-step_06": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_016312-step_09": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_006076-step_03": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_009259-step_10": {
+  "stratum": "C",
+  "official": "run_bash",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_022035-step_01": {
+  "stratum": "C",
+  "official": "run_tests",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_017861-step_06": {
+  "stratum": "C",
+  "official": "run_tests",
+  "c": 0,
+  "committee_alt": "lint_or_typecheck"
+ },
+ "sess_sim_20260522_026285-step_01": {
+  "stratum": "C",
+  "official": "run_tests",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_009093-step_03": {
+  "stratum": "C",
+  "official": "run_tests",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_028314-step_03": {
+  "stratum": "C",
+  "official": "run_tests",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_036728-step_06": {
+  "stratum": "C",
+  "official": "ask_user",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_009191-step_01": {
+  "stratum": "C",
+  "official": "ask_user",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_040005-step_02": {
+  "stratum": "C",
+  "official": "ask_user",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_010813-step_01": {
+  "stratum": "C",
+  "official": "ask_user",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_004891-step_01": {
+  "stratum": "C",
+  "official": "ask_user",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_039898-step_02": {
+  "stratum": "C",
+  "official": "lint_or_typecheck",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_007313-step_10": {
+  "stratum": "C",
+  "official": "lint_or_typecheck",
+  "c": 0,
+  "committee_alt": "run_tests"
+ },
+ "sess_sim_20260522_018766-step_02": {
+  "stratum": "C",
+  "official": "lint_or_typecheck",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_008795-step_01": {
+  "stratum": "C",
+  "official": "lint_or_typecheck",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_000075-step_03": {
+  "stratum": "C",
+  "official": "lint_or_typecheck",
+  "c": 0,
+  "committee_alt": "run_bash"
+ },
+ "sess_sim_20260522_006885-step_04": {
+  "stratum": "C",
+  "official": "plan_task",
+  "c": 0,
+  "committee_alt": "ask_user"
+ },
+ "sess_sim_20260522_016623-step_01": {
+  "stratum": "C",
+  "official": "web_search",
+  "c": 0,
+  "committee_alt": "plan_task"
+ },
+ "sess_sim_20260522_038914-step_09": {
+  "stratum": "C",
+  "official": "edit_file",
+  "c": 0,
+  "committee_alt": "apply_patch"
+ }
+}
