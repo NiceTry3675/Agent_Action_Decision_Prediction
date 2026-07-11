@@ -1176,3 +1176,15 @@ decide whether to refit, package, and spend a Public slot.
   유지하되, AU까지 의미 계열을 전역 폐쇄하지 않는다.** AU는 별도 충분표본 전
   미결정이며, 본 진단만으로 Public/학습 레인을 변경하지 않는다. 상세:
   `experiments/artifacts/20260711_gpt56_relabel_rerun/REPORT.md`.
+
+### 2026-07-11 - strict same-test graph backfill Public 완전 중립 — 레인 종료
+
+- `kdca_graph_s42.zip`은 정확한 `kd_sieve_ca_s42` 챔피언 가중치에 strict
+  same-test-batch graph backfill만 켠 단일변수 팩이다. Prompt alignment와
+  conflict fail-close를 사용하며 train-derived lookup은 포함하지 않았다.
+- Public은 **`0.7938816426`으로 기존 챔피언과 완전히 동일**했고, 런타임은
+  `5:58 -> 6:12`로 **14초 증가**했다. 서버 로그가 없으므로 graph coverage가
+  0이었는지 override가 점수상 중립이었는지는 구분하지 않는다.
+- **Decision: 품질 이득 없이 지연만 증가했으므로 strict graph 레인을 종료한다.**
+  aligned-only/positional 변형을 재시도하거나 부분 int8 등 다른 카드에 스택하지
+  않는다. 챔피언은 `kd_sieve_ca_s42` 그대로다.
