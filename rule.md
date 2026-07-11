@@ -102,5 +102,5 @@ libglib2.0-0
 
 ## Notes
 
-- Maximum submissions per day: 10
-- 2026.07.01 ~ 2026.07.15
+- Maximum submissions per day: 10 (including the final day)
+- Competition period: 2026.07.01 ~ 2026.07.15 (Wed) 10:00 KST

@@ -937,3 +937,110 @@ decide whether to refit, package, and spend a Public slot.
   prior team champion `0.78962` by `+0.00208` and clearing the registered
   `0.002` noise floor. **Promote `kdm8_sieve_s42.zip` as the new team and
   locally reproducible champion.**
+
+### 2026-07-11 - T2 반사실 미래잔차 레인 착수: Stage F0 donor 감사 GO
+
+- 레인 배분(사용자 지시): 시브 × condalpha 스택은 팀원, 이 레포는
+  `handoff_20260710_final_two_theories.md` §3 T2(반사실 미래 궤적 특권잔차
+  증류). 핸드오프에 07-11 상태 애드덤 추가(시브 챔피언 0.7917 반영, frozen
+  감사 parent는 leak-free `kd_hcx_m8_screen`, 배포 parent는 시브 챔피언).
+- F0 (`audit_future_donors.py`): next-user 복원은 직접 step+1 행 +
+  positional witness 합의(fail-closed, conflict 0)로 coverage 86.50%
+  (Weak4 94.97%; `respond_only`는 전부 terminal이라 0% — T2에서 구조적
+  마스크). donor 매칭 `action×source×turn_bin×language_pref`, K=4,
+  same-session/AU-scenario/동일문 제외, id-hash 결정론 — 복원행 기준
+  full-K 99.75% (Weak4 99.86%), 제외 위반 0. P1/P2 길이 AUC 0.5004,
+  future 토큰 p100=81(HCX). next-user-only 분류 프로브 acc 15.2%로 직접
+  누출 채널 미미. **Decision: GO** —
+  `experiments/artifacts/20260711_future_recovery_donor_audit.json`,
+  payload `experiments/privileged_targets/20260711_future_nextuser_donors.json.gz`.
+- F1/F2 준비 완료: `export_future_hidden_cache.py`(GPU, future 텍스트
+  `future_user:` 접두 별도 인코딩, current truncation 없음, 체크포인트
+  sha fail-closed) + `probe_future_residual_gate.py`(3-fold scenario-grouped,
+  대칭 LOO T1/T2 비교, λ/clip inner-tune, SPERM 층화 permutation). 유닛
+  테스트 16개 통과(합성 e2e 포함). 07-10 hidden 캐시(70k, leak-free screen)
+  로컬 pull 및 payload↔캐시 id/sha 정합 검증 통과. GPU 인코딩은 VM 재부착
+  대기 — eval 표면은 fixed-val 14,001 중 full-K 12,025행(Weak4 5,438).
+
+### 2026-07-11 - T2 frozen teacher gate REJECT — 반사실 미래잔차 레인 전면 종료
+
+- Stage F1 (`probe_future_residual_gate.py`, eval=fixed-val full-K 12,025행,
+  3-fold scenario-grouped, 대칭 LOO 비교, λ/clip inner-tune): pooled macro
+  P0 `0.708325` / T1(actual oracle) `0.669399` / T2(donor oracle) `0.708700`.
+  **T1−T2 macro `-0.0393`, Weak4 `-0.0639`, 3/3 fold 음수.** λ는 3개 fold
+  모두 grid 최솟값 0.25로 수렴(inner tune이 delta 제거를 선호) — actual
+  future oracle이 parent보다 나쁘고(rescue/harm 168/309), donor oracle은
+  P0+노이즈 수준. F2도 동반 음성: S1−P0 `-0.0037`, S1−SPERM `-0.0009`,
+  게이트 전항 실패.
+- 해석: same-action donor로 action 노출 성분을 상쇄하고 나면 실제 next-user의
+  행별 잔차는 착취 가능한 신호가 아니라 오히려 유해(Weak4 최대 타격). 07-10
+  selective mode probe(모드 NLL 개선이 action 선택으로 전이 안 됨)·FSM 널
+  결과와 방향 일치 — 미래 관측 계열의 세 번째 독립 음성.
+- **Decision: 사전 등록된 즉시 종료 조건("actual이 donor보다 좋지 않으면
+  종료") 발동. T2 미래 특권잔차 레인 전면 종료, full screen/refit/Public
+  없음. 파라미터 grid 연명 금지 조항 준수.** 핸드오프 두 이론 모두 해소:
+  T1=시브로 소비(Public 양성), T2=frozen gate 종료. artifacts:
+  `experiments/artifacts/20260711_future_p1_p2_teacher_gate.json`,
+  `..._future_student_recovery_gate.json`,
+  `..._future_recovery_donor_audit.json`.
+
+### 2026-07-11 - 가중치 수프 레인 클린-표면 연결성 게이트 실패 — 슬롯 0으로 종료, 잔여 경로는 레시피 스택
+
+- `soup_merge_eval.py` 신규: 스트리밍 fp32 가중 평균 병합 + 고정 세션 스플릿
+  (seed42, 14,001행) 평가 하니스. 하니스 검증: `kd_hcx_m8_screen` 재평가 raw
+  `0.783756` vs 기록 `0.783852` (Δ -0.0001, fp16 배치 비결정성 수준).
+- 오염 표면(리핏 — val 행이 학습에 포함): `kd_m8_consensus_sieve_refit` ×
+  `kd_condalpha_refit` λ=0.5 중간점 raw `0.801366` vs 끝점
+  `0.820640`/`0.831912`. 딥이지만 리핏 암기 희석 효과와 진짜 손실 장벽을 이
+  표면에서는 구분 불가 — 해석 보류.
+  (`experiments/artifacts/20260711_soup_interp_sieve_x_condalpha.json`)
+- 클린 표면(스크린 — val 미학습): ① 동일-레시피 리롤 페어 `kd_hcx_m8_screen`
+  × `kd_v1_len384_a100_b_control`(lane B에서 pull): raw `0.783756`/`0.785129`,
+  λ=0.5 중간점 `0.783044` — 두 끝점 모두 아래(-0.0007/-0.0021). 수프의
+  분지-중심 이득이 가장 유리한 페어에서도 부재. ② KD-loss 축 페어
+  (× `kd_rdrop_hcx05b_screen` `0.779398`): 중간점 `0.772500` — 양끝 대비
+  -0.007/-0.011, 명확한 V자 장벽.
+  (`experiments/artifacts/20260711_soup_interp_clean_screens.json`)
+- **Decision: HCX-0.5B 라인 가중치 평균(soup/그랜드 수프) 레인 종료.** 가장
+  유리한 동일-레시피 리롤 페어에서도 중간점이 최고 끝점을 넘지 못해 승격
+  게이트(≥ best +0.003 raw) 도달 불가능. 리핏 가중 평균(sieve×condalpha
+  soup)도 같은 근거로 미승격. 총비용: 슬롯 0, 로컬 GPU 소량.
+- 시브×condalpha의 잔여 경로는 가중치 평균이 아닌 **레시피 스택**(단일 리핏에
+  consensus sieve + 조건부 KD α 동시 적용). 이를 위해 팀 측 옵션
+  `--distill-alpha-weak`를 로컬 파서에 구현(teacher-matched 원본 Weak4-true 행
+  α=0.7, 그 외 matched 0.5, replay/unmatched KD 제외 — 마스크가 α 스케일을
+  운반, 미설정 시 기존과 비트 동일). 단위테스트
+  `tests/test_distill_alpha_weak.py`, sieve 테스트 회귀 통과.
+
+### 2026-07-11 - sieve × condalpha 레시피 스택 리핏 완료 — Public-only 후보 패키징 (제출 대기)
+
+- lane A A100에서 `kd_sieve_condalpha_refit_s42` 완료(~61분). 정확히
+  `kdm8_sieve_s42` 레시피 + `--distill-alpha-weak 0.7` 단일 변수(가중치 평균
+  soup 레인 사망 후 시브×condalpha 조합의 잔여 경로). 런 로그로 두 레버 적용
+  검증: distill matched 70000/80000(replay 1만 KD 제외), alpha_weak=0.7
+  weak_rows=28782; consensus sieve 히스토그램은 챔피언 런과 동일
+  (c0 12,776 / c3 48,607), head full gradient.
+- int8 배포본: 170/219 tensors, 568.2 MB, fp16 대비 argmax 일치
+  **512/512 (100%)** — 역대 팩 최고 충실도. 패키지
+  `submissions/kd_sieve_ca_s42.zip` (512 MB), GPU·CPU 오프라인 스모크 모두
+  통과. 추론 경로/아키텍처는 6:32급 kd_m8_refit 계열과 동일.
+- **Decision: Public-only 후보로 제출 대기.** 비교 기준은 `kdm8_sieve_s42`
+  Public `0.7917` (매칭 seed42, 단일 변수). 두 레버가 모두 "약클래스 노이즈
+  행의 hard-label 압력 완화" 축이라 겹칠 위험을 사전 등록 — 결과가 어느
+  방향이든 조건부 α의 시브-위 가산성에 대한 정보값이 있음.
+
+### 2026-07-11 - kd_sieve_ca_s42 Public 0.7938 — 신규 팀 챔피언 승격, 조건부 α의 시브-위 가산성 확인
+
+- Public **0.7938** / 런타임 **5:58/10:00** (`kd_sieve_ca_s42.zip`). 시브
+  챔피언 `kdm8_sieve_s42` 0.7917 대비 **+0.0021** — 매칭 seed42 단일 변수
+  비교에서 0.002 노이즈 플로어 초과. "두 노이즈-완충 레버가 겹칠 것"이라는
+  사전 등록 리스크는 기각: 백본-그래디언트 시브와 손실-믹스 조건부 α는
+  가산됨.
+- **Decision: `kd_sieve_ca_s42.zip`을 팀·로컬 챔피언으로 승격.** 문서 3종
+  갱신 완료. 역대 체인: kd_m8_refit 0.78913 → condalpha 0.78962 → sieve
+  0.7917 → **sieve×condalpha 0.7938**.
+- 후속 후보 (슬롯 여유 시, 우선순위 검토 필요): ① 시브 베이스에서 α_weak
+  격자 재탐색(0.6/0.8 — 단 condalpha 단독 격자에서 (0.5/0.7)이 국소최적이었
+  으므로 기대 제한적), ② 시브 강도 격자(c-weights) × 현 α_weak 고정,
+  ③ 팀원 레인(교사축·시드 리롤)에 조합 레시피 전파 — 이제 모든 신규 리핏의
+  베이스 레시피는 sieve×condalpha가 기준.

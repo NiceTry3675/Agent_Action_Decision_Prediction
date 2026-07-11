@@ -14,16 +14,17 @@ Experiment details live in `experiments/results.csv`.
 
 ## Current Baseline
 
-- Team and locally reproducible Public champion: OOF-consensus gradient-sieved
-  HCX-0.5B M8-KD, Public `0.7917` (`kdm8_sieve_s42.zip`, 2026-07-11).
-- Delta: `+0.00208` over conditional-alpha KD `0.78962` and `+0.00257` over
-  `kd_m8_refit` `0.78913`. The former clears the `0.002` noise floor, so this
-  is directional evidence for the sieve rather than instance noise alone.
-- The consensus changes only the hard-label backbone gradient; the head gets
-  the full hard-label gradient, M8 KD is unchanged, replay is unsieved, and
-  inference remains zero-bias/no-rules. Its OOF artifact is full-refit-only;
-  local held-out use is fail-closed. The exact 512 MB int8 package and fp16
-  source are present locally and offline smoke passed.
+- Team and locally reproducible Public champion: sieve × conditional-alpha
+  stack, Public `0.7938` (`kd_sieve_ca_s42.zip`, 2026-07-11, runtime
+  `5:58/10:00`).
+- Delta: `+0.0021` over the sieve champion `0.7917` at matched seed42 with a
+  single variable (`--distill-alpha-weak 0.7`) — clears the `0.002` noise
+  floor: conditional alpha adds on top of the consensus sieve.
+- Recipe: `kdm8_sieve_s42` unchanged (consensus backbone-gradient sieve, full
+  head, M8 KD, replay unsieved, zero bias/rules) + matched Weak4-true original
+  rows at KD alpha `0.7` (other matched `0.5`, replay/unmatched KD-masked,
+  T3). Full-refit-only; local held-out use is fail-closed. fp16 + int8
+  (argmax fidelity 512/512) present locally; GPU/CPU offline smokes passed.
 
 ## Notes
 
@@ -37,6 +38,8 @@ Experiment details live in `experiments/results.csv`.
   best-of-N instance selection across seed refits is legitimate and directly
   rewarded. Binding constraint: the 10/day slot budget. Recipe judgments
   still belong to OOF (instance draws confound single Public deltas).
+- Competition closes 2026-07-15 (Wed) at 10:00 KST; the final day also has
+  the full 10 submission slots.
 - Quick screen: reject bad ideas only.
 - Fixed-session full run (`--save-val-model`): sanity, weak-class inspection,
   and submittable weights.
@@ -75,5 +78,6 @@ score lands.
 | 2026-07-08 | `kdm8_fvb_sp`: `kd_m8_refit` zero-bias champion plus fixed-val 2-stage class bias from `kd_hcx_m8_screen_s42` and weak-class gated TF-IDF LinearSVC residual (`w=0.02`, top2 weak gate) | fixed-val `0.787801` -> `0.787983` with sparse | **0.786** | -0.0031 vs `kd_m8_refit` | **Rejected.** The fixed-val class-bias surface did not transfer to Public, and the sparse residual was too weak to rescue it. Treat this as direct evidence not to inject fixed-val 2-stage bias into the final KD champion. |
 | 2026-07-08 | `kdm8_pcal`: `kd_m8_refit` zero-bias champion plus opt-in test-batch label-shift/prior calibration only (`prior_blend=0.25`, `bias_scale=0.35`, cap `0.18`; strong classes protected) | same fixed-val batch self-check produces ~zero calibration bias | **0.7890** | user-reported -0.00007 vs `kd_m8_refit` | **Neutral, not promoted.** The transductive prior calibration was essentially score-equivalent to the champion but did not beat it. Do not stack with fixed-val bias/sparse; any further prior-cal attempt would need a materially different target, not a stronger version of this same recipe. |
 | 2026-07-09 | `kd_v7r_matched`: `kd_m8_refit` recipe with serializer swapped `current_v1`->`current_v7r` and teacher swapped to a v7r-retrained M8 (matched teacher/student serializer), FULL-DATA refit, zero bias, int8 (`kd_v7r_matched.zip`) | n/a (refit unscreenable; matched-teacher screen 2stage `0.788443`, +0.000642 vs KD anchor `0.787801`, gate +0.002 not cleared) | **0.787** | -0.0021 vs `kd_m8_refit` (0.7891) | **Rejected, v7r line closed for good.** Delta sits just past the 0.002 noise floor on the negative side, consistent with the pre-registered expectation that this screen-level delta (+0.000642) was noise and could land either direction on Public. Runtime **7:57/10:00** — beat the token-ratio projection (~8:30-8:35), more margin than expected. Champion unchanged (`kd_m8_refit` 0.7891 stays baseline). This closes out the v7r serializer lane end-to-end: non-KD v7r had a confirmed +0.007 fixed/OOF lever but no deployment path outside the KD champion, and matched-teacher KD (the only route to stack it onto the champion) now has a real Public result confirming the screen-level non-promotion. No further v7r-family work planned. |
-| 2026-07-10 | `condalpha-KD`: `kd_m8_refit` recipe + teacher-matched original Weak4-row KD alpha `0.5 -> 0.7`; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` (teammate submission) | n/a | **0.78962** | +0.00049 vs exact `kd_m8_refit` score `0.78913` | **NEW TEAM PUBLIC CHAMPION** (superseded 2026-07-11 by `kdm8_sieve_s42`). Delta is below the 0.002 noise floor, so it is not directional recipe evidence; Public is the final score and this is the highest observed instance. fp16 checkpoint absorbed 2026-07-11 at `experiments/incoming/models/kd_condalpha_refit/`; submission archive and team-side weak-alpha option remain team-side. |
-| 2026-07-11 | `kdm8_sieve_s42.zip`: `kd_m8_refit` + M7/M8/v6 OOF-correctness gradient sieve on the hard-label backbone only; full head gradient, unchanged KD, class-normalized, replay unsieved, zero bias/rules | n/a (full-refit-only) | **0.7917** | +0.00208 vs `condalpha-KD`; +0.00257 vs `kd_m8_refit` | **NEW TEAM PUBLIC CHAMPION.** Clears the 0.002 noise floor; exact local int8 package passed offline smoke. |
+| 2026-07-10 | `condalpha-KD`: `kd_m8_refit` recipe + teacher-matched original Weak4-row KD alpha `0.5 -> 0.7`; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` (teammate submission) | n/a | **0.78962** | +0.00049 vs exact `kd_m8_refit` score `0.78913` | **NEW TEAM PUBLIC CHAMPION** (superseded 2026-07-11 by `kdm8_sieve_s42`). Delta is below the 0.002 noise floor, so it is not directional recipe evidence; Public is the final score and this is the highest observed instance. fp16 checkpoint absorbed 2026-07-11 at `experiments/incoming/models/kd_condalpha_refit/`; the exact teammate submission archive remains team-side, while the weak-alpha option is now implemented locally. |
+| 2026-07-11 | `kdm8_sieve_s42.zip`: `kd_m8_refit` + M7/M8/v6 OOF-correctness gradient sieve on the hard-label backbone only; full head gradient, unchanged KD, class-normalized, replay unsieved, zero bias/rules | n/a (full-refit-only) | **0.7917** | +0.00208 vs `condalpha-KD`; +0.00257 vs `kd_m8_refit` | **NEW TEAM PUBLIC CHAMPION** (superseded same day by `kd_sieve_ca_s42`). Clears the 0.002 noise floor; exact local int8 package passed offline smoke. |
+| 2026-07-11 | `kd_sieve_ca_s42.zip`: `kdm8_sieve_s42` recipe + `--distill-alpha-weak 0.7` as the only variable (matched Weak4-true originals alpha 0.7, other matched 0.5, replay/unmatched KD-masked, T3); run-log verified weak_rows=28782, sieve histogram identical to champion run | n/a (full-refit-only) | **0.7938** | +0.0021 vs `kdm8_sieve_s42` (matched seed42, single variable) | **NEW TEAM PUBLIC CHAMPION.** Above the 0.002 noise floor — directional evidence that conditional alpha stacks on the sieve (different noise-buffer mechanisms: backbone-gradient vs loss-mix). Runtime **5:58/10:00**, fastest pack to date; int8 argmax fidelity 512/512 (100%), best of any pack. |

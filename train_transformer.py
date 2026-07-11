@@ -564,7 +564,13 @@ def build_teacher_targets(samples, args):
     """Align an OOF teacher payload (ids + log-prob logits) to `samples` by id.
     Returns (logprobs, mask) CPU tensors or None when --distill-logits is unset.
     Replay pseudo-samples and unmatched ids get mask 0 (pure hard-label loss),
-    so OOF teachers stay leak-free by construction."""
+    so OOF teachers stay leak-free by construction.
+
+    The mask is a per-row alpha SCALE, not just 0/1: the loss uses
+    alpha_row = --distill-alpha * mask, so with --distill-alpha-weak set,
+    teacher-matched original rows whose true label is Weak4 carry
+    mask = alpha_weak/alpha (team condalpha semantics: matched Weak4-true rows
+    get alpha_weak, other matched rows alpha, replay/unmatched stay 0)."""
     if not getattr(args, "distill_logits", None):
         return None
     payload = torch.load(args.distill_logits, map_location="cpu", weights_only=False)
@@ -577,9 +583,22 @@ def build_teacher_targets(samples, args):
         if row is not None:
             logprobs[i] = row
             mask[i] = 1.0
+    matched = int(mask.sum())
+    weak_alpha = getattr(args, "distill_alpha_weak", None)
+    weak_count = 0
+    if weak_alpha is not None:
+        labels_by_id = load_labels(Path(args.data_dir) / "train_labels.csv")
+        weak_labels = set(ALL_CLASSES[:4])
+        scale = float(weak_alpha) / float(args.distill_alpha)
+        for i, sample in enumerate(samples):
+            if mask[i] > 0 and labels_by_id.get(safe_text(sample.get("id"))) in weak_labels:
+                mask[i] = scale
+                weak_count += 1
     print(
-        f"distill: matched {int(mask.sum())}/{len(samples)} rows from {args.distill_logits} "
-        f"(alpha={args.distill_alpha} T={args.distill_temp})"
+        f"distill: matched {matched}/{len(samples)} rows from {args.distill_logits} "
+        f"(alpha={args.distill_alpha} T={args.distill_temp}"
+        + (f" alpha_weak={weak_alpha} weak_rows={weak_count}" if weak_alpha is not None else "")
+        + ")"
     )
     return logprobs, mask
 
@@ -2128,6 +2147,10 @@ def parse_args():
     parser.add_argument("--distill-logits", default=None,
                         help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
     parser.add_argument("--distill-alpha", type=float, default=0.5)
+    parser.add_argument("--distill-alpha-weak", type=float, default=None,
+                        help="KD alpha override for teacher-matched original rows whose true label is "
+                             "Weak4 (list_directory/read_file/grep_search/glob_pattern); other matched "
+                             "rows keep --distill-alpha (team condalpha option)")
     parser.add_argument("--distill-temp", type=float, default=2.0)
     parser.add_argument(
         "--consensus-reliability",
@@ -2228,6 +2251,11 @@ def parse_args():
         )
     if args.explorer4_loss_weight < 0:
         parser.error("--explorer4-loss-weight must be >= 0")
+    if args.distill_alpha_weak is not None:
+        if not args.distill_logits:
+            parser.error("--distill-alpha-weak requires --distill-logits")
+        if args.distill_alpha <= 0:
+            parser.error("--distill-alpha-weak requires --distill-alpha > 0 (mask carries alpha_weak/alpha)")
     if args.consensus_backbone_weights and not args.consensus_reliability:
         parser.error("--consensus-backbone-weights requires --consensus-reliability")
     if not args.consensus_class_normalize and not args.consensus_reliability:

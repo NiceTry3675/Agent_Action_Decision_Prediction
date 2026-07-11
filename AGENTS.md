@@ -15,6 +15,8 @@ Dacon 236694: predict the next coding-agent action (14 classes) from
 `current_prompt`/`history`/`session_meta`; metric Macro-F1. The server runs
 `python script.py` offline on T4 16GB / 3 vCPU / 12GB RAM: inference ≤ 10 min, pip install
 ≤ 10 min, submission zip ≤ 1 GB.
+Competition closes 2026-07-15 (Wed) at 10:00 KST; the final day still has the
+full 10 submission slots.
 
 ## Submission contract
 
