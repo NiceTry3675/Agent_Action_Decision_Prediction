@@ -233,6 +233,7 @@ def replay_examples_for_sample(sample, pair_limit):
                 CLASS_TO_ID[label],
                 {
                     "id": f"{safe_text(sample.get('id'))}::replay_{idx}_{label}",
+                    "_is_replay": True,
                     "session_meta": sample.get("session_meta") or {},
                     "history": history[:idx],
                     "current_prompt": safe_text(user_event.get("content")),
@@ -439,7 +440,9 @@ def cache_path(args, source_path, sample_count, kind, cache_scope="train"):
     )
 
 
-def build_serialized_texts(samples, args, source_path, cache_scope="train"):
+def build_serialized_texts(
+    samples, args, source_path, cache_scope="train", tokenizer=None
+):
     path = cache_path(args, source_path, len(samples), "texts", cache_scope)
     if not args.no_text_cache and path.exists() and not args.rebuild_cache:
         payload = torch_load(path)
@@ -448,7 +451,12 @@ def build_serialized_texts(samples, args, source_path, cache_scope="train"):
             return payload["texts"], path
 
     start = time.perf_counter()
-    texts = [serialize_transformer_sample(sample, args.serializer) for sample in samples]
+    texts = [
+        serialize_transformer_sample(
+            sample, args.serializer, tokenizer=tokenizer
+        )
+        for sample in samples
+    ]
     elapsed = time.perf_counter() - start
     print(f"serialized texts={len(texts)} serializer={args.serializer} elapsed={elapsed:.2f}s")
     if not args.no_text_cache:
@@ -576,6 +584,341 @@ def build_teacher_targets(samples, args):
     return logprobs, mask
 
 
+def parse_consensus_backbone_weights(value, expected_count=None):
+    """Parse the raw c=0..N backbone-gradient scales used by the sieve."""
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+        if not parts:
+            raise ValueError("consensus backbone weights are empty")
+        try:
+            values = [float(part) for part in parts]
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid consensus backbone weights: {value!r}"
+            ) from exc
+    else:
+        values = [float(item) for item in value]
+    if expected_count is not None and len(values) != expected_count:
+        raise ValueError(
+            "consensus backbone weights length mismatch: "
+            f"expected={expected_count} actual={len(values)}"
+        )
+    if any(not math.isfinite(item) or item < 0.0 or item > 1.0 for item in values):
+        raise ValueError("consensus backbone weights must be finite values in [0, 1]")
+    if any(left > right for left, right in zip(values, values[1:])):
+        raise ValueError("consensus backbone weights must be nondecreasing")
+    return values
+
+
+def _sha256_file(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_consensus_reliability(samples, y, train_idx, args):
+    """Align and normalize an OOF-consensus reliability artifact by row id.
+
+    Original rows must have exact artifact coverage and matching labels. Replay
+    rows are intentionally outside the OOF artifact and retain scale 1.0. When
+    class normalization is enabled, raw scales are divided by their mean within
+    each true class on the current training split. This preserves the baseline
+    class-level hard-loss mass while moving its backbone gradient away from
+    rows on which all OOF teachers failed.
+    """
+    artifact_path = safe_text(getattr(args, "consensus_reliability", ""))
+    if not artifact_path:
+        return None
+    path = Path(artifact_path)
+    if not path.is_file():
+        raise ValueError(f"consensus reliability artifact is missing: {path}")
+    payload = torch_load(path)
+    if not isinstance(payload, dict):
+        raise ValueError("consensus reliability artifact must be a dict payload")
+    if int(payload.get("schema_version", -1)) != 1:
+        raise ValueError(
+            "unsupported consensus reliability schema_version: "
+            f"{payload.get('schema_version')!r}"
+        )
+    if payload.get("kind") != "oof_correct_consensus_reliability":
+        raise ValueError(f"unexpected consensus reliability kind: {payload.get('kind')!r}")
+    usage_scope = payload.get("usage_scope")
+    if usage_scope != "full_data_refit_only":
+        raise ValueError(
+            "unsupported consensus reliability usage_scope: "
+            f"{usage_scope!r}"
+        )
+    if list(payload.get("classes") or []) != ALL_CLASSES:
+        raise ValueError("consensus reliability class order does not match ALL_CLASSES")
+
+    artifact_ids = [safe_text(sample_id) for sample_id in payload.get("ids") or []]
+    if not artifact_ids:
+        raise ValueError("consensus reliability artifact has no ids")
+    if len(artifact_ids) != len(set(artifact_ids)):
+        raise ValueError("consensus reliability artifact contains duplicate ids")
+    artifact_labels = torch.as_tensor(payload.get("y_true"), dtype=torch.long).view(-1)
+    correct_counts = torch.as_tensor(payload.get("correct_counts"), dtype=torch.long).view(-1)
+    if len(artifact_ids) != len(artifact_labels) or len(artifact_ids) != len(correct_counts):
+        raise ValueError(
+            "consensus reliability row length mismatch: "
+            f"ids={len(artifact_ids)} y_true={len(artifact_labels)} "
+            f"correct_counts={len(correct_counts)}"
+        )
+    model_count = int(payload.get("model_count", -1))
+    if model_count < 1:
+        raise ValueError(f"invalid consensus model_count: {model_count}")
+    if bool(((correct_counts < 0) | (correct_counts > model_count)).any()):
+        raise ValueError(f"correct_counts must lie in [0, {model_count}]")
+    configured_weights = safe_text(getattr(args, "consensus_backbone_weights", ""))
+    weight_source = configured_weights or payload.get("backbone_weights")
+    if weight_source is None:
+        raise ValueError(
+            "consensus artifact has no backbone_weights and no CLI override was supplied"
+        )
+    raw_weight_values = parse_consensus_backbone_weights(
+        weight_source, expected_count=model_count + 1
+    )
+    raw_weight_table = torch.tensor(raw_weight_values, dtype=torch.float32)
+
+    if len(samples) != len(y):
+        raise ValueError(f"samples/y length mismatch: {len(samples)} != {len(y)}")
+    original_rows = [idx for idx, sample in enumerate(samples) if not sample.get("_is_replay", False)]
+    replay_rows = [idx for idx, sample in enumerate(samples) if sample.get("_is_replay", False)]
+    original_ids = [safe_text(samples[idx].get("id")) for idx in original_rows]
+    if len(original_ids) != len(set(original_ids)):
+        raise ValueError("current original samples contain duplicate ids")
+    artifact_id_set = set(artifact_ids)
+    original_id_set = set(original_ids)
+    if artifact_id_set != original_id_set:
+        missing = sorted(original_id_set - artifact_id_set)[:5]
+        extra = sorted(artifact_id_set - original_id_set)[:5]
+        raise ValueError(
+            "consensus reliability id coverage mismatch: "
+            f"artifact={len(artifact_ids)} original={len(original_ids)} "
+            f"missing={missing} extra={extra}"
+        )
+
+    artifact_pos = {sample_id: idx for idx, sample_id in enumerate(artifact_ids)}
+    aligned_counts = torch.full((len(samples),), -1, dtype=torch.long)
+    raw_scales = torch.ones(len(samples), dtype=torch.float32)
+    label_mismatches = []
+    for sample_idx in original_rows:
+        sample_id = safe_text(samples[sample_idx].get("id"))
+        source_idx = artifact_pos[sample_id]
+        source_label = int(artifact_labels[source_idx])
+        if source_label != int(y[sample_idx]):
+            label_mismatches.append((sample_id, source_label, int(y[sample_idx])))
+            continue
+        count = int(correct_counts[source_idx])
+        aligned_counts[sample_idx] = count
+        raw_scales[sample_idx] = raw_weight_table[count]
+    if label_mismatches:
+        raise ValueError(
+            "consensus reliability labels do not match current training labels: "
+            f"{label_mismatches[:5]}"
+        )
+
+    train_set = set(int(idx) for idx in train_idx)
+    if any(idx < 0 or idx >= len(samples) for idx in train_set):
+        raise ValueError("train_idx contains an out-of-range row")
+    heldout_original = [idx for idx in original_rows if idx not in train_set]
+    if heldout_original:
+        raise ValueError(
+            "full-data OOF consensus reliability cannot be used with held-out "
+            "validation rows: its source OOF models may have trained on those "
+            "labels. Use it only for --final-model --final-only, or build a "
+            "nested reliability artifact from the outer training split. "
+            f"heldout_original={len(heldout_original)}"
+        )
+    effective_scales = raw_scales.clone()
+    class_normalize = bool(getattr(args, "consensus_class_normalize", True))
+    class_stats = {}
+    for class_id, label in enumerate(ALL_CLASSES):
+        class_original_train = [
+            idx for idx in original_rows if idx in train_set and int(y[idx]) == class_id
+        ]
+        class_replay_train = [
+            idx for idx in replay_rows if idx in train_set and int(y[idx]) == class_id
+        ]
+        if not class_original_train and not class_replay_train:
+            continue
+        normalization_factor = 1.0
+        raw_mean = None
+        if class_original_train:
+            raw_mean = float(raw_scales[class_original_train].mean())
+            if class_normalize:
+                if raw_mean <= 0.0:
+                    raise ValueError(
+                        f"consensus raw backbone weights have zero mean for training class {label}"
+                    )
+                normalization_factor = 1.0 / raw_mean
+                class_all_original = [idx for idx in original_rows if int(y[idx]) == class_id]
+                effective_scales[class_all_original] *= normalization_factor
+        class_stats[label] = {
+            "original_train_rows": len(class_original_train),
+            "replay_train_rows": len(class_replay_train),
+            "raw_mean": raw_mean,
+            "normalization_factor": normalization_factor,
+            "effective_original_mean": (
+                float(effective_scales[class_original_train].mean())
+                if class_original_train
+                else None
+            ),
+        }
+    # Replay pseudo-targets describe older actions and cannot inherit the
+    # current row's OOF correctness. Keep their baseline backbone gradient.
+    if replay_rows:
+        effective_scales[replay_rows] = 1.0
+
+    train_original = [idx for idx in original_rows if idx in train_set]
+    train_replay = [idx for idx in replay_rows if idx in train_set]
+    count_histogram = Counter(int(aligned_counts[idx]) for idx in train_original)
+    meta = {
+        "enabled": True,
+        "artifact_path": str(path),
+        "artifact_sha256": _sha256_file(path),
+        "artifact_schema_version": 1,
+        "usage_scope": usage_scope,
+        "model_count": model_count,
+        "backbone_weights": raw_weight_values,
+        "weights_source": "cli" if configured_weights else "artifact",
+        "class_normalize": class_normalize,
+        "train_original_rows": len(train_original),
+        "train_replay_rows": len(train_replay),
+        "correct_count_histogram": {
+            str(count): int(count_histogram.get(count, 0))
+            for count in range(model_count + 1)
+        },
+        "raw_train_mean": (
+            float(raw_scales[train_original].mean()) if train_original else None
+        ),
+        "effective_train_mean": (
+            float(effective_scales[train_original].mean()) if train_original else None
+        ),
+        "class_stats": class_stats,
+        "sources": payload.get("sources") or [],
+    }
+    args.consensus_reliability_meta = meta
+    print(
+        "consensus sieve: "
+        f"artifact={path} models={model_count} original_train={len(train_original)} "
+        f"replay_train={len(train_replay)} weights={raw_weight_values} "
+        f"class_normalize={class_normalize} histogram={meta['correct_count_histogram']}"
+    )
+    return {
+        "gradient_scales": effective_scales,
+        "raw_scales": raw_scales,
+        "correct_counts": aligned_counts,
+        "meta": meta,
+    }
+
+
+def find_terminal_classifier_head(model):
+    """Find the final Linear producing the canonical 14 action logits."""
+    candidates = []
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear) and int(module.out_features) == len(ALL_CLASSES):
+            if name == "score" or name.endswith(".score"):
+                rank = 0
+            elif name == "classifier" or name.endswith(".classifier"):
+                rank = 1
+            elif name.endswith(".classifier.out_proj") or name.endswith(".out_proj"):
+                rank = 2
+            else:
+                rank = 3
+            candidates.append((rank, name, module))
+    if not candidates:
+        raise ValueError(
+            "consensus sieve could not find a terminal Linear classifier with "
+            f"out_features={len(ALL_CLASSES)}"
+        )
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    best_rank = candidates[0][0]
+    best = [item for item in candidates if item[0] == best_rank]
+    if len(best) != 1:
+        raise ValueError(
+            "consensus sieve found ambiguous terminal classifier heads: "
+            f"{[name for _, name, _ in best]}"
+        )
+    return best[0][2], best[0][1]
+
+
+def _pool_recomputed_head_logits(head_logits, reference_logits, encoded):
+    if tuple(head_logits.shape) == tuple(reference_logits.shape):
+        return head_logits
+    if (
+        head_logits.ndim == 3
+        and reference_logits.ndim == 2
+        and head_logits.shape[0] == reference_logits.shape[0]
+        and head_logits.shape[2] == reference_logits.shape[1]
+    ):
+        attention_mask = encoded.get("attention_mask")
+        if attention_mask is None or tuple(attention_mask.shape) != tuple(head_logits.shape[:2]):
+            raise ValueError(
+                "consensus sieve needs a matching attention_mask to pool token-level logits"
+            )
+        positions = torch.arange(
+            attention_mask.shape[1], device=attention_mask.device
+        ).view(1, -1)
+        positions = positions.expand_as(attention_mask)
+        sequence_end = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
+        if bool((sequence_end < 0).any()):
+            raise ValueError("consensus sieve encountered an all-padding sequence")
+        rows = torch.arange(head_logits.shape[0], device=head_logits.device)
+        return head_logits[rows, sequence_end]
+    raise ValueError(
+        "consensus sieve cannot map terminal head output to model logits: "
+        f"head={tuple(head_logits.shape)} model={tuple(reference_logits.shape)}"
+    )
+
+
+def forward_with_consensus_sieve(model, encoded, backbone_scales, classifier_head=None):
+    """Return (ordinary logits, hard-label logits with gated backbone gradient).
+
+    Numerically, the recomputed hard logits equal the ordinary model logits.
+    Autograd sees `stopgrad(h) + w * (h - stopgrad(h))` at the final classifier
+    input, so classifier parameters receive the full hard-label gradient while
+    the gradient entering the backbone is scaled per row. The ordinary logits
+    remain available for an untouched KD branch.
+    """
+    if classifier_head is None:
+        classifier_head, _ = find_terminal_classifier_head(model)
+    captured_inputs = []
+
+    def capture_head_input(_module, inputs):
+        if not inputs or not torch.is_tensor(inputs[0]):
+            raise ValueError("terminal classifier did not receive a positional tensor input")
+        captured_inputs.append(inputs[0])
+
+    handle = classifier_head.register_forward_pre_hook(capture_head_input)
+    try:
+        outputs = model(**encoded)
+    finally:
+        handle.remove()
+    if len(captured_inputs) != 1:
+        raise ValueError(
+            "terminal classifier must run exactly once in the sequence-classifier forward; "
+            f"observed={len(captured_inputs)}"
+        )
+    hidden = captured_inputs[0]
+    scales = torch.as_tensor(backbone_scales, dtype=hidden.dtype, device=hidden.device)
+    if scales.ndim != 1 or scales.shape[0] != hidden.shape[0]:
+        raise ValueError(
+            "consensus backbone scale batch mismatch: "
+            f"scales={tuple(scales.shape)} hidden={tuple(hidden.shape)}"
+        )
+    scale_shape = [hidden.shape[0]] + [1] * (hidden.ndim - 1)
+    scales = scales.view(scale_shape)
+    gated_hidden = hidden.detach() + scales * (hidden - hidden.detach())
+    hard_head_logits = classifier_head(gated_hidden)
+    hard_logits = _pool_recomputed_head_logits(
+        hard_head_logits, outputs.logits, encoded
+    )
+    return outputs.logits, hard_logits
+
+
 def load_sequence_classifier(args, tokenizer, label_kwargs):
     lora_r = int(getattr(args, "lora_r", 0) or 0)
     resume_from = getattr(args, "resume_from", "") or ""
@@ -672,13 +1015,30 @@ def load_sequence_classifier(args, tokenizer, label_kwargs):
     return model
 
 
-def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device, teacher=None):
+def train_model(
+    tokenizer,
+    encoded_features,
+    lengths,
+    y,
+    sample_weights,
+    train_idx,
+    args,
+    device,
+    teacher=None,
+    consensus=None,
+):
     label_kwargs = dict(
         num_labels=len(ALL_CLASSES),
         id2label={i: label for i, label in enumerate(ALL_CLASSES)},
         label2id={label: i for i, label in enumerate(ALL_CLASSES)},
     )
     model = load_sequence_classifier(args, tokenizer, label_kwargs).to(device)
+    consensus_classifier_head = None
+    if consensus is not None:
+        consensus_classifier_head, consensus_head_name = find_terminal_classifier_head(model)
+        consensus["meta"]["classifier_head"] = consensus_head_name
+        args.consensus_reliability_meta = consensus["meta"]
+        print(f"consensus sieve classifier head: {consensus_head_name}")
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
     weak4_ids = torch.tensor(WEAK4_CLASS_IDS, dtype=torch.long, device=device)
@@ -724,7 +1084,8 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
-    def per_row_loss(logits, labels, batch_idx):
+    def per_row_loss(logits, labels, batch_idx, hard_logits=None):
+        supervised_logits = logits if hard_logits is None else hard_logits
         if args.train_label_filter == "weak4":
             if bool(((labels < 0) | (labels >= len(WEAK4_CLASS_IDS))).any()):
                 raise ValueError(f"weak4 specialist batch has labels outside 0-3: {labels.tolist()}")
@@ -734,7 +1095,7 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             loss_weights = weights
             loss_class_ids = None
         loss_values = classification_loss_values(
-            logits,
+            supervised_logits,
             labels,
             loss_weights,
             args.label_smoothing,
@@ -748,7 +1109,7 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             if bool(explorer4_mask.any()):
                 explorer4_loss_values = torch.zeros_like(loss_values)
                 explorer4_loss_values[explorer4_mask] = F.cross_entropy(
-                    logits.float()[explorer4_mask][:, explorer4_ids],
+                    supervised_logits.float()[explorer4_mask][:, explorer4_ids],
                     explorer4_targets[explorer4_mask],
                     weight=explorer4_weights,
                     reduction="none",
@@ -796,8 +1157,20 @@ def train_model(tokenizer, encoded_features, lengths, y, sample_weights, train_i
             weights_for_samples = torch.tensor([sample_weights[i] for i in batch_idx], dtype=torch.float32, device=device)
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
             with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
-                logits = model(**encoded).logits
-                loss_values = per_row_loss(logits, labels, batch_idx)
+                if consensus is None:
+                    logits = model(**encoded).logits
+                    hard_logits = None
+                else:
+                    batch_scales = consensus["gradient_scales"][batch_idx].to(device)
+                    logits, hard_logits = forward_with_consensus_sieve(
+                        model,
+                        encoded,
+                        batch_scales,
+                        classifier_head=consensus_classifier_head,
+                    )
+                loss_values = per_row_loss(
+                    logits, labels, batch_idx, hard_logits=hard_logits
+                )
                 if args.rdrop_alpha > 0:
                     # R-Drop (arXiv:2106.14448): second dropout-perturbed pass +
                     # symmetric KL; needs --dropout > 0 or both passes are identical
@@ -991,6 +1364,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "bf16": bool(args.bf16),
         "explorer4_loss_weight": float(args.explorer4_loss_weight),
         "explorer4_loss_balance": bool(args.explorer4_loss_balance),
+        "consensus_reliability": getattr(args, "consensus_reliability_meta", None),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
         "saved_fp16": bool(args.save_fp16),
@@ -1320,7 +1694,13 @@ def run(args):
         final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
         print(f"split=final_refit train={len(final_idx)} replay_size={final_replay_size}")
         token_start = time.perf_counter()
-        final_texts, text_cache_path = build_serialized_texts(final_samples, args, train_path, cache_scope="final")
+        final_texts, text_cache_path = build_serialized_texts(
+            final_samples,
+            args,
+            train_path,
+            cache_scope="final",
+            tokenizer=tokenizer,
+        )
         final_encoded_features, final_lengths, token_cache_path = tokenize_texts(
             tokenizer,
             final_texts,
@@ -1346,6 +1726,9 @@ def run(args):
             args,
             device,
             teacher=build_teacher_targets(final_samples, args),
+            consensus=build_consensus_reliability(
+                final_samples, final_y, final_idx, args
+            ),
         )
         train_sec = time.perf_counter() - train_start
         artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
@@ -1420,6 +1803,9 @@ def run(args):
                     "rule_boosts_path": args.rule_boosts_path,
                     "explorer4_loss_weight": args.explorer4_loss_weight,
                     "explorer4_loss_balance": args.explorer4_loss_balance,
+                    "consensus_reliability": getattr(
+                        args, "consensus_reliability_meta", None
+                    ),
                 },
                 f,
                 ensure_ascii=False,
@@ -1461,7 +1847,13 @@ def run(args):
     train_cache_scope = "train"
     if args.split == "session_oof":
         train_cache_scope = f"oof-fold{args.fold_id}-of{args.n_folds}"
-    texts, text_cache_path = build_serialized_texts(samples, args, train_path, cache_scope=train_cache_scope)
+    texts, text_cache_path = build_serialized_texts(
+        samples,
+        args,
+        train_path,
+        cache_scope=train_cache_scope,
+        tokenizer=tokenizer,
+    )
     encoded_features, lengths, token_cache_path = tokenize_texts(tokenizer, texts, args, train_path, cache_scope=train_cache_scope)
     token_sec = time.perf_counter() - token_start
     avg_len = sum(lengths) / max(1, len(lengths))
@@ -1474,6 +1866,7 @@ def run(args):
     model = train_model(
         tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device,
         teacher=build_teacher_targets(samples, args),
+        consensus=build_consensus_reliability(samples, y, train_idx, args),
     )
     train_sec = time.perf_counter() - train_start
 
@@ -1573,7 +1966,13 @@ def run(args):
                 list(range(len(base_samples))),
                 args,
             )
-            final_texts, _ = build_serialized_texts(final_samples, args, train_path, cache_scope="final")
+            final_texts, _ = build_serialized_texts(
+                final_samples,
+                args,
+                train_path,
+                cache_scope="final",
+                tokenizer=tokenizer,
+            )
             final_encoded_features, final_lengths, _ = tokenize_texts(tokenizer, final_texts, args, train_path, cache_scope="final")
             print(f"final replay_size={final_replay_size}")
         final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
@@ -1587,6 +1986,12 @@ def run(args):
             args,
             device,
             teacher=build_teacher_targets(samples if args.replay_mode == "none" else final_samples, args),
+            consensus=build_consensus_reliability(
+                samples if args.replay_mode == "none" else final_samples,
+                final_y,
+                final_idx,
+                args,
+            ),
         )
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, report_metrics)
         artifact_size = dir_size_mb(args.output_dir)
@@ -1684,6 +2089,9 @@ def run(args):
                 "train_label_filter": args.train_label_filter,
                 "explorer4_loss_weight": args.explorer4_loss_weight,
                 "explorer4_loss_balance": args.explorer4_loss_balance,
+                "consensus_reliability": getattr(
+                    args, "consensus_reliability_meta", None
+                ),
             },
             f,
             ensure_ascii=False,
@@ -1702,7 +2110,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
-    parser.add_argument("--serializer", choices=["current_v1", "weak_nav_v1", "weak_nav_paths_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument("--serializer", choices=["current_v1", "chat_v1_contract", "weak_nav_v1", "weak_nav_paths_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)
@@ -1721,6 +2129,32 @@ def parse_args():
                         help="OOF teacher payload (.pt with ids + log-prob logits); rows matched by id, replay rows get no KD term")
     parser.add_argument("--distill-alpha", type=float, default=0.5)
     parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument(
+        "--consensus-reliability",
+        default="",
+        help=(
+            "OOF correctness-consensus artifact; keeps full hard-label gradient on "
+            "the classifier head while gating only the backbone gradient"
+        ),
+    )
+    parser.add_argument(
+        "--consensus-backbone-weights",
+        default="",
+        help=(
+            "optional comma-separated c=0..N backbone scales; default uses the "
+            "weights embedded in --consensus-reliability"
+        ),
+    )
+    parser.add_argument(
+        "--no-consensus-class-normalize",
+        dest="consensus_class_normalize",
+        action="store_false",
+        help=(
+            "do not normalize raw consensus scales to mean 1 inside each true "
+            "class on the training split"
+        ),
+    )
+    parser.set_defaults(consensus_class_normalize=True)
     parser.add_argument("--train-label-filter", choices=["none", "weak4"], default="none",
                         help="restrict optimizer rows to canonical Weak4 labels and train with conditional 4-way loss")
     parser.add_argument("--assert-val-ids", default="",
@@ -1794,6 +2228,22 @@ def parse_args():
         )
     if args.explorer4_loss_weight < 0:
         parser.error("--explorer4-loss-weight must be >= 0")
+    if args.consensus_backbone_weights and not args.consensus_reliability:
+        parser.error("--consensus-backbone-weights requires --consensus-reliability")
+    if not args.consensus_class_normalize and not args.consensus_reliability:
+        parser.error("--no-consensus-class-normalize requires --consensus-reliability")
+    if args.consensus_backbone_weights:
+        try:
+            parse_consensus_backbone_weights(args.consensus_backbone_weights)
+        except ValueError as exc:
+            parser.error(str(exc))
+    if args.consensus_reliability and args.rdrop_alpha > 0:
+        parser.error(
+            "--consensus-reliability does not support --rdrop-alpha; the sieve "
+            "is intentionally isolated to the hard-label branch"
+        )
+    if args.consensus_reliability and args.train_label_filter != "none":
+        parser.error("--consensus-reliability does not support --train-label-filter")
     if args.train_label_filter != "none" and args.replay_mode != "none":
         parser.error("--train-label-filter requires --replay-mode none")
     if args.train_label_filter != "none" and args.distill_logits:

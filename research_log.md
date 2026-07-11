@@ -873,3 +873,67 @@ decide whether to refit, package, and spend a Public slot.
   auxiliary target의 값싼 후속 검증용으로만 보존한다. 상세 결과:
   `experiments/artifacts/20260710_selective_mode_probe_report.json`, taxonomy:
   `experiments/artifacts/20260710_selective_mode_taxonomy.json`.
+
+### 2026-07-10 - 학생 스케일업(HCX-1.5B) KD 스크린 게이트 실패 — 레인 폐기
+
+- 가설: 0.5B 학생이 용량 병목이라 teacher 신호를 다 못 받는다 → 1.5B 학생이면
+  KD가 더 전달된다. 챔피언 스크린 레시피(`kd_hcx_m8_screen_s42`)에서 베이스만
+  `HyperCLOVAX-SEED-Text-Instruct-1.5B`로 교체, 나머지 전부 동일(M8 teacher
+  alpha0.5 T3, v1, len384, ep3, focal g2.0, replay last1, s42). Lane C G4, 71분.
+- 결과: raw 0.779971 / bias 0.784254 / **2stage 0.785769** — 앵커 0.787801 대비
+  **-0.002032**, 통과선 0.7938(+0.006)에 -0.008. 사전 등록한 애매 구간
+  (+0.003~+0.008)에도 못 들어가는 음수라 same-lane 0.5B 컨트롤 불요.
+- Per-class(2stage, vs 앵커): ask_user +0.0245, lint +0.0147, read_file +0.0096
+  vs plan_task -0.0251, grep_search -0.0198, web_search -0.0131,
+  list_directory -0.0079. 체계적 용량 이득이 아니라 클래스 간 재배치 —
+  약클래스 이득도 read_file 하나뿐.
+- 해석: 3x 파라미터로도 KD 품질이 안 오른다 = 병목은 학생 용량이 아니라
+  teacher 신호/데이터 자체. EXAONE 1.2B 품질 스크린 대안도 같은 논리로 기대값
+  하락(동급 용량대에서 용량 효과 부재 확인). 서빙 스파이크·int4 패키징 착수 안 함.
+- **Decision: 학생 스케일업 레인 전체 폐기(사전 등록 규칙대로). 1-2B 학생 밴드
+  질문은 답을 얻었고 닫힘.** metrics:
+  `experiments/artifacts/20260710_143349_gpu_transformer_session_current_v1_len384_replay-last1_kd_hcx15b_m8_screen_s42_metrics.json`.
+
+### 2026-07-11 - 생성기 FSM + 템플릿 메모리 사전검증: 구조는 실재, 승격 게이트 실패
+
+- history를 합쳐 70,000행에서 73,181 trajectory node를 복원했다(충돌 0,
+  미복원 gap 24). AU 1,099 sessions는 실제로 485개 primary scenario의 sibling
+  변형이므로, 정책표/튜닝은 `sess_au_<primary>`를 묶은 scenario hash fold로
+  전면 재검증했다.
+- 고정 KD main에 nested scenario-CV residual을 얹은 결과 coarse/A1 action
+  suffix/A2 args+result event/A3 prompt/combined Macro delta는 각각
+  `-0.000002/-0.000001/-0.000157/+0.000040/-0.000117`; 어느 arm도 2/5를 넘는
+  양수 fold가 없었다. 긴 suffix support는 k4 23.0%에서 k6 1.1%로 급락했고,
+  cross-scenario prompt memory의 Weak4 고순도 support도 사실상 없었다.
+- 허용 필드만 사용한 exact 1024d hidden kNN A4는 5/5 fold 양수였지만 Macro
+  `+0.001062`, Weak4 `+0.003717`, untouched confirm `+0.000574/+0.002010`,
+  rescue/harm `71/50=1.42`로 사전 게이트 `+0.003/+0.008/2.0`을 모두 못 넘었다.
+  14d parent-logit kNN 대조는 confirm 음수였다. A5의 tune-only directed-pair
+  효용 게이트는 사전 support/precision 조건을 통과한 pair가 없어 no-op이었다.
+- 보수성 한계: residual lookup은 scenario-disjoint지만 기존 session-split main은
+  validation 14,001행 중 AU sibling 775행을 train에서 본 surface다. 이 잠재적
+  낙관이 있는 상태에서도 게이트에 크게 못 미쳐 scenario-grouped main 재학습은
+  정당화되지 않는다.
+- **Decision: 독립 GPU 학습, refit, 패키징, Public 제출 없음.** Trajectory 복원과
+  A4 hidden retrieval은 작은 잔차 신호를 확인한 진단/통합팩 후보로만 보존한다.
+  독립 레인 재개 조건은 test에서도 관측 가능한 더 강한 scenario key 또는 clean
+  nested Macro `+0.003` 이상이다. 상세 결과:
+  `experiments/artifacts/20260711_generator_fsm_nested_fixed_s42.json`,
+  `experiments/artifacts/20260711_hidden_knn_a4_prevalidation.json`.
+
+### 2026-07-11 - Lane A consensus sieve refit / Lane C ChatML screen
+
+- Lane C `chat_v1_contract` non-KD screen: raw `0.758443`, 2-stage
+  `0.762287`, versus current_v1 anchors `0.765997/0.769796`. The registered
+  `0.775796` gate missed by `0.013509`; **reject and do not run ChatML KD**.
+- Lane A used the M7/M8/v6 OOF consensus only for the permitted full-data
+  refit (70,000 originals + 10,000 replay), with zero bias/rules. The fixed
+  validation path is fail-closed because its OOF sources overlap that holdout.
+  Consensus alignment, class-normalized mean `1.0`, fp16 finiteness, and the
+  14-way head contract passed. The int8 deployment copy (`170/219` tensors,
+  568.2 MB weights) was packaged as `submissions/kdm8_sieve_s42.zip`; 5-row
+  offline smoke passed. **Decision: Public-only candidate; no local score is
+  claimed before a Public result.** Public result: `0.7917`, improving the
+  prior team champion `0.78962` by `+0.00208` and clearing the registered
+  `0.002` noise floor. **Promote `kdm8_sieve_s42.zip` as the new team and
+  locally reproducible champion.**

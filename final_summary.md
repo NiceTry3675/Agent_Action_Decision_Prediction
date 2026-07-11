@@ -2,7 +2,26 @@
 
 ## Current Public Baseline
 
-### Team Public champion: conditional-alpha KD (`0.78962`)
+### Team and local Public champion: OOF-consensus gradient sieve (`0.7917`)
+
+- Public Macro-F1: `0.7917` (`submissions/kdm8_sieve_s42.zip`, reported
+  2026-07-11).
+- Starts from the reproducible `kd_m8_refit` recipe and changes only the
+  hard-label backbone gradient by per-row OOF agreement from M7/M8/v6:
+  correctness count `c=0/1/2/3` maps to raw scales `0/0.25/0.75/1`, normalized
+  to mean `1.0` inside each true class. The classifier head keeps the full
+  hard-label gradient, the M8 KD branch is unchanged, and replay stays at
+  scale `1.0`.
+- `+0.00208` over conditional-alpha KD `0.78962` and `+0.00257` over
+  `kd_m8_refit` `0.78913`. This clears the `0.002` measurement-noise floor,
+  so the consensus sieve is promoted as directional Public evidence as well
+  as the highest observed instance.
+- This consensus artifact is explicitly full-refit-only; using it with a
+  held-out local validation split is fail-closed because its OOF source models
+  overlap such a holdout. The exact local int8 package is 512 MB and passed
+  zip-extracted offline smoke.
+
+### Previous team Public champion: conditional-alpha KD (`0.78962`)
 
 - Public Macro-F1: `0.78962` (teammate submission, reported 2026-07-10).
 - Same HCX-0.5B student, M8 full-refit teacher, and champion recipe as
@@ -14,13 +33,16 @@
   `--distill-alpha 0.5 --distill-alpha-weak 0.7`; the weak override option is
   not yet absorbed into this repo's local parser.
 - `+0.00049` over the exact prior score `0.78913`. This is inside the `0.002`
-  measurement-noise band, but Public is the final metric and this is the
-  highest observed score, so it is promoted as the team champion.
-- Artifact status: the exact submission archive and checkpoint have not yet
-  been absorbed into this repo. Until handoff and smoke verification, the
-  directly reproducible local package remains `submissions/kd_m8_refit.zip`.
+  measurement-noise band and is now superseded by the consensus-sieve pack.
+- Artifact status: **fp16 checkpoint absorbed 2026-07-11** (teammate handoff)
+  at `experiments/incoming/models/kd_condalpha_refit/` (219 fp16 tensors,
+  HCX-0.5B seq-cls head verified; model.safetensors sha256 `552868fe...9478`);
+  available as weight-space (soup/best-of-N) material. The exact submission
+  archive and the team-side `--distill-alpha-weak` option remain team-side
+  only, which no longer blocks reproducibility because the newer
+  consensus-sieve champion is fully present locally.
 
-### Local reproducible baseline: M8 KD (`kd_m8_refit.zip`, `0.78913`)
+### Prior local baseline: M8 KD (`kd_m8_refit.zip`, `0.78913`)
 
 - Package: `submissions/kd_m8_refit.zip` (512 MB) — HCX-0.5B student, KD from
   M8 (Qwen3.5-0.8B) alone as teacher. Base training recipe is identical to
@@ -37,8 +59,8 @@
   `experiments/incoming/models/kd_m8_refit_int8/`; verified the deployed int8
   is bit-exactly derived from the fp16 checkpoint (all 219 tensors,
   int8-rowwise-v1 re-quantization match; fp16 sha256 `9e684faa...b1842`).
-  Repackaged through this repo's own `package_submission.py`, offline CPU
-  smoke passed — this pack is now the repo's directly-reproducible best.
+  Repackaged through this repo's own `package_submission.py`; offline CPU
+  smoke passed. This remains the clean pre-sieve fallback.
   `class_bias` is all zeros (final refit, never tuned) — deployed as-is; do
   not inject a bias without a separate Public validation.
 - Server inference `6:32/10:00`, essentially unchanged from the non-KD HCX
@@ -120,24 +142,35 @@ Qwen2.5-0.5B ep3 refit `0.770` -> Qwen3-0.6B ep3 refit (OOF bias/rules, not
 val-tuning) `0.780` -> Qwen3-0.6B **distilled** from an OOF-diversity teacher
 blend `0.782` -> HCX-0.5B refit, same champion recipe, base-model swap only
 `0.7852` -> **HCX-0.5B distilled from the M8 full-refit teacher**
-`0.78913` (local reproducible baseline, `kd_m8_refit.zip`) -> **conditional-
-alpha KD `0.78962`** (team Public champion; artifact handoff pending). The
+`0.78913` (`kd_m8_refit.zip`) -> conditional-alpha KD `0.78962` (artifact
+handoff pending) -> **OOF-consensus gradient sieve `0.7917`** (current team
+and locally reproducible Public champion). The
 non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 (`submissions/hcx05b_refit.zip`,
 `submissions/m7_qwen3_refit.zip`, `submissions/kd_m8blend_qwen3_refit.zip`).
 
 ## Model Configuration
 
-### Team Public champion: conditional-alpha HCX-0.5B KD (`0.78962`)
+### Team and local Public champion: consensus-sieved HCX-0.5B KD (`0.7917`)
+
+- Package: `submissions/kdm8_sieve_s42.zip` (512 MB), fp16 source at
+  `experiments/incoming/models/kd_m8_consensus_sieve_refit/`, int8 deployment
+  copy at `experiments/incoming/models/kd_m8_consensus_sieve_refit_int8/`.
+- Same HCX-0.5B/M8-KD `current_v1`, len384, ep3 recipe as `kd_m8_refit`; only
+  the hard-label backbone gradient is consensus-scaled. Head gradient, KD
+  logits/loss, replay behavior, zero bias, and no-rules inference path remain
+  unchanged.
+
+### Previous team Public champion: conditional-alpha HCX-0.5B KD (`0.78962`)
 
 - Same configuration as `kd_m8_refit` below, with one training-only override:
   teacher-matched original Weak4 rows use KD alpha `0.7`; other matched
   original rows use `0.5`; replay/unmatched rows remain KD-masked; temperature
   remains `3.0`.
 - Exact package/checkpoint handoff is pending, so this score is recorded as the
-  team Public champion but is not yet locally package-reproducible.
+  previous team Public champion but is not locally package-reproducible.
 
-### Local reproducible baseline: HCX-0.5B KD refit (`kd_m8_refit.zip`, `0.78913`)
+### Prior local baseline: HCX-0.5B KD refit (`kd_m8_refit.zip`, `0.78913`)
 
 - Identical to the `hcx05b_refit` configuration below (base model, serializer,
   length, epochs, regularization, replay) — the only change is the added KD
@@ -212,8 +245,9 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 | Qwen3-0.6B ep3 len416 FULL-DATA refit, KD from OOF-blend teacher (M7+M8+v6) + 3-fold OOF bias/rules | n/a (refit) | `0.782848` | `0.783540` -> `0.786984` w/ rules | `0.782` | Superseded by HCX-0.5B below; kept as fallback pack. Rules-layer transfer was negative this round (OOF rules->Public: -0.005 vs M7's +0.013) — see `leaderboard_calibration.md`. |
 | HyperCLOVAX-SEED-0.5B (HCX-0.5B), champion recipe unchanged, base-model swap only, len384 | fixed 2stage `0.769796` | n/a | n/a | `0.7852` | Superseded by `kd_m8_refit` below; kept as the non-KD fallback pack (`hcx05b_refit.zip`). |
 | HCX-0.5B + KD from OOF-blend teacher (M7+M8+v6), matched seed42 | fixed screen raw `0.7820` (mildly optimistic, see KD-fold-leak finding above) | n/a | n/a | `0.7827` | **Rejected**: -0.0025 vs non-KD HCX at the same seed, a clean matched-pair result. Do not repeat KD+rules on a same-fold-split teacher without the rule above. |
-| `kd_m8_refit` (was `kd_hcx_m8`): HCX-0.5B + KD from M8 (Qwen3.5-0.8B) alone as teacher (`m8_qwen35_refit_train70k_fp16.pt`, full-refit not OOF), base recipe = `hcx05b_refit_s42`, alpha=0.5 temp=3, no rules layer | n/a (refit; matched-recipe seed42 fixed screen raw `0.783852` / 2stage `0.787801` — mildly optimistic, full-refit teacher saw val rows) | n/a | n/a | `0.78913` | Previous team champion and current local reproducible baseline, absorbed 2026-07-07 and repackaged as `submissions/kd_m8_refit.zip`. +0.0039 vs non-KD HCX-0.5B. |
-| `condalpha-KD`: `kd_m8_refit` recipe, with KD alpha raised `0.5 -> 0.7` only on teacher-matched original Weak4 rows; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` | n/a (teammate submission; artifact handoff pending) | n/a | n/a | `0.78962` | **Current team Public champion.** +0.00049 vs `kd_m8_refit`; inside the 0.002 noise band, but highest observed Public. |
+| `kd_m8_refit` (was `kd_hcx_m8`): HCX-0.5B + KD from M8 (Qwen3.5-0.8B) alone as teacher (`m8_qwen35_refit_train70k_fp16.pt`, full-refit not OOF), base recipe = `hcx05b_refit_s42`, alpha=0.5 temp=3, no rules layer | n/a (refit; matched-recipe seed42 fixed screen raw `0.783852` / 2stage `0.787801` — mildly optimistic, full-refit teacher saw val rows) | n/a | n/a | `0.78913` | Prior team/local baseline, absorbed 2026-07-07 and repackaged as `submissions/kd_m8_refit.zip`. +0.0039 vs non-KD HCX-0.5B. |
+| `condalpha-KD`: `kd_m8_refit` recipe, with KD alpha raised `0.5 -> 0.7` only on teacher-matched original Weak4 rows; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` | n/a (teammate submission; fp16 checkpoint absorbed 2026-07-11 at `experiments/incoming/models/kd_condalpha_refit/`) | n/a | n/a | `0.78962` | Previous team Public champion; +0.00049 vs `kd_m8_refit`, inside the 0.002 noise band. |
+| `kdm8_sieve_s42`: `kd_m8_refit` recipe + M7/M8/v6 OOF-correctness gradient sieve on the hard-label backbone branch only; full hard-label head, unchanged M8 KD, class-normalized scales, replay unsieved, zero bias/rules | n/a (full-refit-only by construction) | n/a | n/a | `0.7917` | **Current team and local Public champion.** +0.00208 vs `condalpha-KD`, clearing the 0.002 noise floor; exact package locally smoke-tested. |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local
@@ -221,10 +255,11 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Package And Smoke
 
-- Team champion artifact (`condalpha-KD`, `0.78962`): exact archive/checkpoint
-  handoff and local smoke verification pending.
-- `kd_m8_refit.zip` (current local reproducible baseline, `0.78913`): 512 MB
-- `model/`: int8 encoder-only, 512 MB weights (HCX-0.5B, KD-trained)
+- Current champion: `kdm8_sieve_s42.zip` (`0.7917`), int8 encoder-only,
+  512 MB; zip-extracted offline smoke passed.
+- Previous local baseline: `kd_m8_refit.zip` (`0.78913`), 512 MB.
+- Conditional-alpha artifact (`0.78962`): exact archive/checkpoint handoff
+  remains pending.
 - Fallbacks: `hcx05b_refit.zip` (512 MB, `0.7852`),
   `kd_m8blend_qwen3_refit.zip` (515 MB, `0.782`), `m7_qwen3_refit.zip`
   (539 MB, `0.780`)

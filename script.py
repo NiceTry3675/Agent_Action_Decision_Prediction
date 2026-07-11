@@ -186,6 +186,60 @@ def serialize_transformer_sample_current(sample):
     return "\n".join(serialize_transformer_sample_current_parts(sample))
 
 
+CHAT_V1_CONTRACT_TOOL_LIST = " ".join(ALL_CLASSES)
+
+
+def chat_v1_contract_messages(sample):
+    """Build the HCX ChatML roles without dropping any current_v1 fields.
+
+    The current request occupies the final user block, while all remaining
+    current_v1 lines stay byte-identical inside the system block.  Keeping the
+    message construction separate from rendering makes the contract directly
+    testable and lets callers use the checkpoint's own chat template.
+    """
+    parts = serialize_transformer_sample_current_parts(sample)
+    return [
+        {"role": "tool_list", "content": CHAT_V1_CONTRACT_TOOL_LIST},
+        {"role": "system", "content": "\n".join(parts[1:])},
+        {"role": "user", "content": safe_text(sample.get("current_prompt", ""))},
+    ]
+
+
+def render_chatml_generation_prompt(messages):
+    """Render the simple HCX ChatML contract when no tokenizer is available."""
+    blocks = [
+        f"<|im_start|>{message['role']}\n{safe_text(message.get('content'))}<|im_end|>\n"
+        for message in messages
+    ]
+    blocks.append("<|im_start|>assistant\n")
+    return "".join(blocks)
+
+
+def serialize_transformer_sample_chat_v1_contract(sample, tokenizer=None):
+    """Render current_v1 through the instruction checkpoint's chat contract.
+
+    A loaded tokenizer is authoritative because a checkpoint may revise its
+    template.  The deterministic fallback matches the HCX text-instruct
+    template and supports cache/audit code that serializes before loading a
+    tokenizer.
+    """
+    messages = chat_v1_contract_messages(sample)
+    apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
+    if callable(apply_chat_template) and getattr(tokenizer, "chat_template", None):
+        rendered = apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+        if not isinstance(rendered, str):
+            raise TypeError(
+                "chat_v1_contract tokenizer.apply_chat_template must return text; "
+                f"got {type(rendered).__name__}"
+            )
+        return rendered
+    return render_chatml_generation_prompt(messages)
+
+
 TURN_BIN_EDGES = (1, 2, 4, 6)
 TURN_BIN_NAMES = ("start", "early", "mid", "late", "long")
 
@@ -1775,9 +1829,11 @@ def serialize_transformer_sample_recent_pairs(sample, pair_count=3):
     return "\n".join(parts)
 
 
-def serialize_transformer_sample(sample, serializer_name="current_v1"):
+def serialize_transformer_sample(sample, serializer_name="current_v1", tokenizer=None):
     if serializer_name in ("current", "current_v1"):
         return serialize_transformer_sample_current(sample)
+    if serializer_name == "chat_v1_contract":
+        return serialize_transformer_sample_chat_v1_contract(sample, tokenizer=tokenizer)
     if serializer_name == "weak_nav_v1":
         return serialize_transformer_sample_weak_nav_v1(sample)
     if serializer_name == "weak_nav_paths_v1":
@@ -2894,7 +2950,10 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         raise AssertionError("weak4 specialist must not have prediction overrides")
 
     serializer_name = meta.get("serializer_name", "current_v1")
-    texts = [serialize_transformer_sample(sample, serializer_name) for sample in samples]
+    texts = [
+        serialize_transformer_sample(sample, serializer_name, tokenizer=tokenizer)
+        for sample in samples
+    ]
     class_bias = torch.tensor(meta.get("class_bias", [0.0] * len(meta["classes"])), dtype=torch.float32, device=device)
     rule_boosts = meta.get("rule_boosts") or []
     sparse_ensemble = load_sparse_ensemble(model_dir, meta["classes"])
