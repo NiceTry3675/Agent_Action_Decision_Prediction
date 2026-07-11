@@ -941,7 +941,7 @@ decide whether to refit, package, and spend a Public slot.
 ### 2026-07-11 - T2 반사실 미래잔차 레인 착수: Stage F0 donor 감사 GO
 
 - 레인 배분(사용자 지시): 시브 × condalpha 스택은 팀원, 이 레포는
-  `handoff_20260710_final_two_theories.md` §3 T2(반사실 미래 궤적 특권잔차
+  `archive/handoff_20260710_final_two_theories.md` §3 T2(반사실 미래 궤적 특권잔차
   증류). 핸드오프에 07-11 상태 애드덤 추가(시브 챔피언 0.7917 반영, frozen
   감사 parent는 leak-free `kd_hcx_m8_screen`, 배포 parent는 시브 챔피언).
 - F0 (`audit_future_donors.py`): next-user 복원은 직접 step+1 행 +
@@ -1044,3 +1044,20 @@ decide whether to refit, package, and spend a Public slot.
   으므로 기대 제한적), ② 시브 강도 격자(c-weights) × 현 α_weak 고정,
   ③ 팀원 레인(교사축·시드 리롤)에 조합 레시피 전파 — 이제 모든 신규 리핏의
   베이스 레시피는 sieve×condalpha가 기준.
+
+### 2026-07-11 - 시브 병렬 2레인 사전 등록·준비 완료, 별도 에이전트로 인계
+
+- 레인 A(브랜치 축): c=0 KD backbone 감쇠 — `--consensus-kd-weights
+  0,0.25,0.75,1` 구현(미설정 시 비트 동일, `tests/test_consensus_kd_sieve.py`
+  4개 + 회귀 통과). 근거: M8 teacher가 학습행을 암기해 c=0의 KD 타깃 ≈ 노이즈
+  라벨 원핫 — 시브가 hard에서 막은 독이 KD로 흐름.
+- 레인 B(행 축): soft/source-aware 재배정 payload
+  (`20260711_sieve_v2_soft_reassign.pt`) — r=pM7+2·pM8+pv6+pXbase+pXlarge
+  (Xlarge=xlmr_large192; 팀 진단 AUC 0.9747 정확 재현), 클래스별 티어
+  히스토그램 비트 동일 유지, 9,315행(13.3%) 재배정, train 코드 변경 0.
+  소스 패턴별 학생 정확도 검증: 같은 c=1에서 M8-only 0.682 vs M7-only 0.336.
+  공식·가중은 고정(사전 등록) — fixed-val AUC 기반 추가 격자 금지.
+- 두 레인 모두 챔피언 `kd_sieve_ca_s42`(0.7938) 대비 매칭 seed42 단일 변수,
+  full-refit-only Public 단발 판정. 정확한 launch 커맨드·프로토콜·이후 카드
+  분기는 `handoff_20260711_parallel_sieve_lanes.md`. **실행은 별도 에이전트
+  인계.**

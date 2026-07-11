@@ -751,45 +751,71 @@ def build_consensus_reliability(samples, y, train_idx, args):
             "nested reliability artifact from the outer training split. "
             f"heldout_original={len(heldout_original)}"
         )
-    effective_scales = raw_scales.clone()
     class_normalize = bool(getattr(args, "consensus_class_normalize", True))
-    class_stats = {}
+    class_rows = {}
     for class_id, label in enumerate(ALL_CLASSES):
-        class_original_train = [
-            idx for idx in original_rows if idx in train_set and int(y[idx]) == class_id
-        ]
-        class_replay_train = [
-            idx for idx in replay_rows if idx in train_set and int(y[idx]) == class_id
-        ]
-        if not class_original_train and not class_replay_train:
-            continue
-        normalization_factor = 1.0
-        raw_mean = None
-        if class_original_train:
-            raw_mean = float(raw_scales[class_original_train].mean())
-            if class_normalize:
-                if raw_mean <= 0.0:
-                    raise ValueError(
-                        f"consensus raw backbone weights have zero mean for training class {label}"
-                    )
-                normalization_factor = 1.0 / raw_mean
-                class_all_original = [idx for idx in original_rows if int(y[idx]) == class_id]
-                effective_scales[class_all_original] *= normalization_factor
-        class_stats[label] = {
-            "original_train_rows": len(class_original_train),
-            "replay_train_rows": len(class_replay_train),
-            "raw_mean": raw_mean,
-            "normalization_factor": normalization_factor,
-            "effective_original_mean": (
-                float(effective_scales[class_original_train].mean())
-                if class_original_train
-                else None
-            ),
-        }
-    # Replay pseudo-targets describe older actions and cannot inherit the
-    # current row's OOF correctness. Keep their baseline backbone gradient.
-    if replay_rows:
-        effective_scales[replay_rows] = 1.0
+        class_rows[label] = (
+            [idx for idx in original_rows if idx in train_set and int(y[idx]) == class_id],
+            [idx for idx in replay_rows if idx in train_set and int(y[idx]) == class_id],
+            [idx for idx in original_rows if int(y[idx]) == class_id],
+        )
+
+    def normalize_scales(raw, branch):
+        effective = raw.clone()
+        stats = {}
+        for label, (
+            class_original_train,
+            class_replay_train,
+            class_all_original,
+        ) in class_rows.items():
+            if not class_original_train and not class_replay_train:
+                continue
+            normalization_factor = 1.0
+            raw_mean = None
+            if class_original_train:
+                raw_mean = float(raw[class_original_train].mean())
+                if class_normalize:
+                    if raw_mean <= 0.0:
+                        raise ValueError(
+                            f"consensus raw {branch} weights have zero mean "
+                            f"for training class {label}"
+                        )
+                    normalization_factor = 1.0 / raw_mean
+                    effective[class_all_original] *= normalization_factor
+            stats[label] = {
+                "original_train_rows": len(class_original_train),
+                "replay_train_rows": len(class_replay_train),
+                "raw_mean": raw_mean,
+                "normalization_factor": normalization_factor,
+                "effective_original_mean": (
+                    float(effective[class_original_train].mean())
+                    if class_original_train
+                    else None
+                ),
+            }
+        # Replay pseudo-targets describe older actions and cannot inherit the
+        # current row's OOF correctness. Keep their baseline gradient (the KD
+        # branch additionally masks them out entirely via the teacher mask).
+        if replay_rows:
+            effective[replay_rows] = 1.0
+        return effective, stats
+
+    effective_scales, class_stats = normalize_scales(raw_scales, "backbone")
+
+    kd_config = safe_text(getattr(args, "consensus_kd_weights", ""))
+    kd_raw_scales = None
+    kd_effective_scales = None
+    kd_class_stats = None
+    kd_weight_values = None
+    if kd_config:
+        kd_weight_values = parse_consensus_backbone_weights(
+            kd_config, expected_count=model_count + 1
+        )
+        kd_weight_table = torch.tensor(kd_weight_values, dtype=torch.float32)
+        kd_raw_scales = torch.ones(len(samples), dtype=torch.float32)
+        for sample_idx in original_rows:
+            kd_raw_scales[sample_idx] = kd_weight_table[int(aligned_counts[sample_idx])]
+        kd_effective_scales, kd_class_stats = normalize_scales(kd_raw_scales, "kd")
 
     train_original = [idx for idx in original_rows if idx in train_set]
     train_replay = [idx for idx in replay_rows if idx in train_set]
@@ -817,6 +843,18 @@ def build_consensus_reliability(samples, y, train_idx, args):
             float(effective_scales[train_original].mean()) if train_original else None
         ),
         "class_stats": class_stats,
+        "kd_weights": kd_weight_values,
+        "kd_raw_train_mean": (
+            float(kd_raw_scales[train_original].mean())
+            if kd_raw_scales is not None and train_original
+            else None
+        ),
+        "kd_effective_train_mean": (
+            float(kd_effective_scales[train_original].mean())
+            if kd_effective_scales is not None and train_original
+            else None
+        ),
+        "kd_class_stats": kd_class_stats,
         "sources": payload.get("sources") or [],
     }
     args.consensus_reliability_meta = meta
@@ -824,11 +862,14 @@ def build_consensus_reliability(samples, y, train_idx, args):
         "consensus sieve: "
         f"artifact={path} models={model_count} original_train={len(train_original)} "
         f"replay_train={len(train_replay)} weights={raw_weight_values} "
+        f"kd_weights={kd_weight_values} "
         f"class_normalize={class_normalize} histogram={meta['correct_count_histogram']}"
     )
     return {
         "gradient_scales": effective_scales,
         "raw_scales": raw_scales,
+        "kd_gradient_scales": kd_effective_scales,
+        "kd_raw_scales": kd_raw_scales,
         "correct_counts": aligned_counts,
         "meta": meta,
     }
@@ -893,7 +934,9 @@ def _pool_recomputed_head_logits(head_logits, reference_logits, encoded):
     )
 
 
-def forward_with_consensus_sieve(model, encoded, backbone_scales, classifier_head=None):
+def forward_with_consensus_sieve(
+    model, encoded, backbone_scales, classifier_head=None, kd_backbone_scales=None
+):
     """Return (ordinary logits, hard-label logits with gated backbone gradient).
 
     Numerically, the recomputed hard logits equal the ordinary model logits.
@@ -901,6 +944,10 @@ def forward_with_consensus_sieve(model, encoded, backbone_scales, classifier_hea
     input, so classifier parameters receive the full hard-label gradient while
     the gradient entering the backbone is scaled per row. The ordinary logits
     remain available for an untouched KD branch.
+
+    With ``kd_backbone_scales`` the same gate is applied a second time for the
+    KD branch (KD head gradient stays full, KD backbone gradient is scaled per
+    row) and a third element is returned: (ordinary, hard, kd).
     """
     if classifier_head is None:
         classifier_head, _ = find_terminal_classifier_head(model)
@@ -922,20 +969,26 @@ def forward_with_consensus_sieve(model, encoded, backbone_scales, classifier_hea
             f"observed={len(captured_inputs)}"
         )
     hidden = captured_inputs[0]
-    scales = torch.as_tensor(backbone_scales, dtype=hidden.dtype, device=hidden.device)
-    if scales.ndim != 1 or scales.shape[0] != hidden.shape[0]:
-        raise ValueError(
-            "consensus backbone scale batch mismatch: "
-            f"scales={tuple(scales.shape)} hidden={tuple(hidden.shape)}"
+
+    def gated_logits(row_scales, branch):
+        scales = torch.as_tensor(row_scales, dtype=hidden.dtype, device=hidden.device)
+        if scales.ndim != 1 or scales.shape[0] != hidden.shape[0]:
+            raise ValueError(
+                f"consensus {branch} scale batch mismatch: "
+                f"scales={tuple(scales.shape)} hidden={tuple(hidden.shape)}"
+            )
+        scale_shape = [hidden.shape[0]] + [1] * (hidden.ndim - 1)
+        scales = scales.view(scale_shape)
+        gated_hidden = hidden.detach() + scales * (hidden - hidden.detach())
+        return _pool_recomputed_head_logits(
+            classifier_head(gated_hidden), outputs.logits, encoded
         )
-    scale_shape = [hidden.shape[0]] + [1] * (hidden.ndim - 1)
-    scales = scales.view(scale_shape)
-    gated_hidden = hidden.detach() + scales * (hidden - hidden.detach())
-    hard_head_logits = classifier_head(gated_hidden)
-    hard_logits = _pool_recomputed_head_logits(
-        hard_head_logits, outputs.logits, encoded
-    )
-    return outputs.logits, hard_logits
+
+    hard_logits = gated_logits(backbone_scales, "backbone")
+    if kd_backbone_scales is None:
+        return outputs.logits, hard_logits
+    kd_logits = gated_logits(kd_backbone_scales, "kd-backbone")
+    return outputs.logits, hard_logits, kd_logits
 
 
 def load_sequence_classifier(args, tokenizer, label_kwargs):
@@ -1103,7 +1156,7 @@ def train_model(
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
-    def per_row_loss(logits, labels, batch_idx, hard_logits=None):
+    def per_row_loss(logits, labels, batch_idx, hard_logits=None, kd_logits=None):
         supervised_logits = logits if hard_logits is None else hard_logits
         if args.train_label_filter == "weak4":
             if bool(((labels < 0) | (labels >= len(WEAK4_CLASS_IDS))).any()):
@@ -1137,7 +1190,10 @@ def train_model(
         if teacher is not None:
             temp = args.distill_temp
             teacher_p = F.softmax(teacher[0][batch_idx].to(device) / temp, dim=-1)
-            student_lp = F.log_softmax(logits.float() / temp, dim=-1)
+            # KD student logits: the kd-gated recompute when the KD-branch
+            # sieve is active (numerically identical, backbone gradient scaled)
+            kd_student_logits = logits if kd_logits is None else kd_logits
+            student_lp = F.log_softmax(kd_student_logits.float() / temp, dim=-1)
             kd = F.kl_div(student_lp, teacher_p, reduction="none").sum(-1) * (temp * temp)
             # per-row alpha: replay/unmatched rows (mask 0) keep the pure hard-label loss
             alpha = args.distill_alpha * teacher[1][batch_idx].to(device)
@@ -1179,7 +1235,8 @@ def train_model(
                 if consensus is None:
                     logits = model(**encoded).logits
                     hard_logits = None
-                else:
+                    kd_logits = None
+                elif consensus["kd_gradient_scales"] is None:
                     batch_scales = consensus["gradient_scales"][batch_idx].to(device)
                     logits, hard_logits = forward_with_consensus_sieve(
                         model,
@@ -1187,8 +1244,19 @@ def train_model(
                         batch_scales,
                         classifier_head=consensus_classifier_head,
                     )
+                    kd_logits = None
+                else:
+                    batch_scales = consensus["gradient_scales"][batch_idx].to(device)
+                    kd_batch_scales = consensus["kd_gradient_scales"][batch_idx].to(device)
+                    logits, hard_logits, kd_logits = forward_with_consensus_sieve(
+                        model,
+                        encoded,
+                        batch_scales,
+                        classifier_head=consensus_classifier_head,
+                        kd_backbone_scales=kd_batch_scales,
+                    )
                 loss_values = per_row_loss(
-                    logits, labels, batch_idx, hard_logits=hard_logits
+                    logits, labels, batch_idx, hard_logits=hard_logits, kd_logits=kd_logits
                 )
                 if args.rdrop_alpha > 0:
                     # R-Drop (arXiv:2106.14448): second dropout-perturbed pass +
@@ -2178,6 +2246,17 @@ def parse_args():
         ),
     )
     parser.set_defaults(consensus_class_normalize=True)
+    parser.add_argument(
+        "--consensus-kd-weights",
+        default=None,
+        help=(
+            "apply the consensus sieve to the KD branch too: per-c-bin KD "
+            "backbone-gradient scales (e.g. '0,0.25,0.75,1'), class-normalized "
+            "like the hard-branch weights; KD head gradient stays full. "
+            "Requires --consensus-reliability and --distill-logits. Unset "
+            "keeps the KD branch untouched (bit-identical to prior behavior)"
+        ),
+    )
     parser.add_argument("--train-label-filter", choices=["none", "weak4"], default="none",
                         help="restrict optimizer rows to canonical Weak4 labels and train with conditional 4-way loss")
     parser.add_argument("--assert-val-ids", default="",
@@ -2263,6 +2342,15 @@ def parse_args():
     if args.consensus_backbone_weights:
         try:
             parse_consensus_backbone_weights(args.consensus_backbone_weights)
+        except ValueError as exc:
+            parser.error(str(exc))
+    if args.consensus_kd_weights:
+        if not args.consensus_reliability:
+            parser.error("--consensus-kd-weights requires --consensus-reliability")
+        if not args.distill_logits:
+            parser.error("--consensus-kd-weights requires --distill-logits")
+        try:
+            parse_consensus_backbone_weights(args.consensus_kd_weights)
         except ValueError as exc:
             parser.error(str(exc))
     if args.consensus_reliability and args.rdrop_alpha > 0:
