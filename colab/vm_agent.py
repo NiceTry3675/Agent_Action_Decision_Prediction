@@ -19,6 +19,9 @@ Env knobs (set before starting the daemon):
     AADP_CMD_MAX_AGE_MIN  queued commands older than this expire unexecuted, default 30
     AADP_EXCHANGE_DIR     Drive exchange folder name, default AADP_exchange
                           (one folder per concurrent runtime = one lane)
+    AADP_CLI_MODE         "1" when started by aadp_colab.py. In this mode the
+                          daemon never pretends it can unassign the VM; the local
+                          wrapper owns release via `colab stop`.
 """
 
 import argparse
@@ -85,6 +88,12 @@ def log_tail(run, lines=5):
 
 
 def launch(script, args):
+    previous, alive = training_status()
+    if alive:
+        raise RuntimeError(
+            f"refusing concurrent launch: pid {previous['pid']} is still alive "
+            f"({Path(previous['log']).name})"
+        )
     logs = WORK / "logs"
     logs.mkdir(exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
@@ -158,6 +167,15 @@ def collect(extra_paths):
 UNASSIGN_EXIT = 86
 
 
+def cli_mode():
+    return os.environ.get("AADP_CLI_MODE", "0") == "1"
+
+
+def release_exit_code():
+    """Preserve the notebook cell's rc=86 contract; CLI release is local-only."""
+    return 0 if cli_mode() else UNASSIGN_EXIT
+
+
 def spec_age_min(spec):
     """Age of a queued command in minutes, from the utc stamp in its id; None if unparseable."""
     try:
@@ -170,7 +188,10 @@ def spec_age_min(spec):
 def run_command(spec):
     started = time.time()
     cmd = spec.get("cmd", "")
-    if cmd in ("@unassign", "@stop"):
+    if cmd == "@unassign" and cli_mode():
+        rc = 126
+        output = "disabled in CLI mode; run locally: python colab/aadp_colab.py down <lane>"
+    elif cmd in ("@unassign", "@stop"):
         rc, output = 0, f"builtin {cmd} acknowledged"
     else:
         try:
@@ -196,8 +217,10 @@ def daemon():
     last_activity = started
     collected_for = None  # log path of the run already auto-collected
     collect_note = ""
+    mode = "cli" if cli_mode() else "notebook"
+    cli_idle_warned = False
     print(f"daemon up: poll={poll_s}s idle_max={idle_max_min}min "
-          f"cmd_max_age={cmd_max_age_min}min auto_collect={auto_collect}", flush=True)
+          f"cmd_max_age={cmd_max_age_min}min auto_collect={auto_collect} mode={mode}", flush=True)
 
     while True:
         stop = False
@@ -217,6 +240,7 @@ def daemon():
             except OSError:
                 continue  # could not claim it; retry next loop
             last_activity = time.time()
+            cli_idle_warned = False
             age_min = spec_age_min(spec)
             if age_min is not None and age_min > cmd_max_age_min:
                 # a command queued at a dead daemon must not fire on (re)start --
@@ -227,7 +251,7 @@ def daemon():
                           "finished_utc": time.strftime("%Y%m%d_%H%M%S", time.gmtime())}
             else:
                 result = run_command(spec)
-                if spec.get("cmd") == "@unassign":
+                if spec.get("cmd") == "@unassign" and not cli_mode():
                     result["output"] = "unassign scheduled: daemon exiting; [agent] cell releases the runtime"
                     release = True
                 if spec.get("cmd") == "@stop":
@@ -239,7 +263,7 @@ def daemon():
             print(f"cmd {spec['id']} rc={result['rc']}: {spec.get('cmd', '')[:120]}", flush=True)
         if release:
             print("daemon exiting for kernel-side unassign", flush=True)
-            return UNASSIGN_EXIT
+            return release_exit_code()
         if stop:
             print("daemon stopping on @stop", flush=True)
             return 0
@@ -247,39 +271,53 @@ def daemon():
         run, alive = training_status()
         if alive:
             last_activity = time.time()
+            cli_idle_warned = False
         elif auto_collect and run is not None and collected_for != run["log"] and STATE_PATH.exists():
             try:
                 collect_note = "collected:" + collect([])
             except RuntimeError as exc:
                 collect_note = f"collect_skipped: {exc}"
+                collected_for = run["log"]
             except Exception as exc:
                 collect_note = f"collect_error: {exc!r}"
-            collected_for = run["log"]
+            else:
+                collected_for = run["log"]
             print(collect_note, flush=True)
 
         idle_min = (time.time() - last_activity) / 60
+        safe_to_release = run is None or (not alive and collected_for == run["log"])
+        cli_idle_expired = cli_mode() and idle_min > idle_max_min and safe_to_release
         hb = {"ts": time.time(), "utc": time.strftime("%Y%m%d_%H%M%S", time.gmtime()),
               "daemon_pid": os.getpid(), "uptime_min": round((time.time() - started) / 60, 1),
               "gpu": gpu_line(), "idle_min": round(idle_min, 1),
               "idle_max_min": idle_max_min, "collect_note": collect_note,
+              "control_mode": mode, "exchange": EXCHANGE.name,
+              "release_safe": safe_to_release, "release_required": cli_idle_expired,
               "run": None if run is None else {
                   "pid": run["pid"], "state": proc_state(run["pid"]), "alive": alive,
                   "log": Path(run["log"]).name, "args": run.get("args", ""),
                   "tail": log_tail(run, 5)}}
+        if cli_idle_expired:
+            hb["status"] = "idle_expired_cli_stop_required"
         try:
             atomic_write(CMD / "heartbeat.json", json.dumps(hb, indent=2))
         except OSError as exc:  # Drive hiccup; keep looping
             print("heartbeat write failed:", exc, flush=True)
 
-        safe_to_release = run is None or (not alive and collected_for == run["log"])
         if idle_min > idle_max_min and safe_to_release:
+            if cli_mode():
+                if not cli_idle_warned:
+                    print("idle limit reached; CLI mode requires local aadp_colab.py down", flush=True)
+                    cli_idle_warned = True
+                time.sleep(poll_s)
+                continue
             hb["status"] = "idle limit reached, unassigning"
             try:
                 atomic_write(CMD / "heartbeat.json", json.dumps(hb, indent=2))
             except OSError:
                 pass
             print("idle limit reached; daemon exiting for kernel-side unassign", flush=True)
-            return UNASSIGN_EXIT
+            return release_exit_code()
 
         time.sleep(poll_s)
 

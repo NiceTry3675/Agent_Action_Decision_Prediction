@@ -43,9 +43,9 @@ def read_hb(retries=0):
             time.sleep(20)
 
 
-def wait_collect(floor, deadline, stale_note=""):
+def wait_collect(floor, deadline, poll_seconds, stale_note=""):
     while time.time() < deadline:
-        time.sleep(240)
+        time.sleep(poll_seconds)
         try:
             hb = read_hb()
         except Exception as exc:
@@ -86,7 +86,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--plan", required=True, help="JSON file: [{script, args}, ...]")
     parser.add_argument("--max-minutes", type=int, default=420)
+    parser.add_argument("--poll-seconds", type=int, default=60,
+                        help="heartbeat polling interval between chained runs (default: 60)")
     args = parser.parse_args()
+    if args.poll_seconds < 10:
+        parser.error("--poll-seconds must be at least 10")
     plan = json.loads(Path(args.plan).read_text())
     deadline = time.time() + args.max_minutes * 60
 
@@ -96,9 +100,9 @@ def main():
     match = re.match(r"run_(\d{8}_\d{6})\.log$", run.get("log") or "")
     if run.get("alive") and match:
         print(f"waiting on live run {run['log']}", flush=True)
-        wait_collect(match.group(1), deadline, stale_note)
+        wait_collect(match.group(1), deadline, args.poll_seconds, stale_note)
     for index, spec in enumerate(plan):
-        wait_collect(launch(spec, index), deadline, stale_note)
+        wait_collect(launch(spec, index), deadline, args.poll_seconds, stale_note)
     print("ALL RUNS COLLECTED", flush=True)
 
 

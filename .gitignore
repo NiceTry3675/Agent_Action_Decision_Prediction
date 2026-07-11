@@ -27,4 +27,5 @@ checkpoints/
 *.joblib
 *.pkl
 .claude/settings.local.json
+.colab/
 !experiments/20260710_m7_m8_v6_oof_consensus.pt

@@ -54,9 +54,9 @@ def read_hb(retries=0):
             time.sleep(20)
 
 
-def wait_collect(floor, deadline):
+def wait_collect(floor, deadline, poll_seconds):
     while time.time() < deadline:
-        time.sleep(240)
+        time.sleep(poll_seconds)
         try:
             hb = read_hb()
         except Exception as exc:
@@ -102,7 +102,11 @@ def main():
     parser.add_argument("--floor", help="wait for a collect stamped after this UTC stamp "
                                         "(default: launch stamp of the heartbeat's live run)")
     parser.add_argument("--max-minutes", type=int, default=340)
+    parser.add_argument("--poll-seconds", type=int, default=60,
+                        help="heartbeat polling interval between folds (default: 60)")
     args = parser.parse_args()
+    if args.poll_seconds < 10:
+        parser.error("--poll-seconds must be at least 10")
     deadline = time.time() + args.max_minutes * 60
 
     floor = args.floor
@@ -113,9 +117,9 @@ def main():
             floor = match.group(1)
             print(f"waiting on live run {run['log']}", flush=True)
     if floor:
-        wait_collect(floor, deadline)
+        wait_collect(floor, deadline, args.poll_seconds)
     for fold in args.folds:
-        wait_collect(launch(fold), deadline)
+        wait_collect(launch(fold), deadline, args.poll_seconds)
     print("ALL FOLDS COLLECTED", flush=True)
 
 

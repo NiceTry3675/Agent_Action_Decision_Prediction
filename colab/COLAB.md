@@ -1,174 +1,213 @@
-# Colab cloud training lane
+# AADP Colab lane
 
-How cloud GPU training runs through the VS Code Colab extension, and how results
-flow back into this repo. The control plane is `colab/colab_runner.ipynb`; the
-transport is a Google Drive folder `AADP_exchange/`.
+This file is the repository-specific overlay for Colab operation. Generic Colab
+CLI behavior, authentication, session inspection, recovery, and compute-unit
+safety live in the installed `colab-operator` skill:
 
-## Drive exchange layout
+- installed: `$CODEX_HOME/skills/colab-operator/SKILL.md`
+- upstream: <https://github.com/googlecolab/google-colab-cli/blob/main/skills/colab-operator/SKILL.md>
+
+When the skill and this file overlap, use the skill for generic `colab` behavior
+and this file for AADP paths, wrappers, persistence, and promotion workflow. The
+skill tracks CLI `main`; this repository currently pins
+`google-colab-cli==0.6.0`, and `aadp_colab.py` always supplies the required
+global auth/config flags explicitly.
+
+## AADP control split
 
 ```text
-AADP_exchange/
-├── code/   code_<utc>_<sha8>[_dirty].tar.gz   # from `cloud_sync.py push` (tracked files, working-tree versions)
-├── data/   open_data.tar.gz                   # from `cloud_sync.py push --data` (one-time, 102MB)
-├── cmd/    queue/ done/ heartbeat.json        # command channel (vm_agent daemon <-> cloud_sync cmd/hb)
-└── runs/   <utc>_<experiment_id>/             # from vm_agent collect (or the notebook [collect] cell)
-            ├── results_rows.csv               # new experiments/results.csv rows only
-            ├── logits/  artifacts/            # files created after [bootstrap]
-            ├── extra/                         # optional large outputs (model dirs)
-            └── manifest.json
+aadp_colab.py
+├── google-colab-cli       VM lifecycle, keep-alive, kernel calls, stop
+├── cloud_sync.py          dirty code/data/model/result transport via Drive
+└── vm_agent.py            detached training, heartbeat, auto-collect
 ```
 
-Drive is used instead of a GitHub PAT clone because the repo is private, it keeps a
-single auth surface, and it can ship uncommitted experiment code (bundles are tagged
-`_dirty` with the dirty file list recorded in `cloud_manifest.json`).
+Keep these boundaries:
 
-## One-time setup (human)
+- Colab CLI controls the VM, not large artifact transport.
+- Drive/rclone remains the data and artifact plane.
+- Training always runs as a detached `vm_agent.py` child, never as a long
+  synchronous `colab exec` or `colab run` job.
+- The existing `colab_runner*.ipynb` files are emergency fallback only.
+- Evaluation-server `requirements.txt` must never contain Colab CLI packages.
 
-1. Install rclone in WSL (`sudo apt install rclone` or the official install script),
-   then `rclone config` → new remote named `gdrive`, type Google Drive, default scope,
-   finish the browser OAuth. Verify with `rclone lsd gdrive:`.
-   (Different remote name: export `AADP_RCLONE_REMOTE`.)
-2. Install the Google Colab VS Code extension and sign in. Create a GPU runtime
-   (**default to A100** for base runs) and attach it as the kernel of
-   `colab/colab_runner.ipynb`.
-3. Upload the dataset once: `python colab/cloud_sync.py push --data`.
+## Human interaction boundary
 
-## Per-session checklist (human)
+`aadp_colab.py up` includes `colab drivemount`, which requires a real terminal
+and human approval on a new VM. Following the operator skill, an agent must not
+invoke that interactive step unattended.
 
-- Open `colab/colab_runner.ipynb` with the Colab kernel attached.
-- Run the `[mount]` cell and click through the Drive OAuth (once per runtime).
-- Keep the notebook tab active in VS Code while the agent drives it. The agent's
-  `executeCode` tool fails with `No active notebook editor` otherwise.
+Normal ownership is:
 
-## Multiple concurrent runtimes (lanes)
+1. Agent: push code/data and prepare the run.
+2. Human terminal: run `up` and complete Drive approval.
+3. Agent: launch, monitor, collect, and stop the ready lane.
 
-One exchange folder = one runtime. Two daemons on the same folder fight over
-`cmd/queue/` and overwrite each other's heartbeat — never attach two runtimes to
-one exchange. To run a second runtime in parallel:
+If Drive is already mounted in an existing session, the agent may use recovery
+commands with `--skip-mount` instead of invoking the interactive mount again.
 
-- VM side: attach each extra runtime to its own lane notebook —
-  `colab_runner_b.ipynb` / `_c.ipynb` / `_d.ipynb` (each pins
-  `AADP_EXCHANGE_DIR=AADP_exchange_{b,c,d}` in its `[mount]` cell) — and run
-  `[mount]→[bootstrap]→[agent]` there as usual.
-- Local side: prefix every `cloud_sync.py` / `chain_oof_folds.py` call for that
-  lane with `AADP_EXCHANGE_DIR=AADP_exchange_b`. Unprefixed calls keep talking
-  to the main lane.
-- One-time per new lane: `AADP_EXCHANGE_DIR=AADP_exchange_b python
-  colab/cloud_sync.py push --data` (code push too) — lanes do not share bundles.
-- `pull` merges into the same local `experiments/results.csv` regardless of lane
-  (dedup by experiment_id), so results converge as usual.
-- Fair comparisons stay within one lane/GPU class; use the second lane for
-  replicates or independent tracks, not for arms of the same paired experiment.
+## Fast path
 
-## Agent protocol
+One-time for this repository:
 
-Every `mcp__ide__executeCode` call pops a VS Code Quick Pick the user must approve —
-this cannot be disabled (official docs, "Jupyter execution always asks first"). So the
-notebook is only used to boot the runtime; everything else goes through the command
-channel below.
+```bash
+uv tool install --force 'google-colab-cli==0.6.0'
+python colab/aadp_colab.py doctor a
+```
 
-1. If local code changed since the last push: `python colab/cloud_sync.py push`.
-   Fixed validation payloads can be staged per lane with `python
-   colab/cloud_sync.py push-anchor <payload.pt>`; they appear under
-   `/content/drive/MyDrive/<exchange folder>/anchors/`.
-2. Run `[probe]`; check the GPU class fits the job.
-3. Run `[bootstrap]`; verify the printed commit matches local HEAD (or the intended
-   dirty push) and `transformers` is 4.46.3.
-   Weak4 specialist lanes additionally run `pip uninstall -y torchao`, install
-   `transformers==4.46.3 peft==0.19.1`, and run
-   `colab/weak4_lane_preflight.py` before launch to lock the dependency set, GPU
-   class, anchor, and warm-start provenance. Colab's preinstalled `torchao==0.10.0`
-   is incompatible with PEFT 0.19.1 and otherwise fails only when LoRA is attached.
-4. Run `[agent]` — runs `vm_agent.py daemon` synchronously (the session's last Quick
-   Pick). The cell stays busy for the whole session; that is the keepalive. Colab's
-   idle timer only counts executing cells — a detached daemon leaves the kernel idle
-   and the runtime gets reclaimed ~90 min after the last cell run, even with the GPU
-   at full load (2026-07-03 incident).
-5. From here drive everything locally, no notebook cells needed:
-   - launch: `python colab/cloud_sync.py launch train_transformer.py -- --device cuda ...`
-     (args go after `--` as plain argv; quoting — spaces in `--notes`, leading-dash
-     values — is handled by the tool. The old `cmd "python colab/vm_agent.py launch ..."`
-     form still works.)
-   - screen runs must leave submittable weights (2026-07-04 protocol): add
-     `--save-val-model --save-fp16 --output-dir
-     /content/drive/MyDrive/<exchange folder>/models/<experiment-suffix>`.
-     The artifact (hf_model/ + hf_meta.json, ~556 MB fp16 for base) is written
-     straight to Drive at run end — survives VM recycling, no collect step.
-     Lane B writes under its own exchange folder.
-   - fetch weights locally: `python colab/cloud_sync.py pull-model <name>` →
-     `experiments/incoming/models/<name>`; then
-     `python package_submission.py --hf-dir experiments/incoming/models/<name> --no-sparse`.
-   - multi-fold OOF chains: `python colab/chain_oof_folds.py --folds 1 2` waits for
-     the in-flight run's collect, then launches each fold in turn (local process —
-     it dies with the machine; safe to restart, see its docstring).
-   - poll (cheap, no VM roundtrip): `python colab/cloud_sync.py hb` — the heartbeat
-     carries run pid/state, a 5-line log tail, GPU util, and idle countdown
-   - deeper look: `python colab/cloud_sync.py cmd "python colab/vm_agent.py status"`
-   - collect: automatic — the daemon collects as soon as the training process exits
-     (`collect_note` in the heartbeat names the run); manual fallback:
-     `... cmd "python colab/vm_agent.py collect"`
-6. Locally `python colab/cloud_sync.py pull <run_name>`. The pull merges new rows into
-   `experiments/results.csv` deduped by experiment_id and places logits/artifacts.
-7. Done with the VM? `python colab/cloud_sync.py unassign` — do not leave it idling.
-8. Continue with the promotion funnel in `AGENTS.md` (Public-gated since
-   2026-07-04). Never hand-edit `results.csv` with cloud numbers.
+Prepare the lane:
 
-The notebook `[args]`/`[launch]`/`[poll]`/`[collect]` cells remain as the manual
-fallback when the daemon is down (each needs a Quick Pick approval).
+```bash
+# Agent; add --data only on the first use of this exchange folder.
+python colab/aadp_colab.py push a --data
 
-## Command channel and CU safety
+# Human terminal; complete Drive approval when prompted.
+python colab/aadp_colab.py up a --gpu A100
+```
 
-`vm_agent.py daemon` (VM) polls `AADP_exchange/cmd/queue/` every ~15s, executes each
-JSON command spec with `shell=True` in `/content/AADP`, and writes the result to
-`cmd/done/<id>.json`; `cloud_sync.py cmd` (local) queues a spec via `rclone rcat` and
-polls for the result. Expect 20–90s roundtrip (Drive propagation both ways). Builtins:
-`@unassign` releases the runtime, `@stop` exits the daemon. On a wait timeout the local
-side reports whether the daemon CLAIMED the command (executing / result propagating —
-re-check `done/` later) or it is STILL QUEUED (daemon has not seen it — likely down).
+Operate the ready lane:
 
-If the daemon dies, nothing executes queued commands — `status`/`unassign` are inert.
-With the synchronous `[agent]` cell this is at least visible (the cell ends in VS Code)
-and self-limiting (idle kernel → Colab reclaims in ~90 min, capping CU burn); the
-fastest manual stop is releasing the runtime from the Colab UI / VS Code extension.
+```bash
+python colab/aadp_colab.py launch a train_transformer.py -- \
+  --device cuda \
+  --quick-val-size 600 \
+  --epochs 1 \
+  --experiment-suffix cli_canary
 
-CU (compute unit) safety, in the daemon:
+python colab/aadp_colab.py status a
+python colab/aadp_colab.py pull a
+python colab/aadp_colab.py down a
+```
 
-- **Stale-command expiry**: queued commands older than `AADP_CMD_MAX_AGE_MIN` (default
-  30 min) are answered with rc=125 `expired` instead of executed, so an `@unassign` or
-  launch queued at a dead daemon cannot fire when the next daemon starts.
-- **Auto-collect**: when the tracked training process exits, the daemon runs
-  `collect` once, so results reach Drive even if nobody is watching. Collected
-  experiment_ids fold into the baseline, making re-collects no-ops.
-- **Idle auto-unassign**: after `AADP_IDLE_MAX_MIN` minutes (default 45) with no live
-  training process and no incoming commands, the runtime is released — but only after
-  the last run was collected. Idle VMs stop burning CUs on their own.
-- Explicit release: `python colab/cloud_sync.py unassign` right after the final pull.
-- Release mechanics: `google.colab runtime.unassign()` only works from the kernel, not
-  from the daemon subprocess (`'NoneType' object has no attribute 'kernel'` — this
-  failed silently until 2026-07-03). So on `@unassign` or the idle limit the daemon
-  exits with code 86 and the synchronous `[agent]` cell performs the actual unassign.
+`pull a` selects the latest collected run. `down a --pull-latest` pulls before
+release. `down a --force` is only for intentionally terminating a live or
+unverifiable job.
 
-Heartbeat: `cmd/heartbeat.json`, rewritten every ~15s. `cloud_sync.py hb` prints it
-with an age check — age over ~3 minutes means the daemon or VM is gone (recycled VM,
-Drive auth expiry, or idle unassign already fired).
+## Lane map
 
-## Failure modes
+Tracked, non-secret configuration lives in `colab/lanes.json`:
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| `Code execution cancelled by user` from executeCode | VS Code Quick Pick dismissed (Esc/focus loss) — it always asks, by design | rerun; ask the user to press Execute |
-| `cloud_sync.py cmd` times out | timeout message says CLAIMED → executing/Drive lag; STILL QUEUED → daemon down or VM recycled | claimed: re-check `done/` later; queued: rerun `[bootstrap]` + `[agent]`, or new runtime if hb shows unassign fired |
-| runtime reclaimed ~90 min after the last cell run, GPU still busy | kernel idle — Colab only counts executing cells as activity; background daemon/training do not | keep the synchronous `[agent]` cell running the whole session; rerun it after any kernel restart |
-| `No active notebook editor` from executeCode | notebook tab not active | ask the user to focus the runner notebook tab |
-| NameError on RUN_ARGS/PID | kernel reconnected, variables lost | `[poll]`/`[collect]` read state files — just rerun; rerun `[args]` before `[launch]` |
-| `[bootstrap]` assert "no code bundle" | never pushed | local `cloud_sync.py push` |
-| `/content/aadp_state.json` missing | VM recycled | rerun from `[mount]`/`[bootstrap]`; in-flight runs are lost |
-| Drive mount errors | auth expired | rerun `[mount]` |
-| run vanished mid-training | Colab runtime recycled | collect finished runs promptly; do not start multi-hour runs (xlm-r-large) until per-epoch Drive checkpointing (`--select-best-epoch` work) lands |
+| Lane | CLI session | Drive exchange | Default GPU | Bootstrap packages |
+| --- | --- | --- | --- | --- |
+| `a` | `aadp-a` | `AADP_exchange` | A100 | standard |
+| `b` | `aadp-b` | `AADP_exchange_b` | L4 | standard |
+| `c` | `aadp-c` | `AADP_exchange_c` | G4 | safetensors 0.8 + bitsandbytes |
+| `d` | `aadp-d` | `AADP_exchange_d` | T4 | standard |
 
-## Constraints
+CLI token/endpoint state is separate under gitignored `.colab/`. Never commit,
+copy, or include that directory in a code bundle. One exchange folder maps to
+exactly one runtime; paired comparisons stay on the same lane/GPU class.
 
-- `/content` is ephemeral; anything not collected to Drive is lost on recycle.
-- Pin only `transformers==4.46.3` (tokenizer consistency with local); keep Colab's
-  torch. Cross-GPU runs are not bit-reproducible anyway; OOF comparisons are fine.
-- Colab session/idle limits apply; prefer collecting right after each run finishes.
+## Repository wrapper commands
+
+```bash
+python colab/aadp_colab.py doctor [lane]
+python colab/aadp_colab.py push <lane> [--data]
+python colab/aadp_colab.py up <lane> [--gpu GPU] [--reuse]
+python colab/aadp_colab.py probe <lane>
+python colab/aadp_colab.py mount <lane>                 # human terminal only
+python colab/aadp_colab.py bootstrap <lane> [--force]
+python colab/aadp_colab.py daemon <lane>
+python colab/aadp_colab.py launch <lane> SCRIPT -- ARGS...
+python colab/aadp_colab.py status <lane>
+python colab/aadp_colab.py list <lane>
+python colab/aadp_colab.py pull <lane> [RUN_NAME]
+python colab/aadp_colab.py pull-model <lane> MODEL_NAME
+python colab/aadp_colab.py down <lane> [--pull-latest] [--force]
+```
+
+Recovery of an existing session should run only the required stage. `up
+--reuse` never allocates another session with the same name. Bootstrap refuses
+to replace a live or uncollected workspace; use `bootstrap --force` only after
+manually confirming the VM is idle.
+
+## AADP persistence contract
+
+`cloud_sync.py push` deliberately sends the current tracked and non-ignored
+untracked working tree, including dirty provenance and a content fingerprint.
+The Drive layout remains:
+
+```text
+<exchange>/
+├── code/      code_<utc>_<sha8>[_dirty].tar.gz
+├── data/      open_data.tar.gz
+├── cmd/       queue/ done/ heartbeat.json
+├── models/    saved fp16 checkpoints
+└── runs/      <utc>_<experiment_id>/
+               ├── results_rows.csv
+               ├── logits/ artifacts/ extra/
+               └── manifest.json
+```
+
+Screens must write submittable weights directly to Drive:
+
+```text
+--save-val-model --save-fp16
+--output-dir /content/drive/MyDrive/<exchange>/models/<experiment-suffix>
+```
+
+Fetch them with `pull-model`, then use the normal
+`package_submission.py --no-sparse` path. Cloud experiment rows enter the local
+ledger only through `cloud_sync.py pull` or the wrapper; never hand-copy them.
+
+Multi-run plans continue through `chain_runs.py`; its default heartbeat poll is
+60 seconds and is configurable with `--poll-seconds`.
+
+## Project-specific safety invariants
+
+- In a CLI lane, release only with `aadp_colab.py down <lane>`. The legacy
+  `cloud_sync.py unassign` route cannot release a detached CLI session and is
+  rejected in both local and VM-side code.
+- `heartbeat.run.alive`, not CLI `status` IDLE/BUSY, is authoritative for the
+  detached trainer.
+- The VM-side launch guard is the atomic boundary preventing two trainers from
+  overwriting `last_run.json`.
+- Missing/stale heartbeat, a live PID, an uncollected run, or collect failure
+  blocks normal `down`; only explicit `--force` bypasses those checks.
+- `down` verifies both local state removal and account-wide endpoint removal.
+- `up` audits untracked account assignments before provisioning and cleans up a
+  partially created session on failure or interruption.
+- A CLI-mode daemon marks `idle_expired_cli_stop_required` after the project
+  idle limit. It stays observable; run `down` promptly.
+- `/content` is ephemeral. Models, checkpoints, and irreplaceable artifacts must
+  be written to Drive before release.
+
+## Minimal live canary
+
+Last verified on 2026-07-11:
+
+- `doctor` passed through CLI `whoami` plus account-wide `sessions`.
+- A lifecycle-only `aadp-a` T4 session was created without Drive/bootstrap,
+  and the remote probe reported Python 3.12.13, CUDA available, and a Tesla T4
+  with 15,360 MiB.
+- `status` and structured CLI log worked; `down --force` was used because the
+  lifecycle canary intentionally skipped the project daemon/heartbeat.
+- Stop verification passed: no server assignment, no keep-alive PID, and empty
+  local session state remained.
+- Drive mount, bootstrap, auto-collect, and a real quick screen still require
+  the next live canary.
+
+After CLI/auth changes, keep validation short:
+
+1. `doctor a`.
+2. Human runs `up a --gpu T4`.
+3. Check `status a`, then `down a`.
+4. Re-open and run one real `--quick-val-size 600 --epochs 1` screen.
+5. Confirm heartbeat PID/GPU, auto-collect, pull, and verified release.
+
+Local unit tests mock Colab/rclone and do not allocate a VM.
+
+## Notebook fallback
+
+If the CLI path is blocked, use the existing lane notebook unchanged:
+
+1. Attach `colab_runner.ipynb` (or `_b`, `_c`, `_d`) to a Colab GPU runtime.
+2. Run `[probe] -> [mount] -> [bootstrap] -> [agent]`.
+3. Keep `[agent]` executing synchronously as the legacy keep-alive.
+4. Use `cloud_sync.py` for launch, heartbeat, and pull.
+5. Only in this synchronous-notebook mode, `cloud_sync.py unassign` exits with
+   86 so the kernel cell can call `runtime.unassign()`.
+
+Weak4 specialist and isolated teacher-export dependency procedures remain
+unchanged. Continue with the Public-gated promotion rules in `AGENTS.md` after
+collection.

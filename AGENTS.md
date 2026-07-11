@@ -91,8 +91,9 @@ unless Public or weak-class F1 improves.
 
 Protocol: `colab/COLAB.md`. Sync code/data/results only via `cloud_sync.py
 push`/`pull`; launch training in the background (`[launch]` cell or
-`vm_agent.py launch`), never synchronously in a notebook cell; release idle
-runtimes with `cloud_sync.py unassign`.
+`vm_agent.py launch`), never synchronously in a notebook cell. CLI lanes use
+`aadp_colab.py down <lane>` for verified release; `cloud_sync.py unassign` is
+only for the legacy synchronous-notebook path.
 
 ## Alternative encoders
 

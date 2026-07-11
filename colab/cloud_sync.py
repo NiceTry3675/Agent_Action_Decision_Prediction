@@ -10,10 +10,11 @@ Usage:
     python colab/cloud_sync.py cmd "SHELL"     # run a shell command on the VM via the daemon
     python colab/cloud_sync.py launch SCRIPT -- ARGS...   # start a training run, no hand quoting
     python colab/cloud_sync.py hb              # read the VM daemon heartbeat (cheap poll)
-    python colab/cloud_sync.py unassign        # release the Colab runtime (stop CU burn)
+    python colab/cloud_sync.py unassign        # legacy synchronous-notebook lanes only
 
-cmd/hb/unassign need the daemon started once per runtime by the notebook
-[agent] cell (see colab/COLAB.md, "Command channel").
+cmd/hb need the daemon started once per runtime by `aadp_colab.py daemon` or the
+legacy notebook [agent] cell. CLI lanes release through `aadp_colab.py down`;
+their daemon rejects this module's legacy `unassign` operation.
 
 Requires an rclone remote for Google Drive (default name: gdrive,
 override with AADP_RCLONE_REMOTE). See colab/COLAB.md for setup.
@@ -264,6 +265,21 @@ def heartbeat():
     print(out.stdout.strip())
 
 
+def refuse_cli_unassign():
+    """Fail closed when the CLI wrapper, not the notebook cell, owns VM release."""
+    out = subprocess.run(["rclone", "cat", f"{EXCHANGE}/cmd/heartbeat.json"],
+                         text=True, capture_output=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        return
+    try:
+        hb = json.loads(out.stdout)
+    except json.JSONDecodeError:
+        return
+    if hb.get("control_mode") == "cli":
+        sys.exit("CLI lane detected: `cloud_sync.py unassign` cannot release this VM. "
+                 "Use `python colab/aadp_colab.py down <lane>`.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -290,7 +306,7 @@ def main():
     p_vml.add_argument("run_args", nargs=argparse.REMAINDER,
                        help="training args, after a -- separator")
     sub.add_parser("hb", help="read the VM daemon heartbeat")
-    sub.add_parser("unassign", help="release the Colab runtime via the daemon")
+    sub.add_parser("unassign", help="release a legacy synchronous-notebook runtime")
     args = parser.parse_args()
     require_rclone()
     if args.command == "push":
@@ -310,6 +326,7 @@ def main():
     elif args.command == "hb":
         heartbeat()
     else:
+        refuse_cli_unassign()
         send_cmd("@unassign", 60, 120)
 
 
