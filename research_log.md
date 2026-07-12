@@ -1188,3 +1188,63 @@ decide whether to refit, package, and spend a Public slot.
 - **Decision: 품질 이득 없이 지연만 증가했으므로 strict graph 레인을 종료한다.**
   aligned-only/positional 변형을 재시도하거나 부분 int8 등 다른 카드에 스택하지
   않는다. 챔피언은 `kd_sieve_ca_s42` 그대로다.
+
+### 2026-07-12 - 5모델 만장일치 5,298행 head-CE 차단 frozen gate REJECT
+
+- exact selector를 ID join으로 재구성했다: M7/M8/v6 OOF `c=0`·동일 대안
+  10,449행 중 Gemma/Llama train-logit argmax까지 같은 5,298행(Weak4 4,198,
+  비Weak4 1,100; ID digest `0704709d...4b5ff`). fixed screen cache에서는 train
+  4,291 / val 1,007행이다. Gemma/Llama가 70k를 본 full-refit voter이고 canonical
+  consensus도 `full_data_refit_only`이므로 아래 검사는 **음성 반려 전용**이며
+  양성이어도 local promotion 증거가 아니다.
+- leak-free `kd_hcx_m8_screen`의 frozen hidden/head에서 control과 exact hard-head
+  mask를 동일 초기화로 1ep 비교했다(Weak4 α=.7/rest=.5, KD 계수 불변). data-order
+  seed 42/777/2026 raw Macro delta는 `+0.000869/+0.000368/+0.001334`, 평균
+  **`+0.000857`**로 사전 gate `+0.002` 미달. Weak4 macro 평균 delta는 사실상
+  0(`+0.000012`), mid3 F1 합은 `+0.01082`였다.
+- `official class×대안 class×source×turn×token-bin`을 고정한 20개 3-OOF-동일대안
+  permutation과 20개 전체-c0 permutation에서 exact mask는 각각 최고 대조군보다
+  `-0.000289/-0.000125` 낮았다(양쪽 empirical p=`0.1429`). hard-head gradient의
+  balanced-val cosine `-0.1702`도 primary permutation 분포의 40 percentile로
+  특이하지 않았다. target val slice에서 공식-label 확률은 `0.1778→0.1701`,
+  만장일치 대안 확률은 `0.5312→0.5518`로 이동해 예상한 modal push를 확인했다.
+- **Decision: exact 5,298행 head-CE 차단 카드 반려; full refit/Public 없음.** 작은
+  양수는 c0류 head 감쇠의 공통 효과 범위이고 Gemma/Llama 추가 합의의 행-선별
+  정보는 검출되지 않았다. 상세:
+  `experiments/artifacts/20260712_unanimous5298_headce_prevalidation.json`.
+
+### 2026-07-12 - M8 시브 교사축 전파 Public 0.7867 — 교사 신호 교체 REJECT
+
+- `kd_tm8_sieve_s42.zip`은 `kd_sieve_ca_s42` 학생 레시피를 그대로 두고,
+  M8 교사만 동일 hard-label consensus backbone sieve로 full refit한 뒤 새로 뽑은
+  train70k fp16 로짓으로 교체한 단일변수 팩이다. 학생 시브, Weak4 조건부 α
+  (`0.7`, 기타 `0.5`), T3, replay/unmatched KD mask, zero bias/rules는 모두
+  유지했고 consensus KD weights는 사용하지 않았다.
+- Public은 **`0.7867`**, 런타임은 **`6:01/10:00`**이었다. 챔피언
+  `0.7938` 대비 `-0.0071`, 원래 M8 교사를 사용한 같은 학생 recipe보다 명확히
+  낮다. 새 교사 로짓은 70,000x14 fp16, finite, canonical class/ID-order,
+  DeltaNet rebound 18층을 검증했고 int8 학생 배포본도 512/512 argmax fidelity와
+  GPU/CPU offline smoke를 통과했으므로 패키징 이상으로 보지 않는다.
+- **Decision: 교사축 시브 전파/신호 교체 레인 종료.** 학생 backbone에서의
+  hard-label 시브 이득은 교사 자체를 같은 방식으로 다시 맞춰 만든 soft target에
+  전파되지 않았고, 오히려 기존 M8 로짓의 유용한 확률 구조를 훼손한 결과로
+  해석한다. 추가 teacher-sieve seed/grid나 반복 KD는 열지 않으며 챔피언은
+  `kd_sieve_ca_s42.zip` (`0.7938`) 그대로다.
+
+### 2026-07-12 - Weak4 class-centered consensus-conditioned alpha Public 0.7901 — REJECT
+
+- `kd_ccalpha015_s42.zip`은 `kd_sieve_ca_s42` 챔피언에 Weak4 행별
+  consensus-conditioned KD alpha(`lambda=0.15`)만 추가한 단일변수 팩이다.
+  각 Weak4 true class 안에서 평균 alpha `0.7`을 보존하고, alpha 재배분으로
+  달라질 hard-label backbone 질량도 클래스별 평균 `0.3`으로 보상했다.
+  non-Weak4, replay, KD branch, raw consensus sieve, zero bias/rules는 그대로다.
+- Public은 **`0.7901`**, 런타임은 **`6:04/10:00`**이었다. 챔피언
+  `0.7938` 대비 `-0.0037`; 같은 총량 안에서 consensus-hard 행에 KD를 더 주고
+  consensus-easy 행의 hard label을 더 보존하는 재배분은 최고 인스턴스를
+  갱신하지 못했다. 패키지는 170/219 tensor row-wise int8, 512MB였고 사용자
+  지시에 따라 512-sample fidelity와 offline smoke는 중단/생략했으나 Public
+  실행 자체는 정상 완료됐다.
+- **Decision: `lambda=0.15` 카드 반려, 챔피언 유지.** HCX의 큰 인스턴스 분산
+  때문에 이 한 점을 메커니즘의 정밀한 인과 추정으로 과해석하지는 않지만,
+  Public 승격 기준에는 명확히 미달했다. 별도 독립 신호 없이 slope grid나
+  완만한 lambda 재시도는 열지 않는다.

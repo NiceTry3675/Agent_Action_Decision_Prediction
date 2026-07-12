@@ -875,6 +875,337 @@ def build_consensus_reliability(samples, y, train_idx, args):
     }
 
 
+def apply_consensus_distill_alpha(teacher, consensus, args):
+    """Raise matched c=0 rows to the configured per-row KD-alpha floor.
+
+    ``build_teacher_targets`` has already encoded the base/Weak4 alpha in its
+    mask, while ``build_consensus_reliability`` has already aligned correctness
+    counts by sample id.  Combining those two aligned tensors here avoids any
+    positional join against either source artifact.  Replay and teacher-
+    unmatched rows retain mask zero even if their aligned count is zero.
+    """
+    alpha_c0 = getattr(args, "distill_alpha_c0", None)
+    if alpha_c0 is None:
+        return teacher
+    if teacher is None:
+        raise ValueError("--distill-alpha-c0 requires teacher targets")
+    if consensus is None:
+        raise ValueError("--distill-alpha-c0 requires consensus reliability")
+    if not isinstance(teacher, (tuple, list)) or len(teacher) != 2:
+        raise ValueError("teacher targets must be a (logits, mask) pair")
+    if not isinstance(consensus, dict) or consensus.get("correct_counts") is None:
+        raise ValueError("consensus reliability is missing aligned correct_counts")
+
+    base_alpha = float(args.distill_alpha)
+    alpha_c0 = float(alpha_c0)
+    if not math.isfinite(base_alpha) or base_alpha <= 0.0:
+        raise ValueError("--distill-alpha-c0 requires --distill-alpha > 0")
+    if not math.isfinite(alpha_c0) or alpha_c0 < 0.0 or alpha_c0 > 1.0:
+        raise ValueError("--distill-alpha-c0 must be a finite value in [0, 1]")
+
+    teacher_logits, teacher_mask = teacher
+    if not isinstance(teacher_logits, torch.Tensor) or teacher_logits.ndim < 1:
+        raise ValueError("teacher logits must be a tensor with a row dimension")
+    if not isinstance(teacher_mask, torch.Tensor) or teacher_mask.ndim != 1:
+        raise ValueError("teacher mask must be a one-dimensional tensor")
+    correct_counts = consensus["correct_counts"]
+    if not isinstance(correct_counts, torch.Tensor) or correct_counts.ndim != 1:
+        raise ValueError("aligned consensus correct_counts must be one-dimensional")
+    row_count = int(teacher_mask.shape[0])
+    if int(teacher_logits.shape[0]) != row_count or int(correct_counts.shape[0]) != row_count:
+        raise ValueError(
+            "distill/consensus row length mismatch: "
+            f"logits={teacher_logits.shape[0]} mask={row_count} "
+            f"correct_counts={correct_counts.shape[0]}"
+        )
+    if not bool(torch.isfinite(teacher_mask).all()) or bool((teacher_mask < 0).any()):
+        raise ValueError("teacher mask must contain finite nonnegative values")
+
+    boosted_mask = teacher_mask.clone()
+    matched_c0 = (teacher_mask > 0) & (correct_counts == 0)
+    current_alpha = base_alpha * boosted_mask[matched_c0]
+    target_alpha = torch.full_like(current_alpha, alpha_c0)
+    boosted_alpha = torch.maximum(current_alpha, target_alpha)
+    boosted_mask[matched_c0] = boosted_alpha / base_alpha
+    boosted_rows = int((boosted_alpha > current_alpha).sum())
+    matched_c0_rows = int(matched_c0.sum())
+
+    meta = consensus.get("meta")
+    if isinstance(meta, dict):
+        meta["distill_alpha_c0"] = {
+            "target": alpha_c0,
+            "matched_c0_rows": matched_c0_rows,
+            "boosted_rows": boosted_rows,
+        }
+        args.consensus_reliability_meta = meta
+    print(
+        "distill c0 alpha: "
+        f"target={alpha_c0} matched_c0_rows={matched_c0_rows} "
+        f"boosted_rows={boosted_rows}"
+    )
+    return teacher_logits, boosted_mask
+
+
+def apply_consensus_conditioned_weak_alpha(
+    teacher, consensus, y, train_idx, args
+):
+    """Redistribute Weak4 KD alpha by consensus reliability, preserving mass.
+
+    For each true Weak4 class, reliability is ``r = 1 - correct_count / M``
+    and alpha is centered around ``--distill-alpha-weak`` so its class mean is
+    unchanged.  Because the champion hard-backbone sieve is itself correlated
+    with ``correct_count``, the already-normalized hard scale is then multiplied
+    by one class-level factor so ``mean((1 - alpha) * scale)`` also stays at the
+    champion baseline ``1 - alpha_weak``.  Replay, non-Weak4 rows, raw sieve
+    tensors, and the optional KD-branch sieve remain untouched.
+
+    The option is deliberately fail-closed: no clipping/recentering is hidden,
+    every original Weak4 row must be teacher-matched, and the incoming hard
+    scales must already have class mean one.
+    """
+    slope = float(getattr(args, "distill_alpha_weak_consensus_lambda", 0.0) or 0.0)
+    if slope == 0.0:
+        return teacher, consensus
+    if not math.isfinite(slope) or slope < 0.0:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda must be finite and >= 0"
+        )
+    if getattr(args, "distill_alpha_c0", None) is not None:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda cannot be combined with "
+            "--distill-alpha-c0"
+        )
+    if teacher is None:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires teacher targets"
+        )
+    if consensus is None:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires consensus reliability"
+        )
+    if not bool(getattr(args, "consensus_class_normalize", True)):
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires class-normalized "
+            "consensus scales"
+        )
+    if not isinstance(teacher, (tuple, list)) or len(teacher) != 2:
+        raise ValueError("teacher targets must be a (logits, mask) pair")
+    if not isinstance(consensus, dict):
+        raise ValueError("consensus reliability must be a dict")
+
+    base_alpha = float(args.distill_alpha)
+    weak_alpha_value = getattr(args, "distill_alpha_weak", None)
+    if weak_alpha_value is None:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires --distill-alpha-weak"
+        )
+    weak_alpha = float(weak_alpha_value)
+    if not math.isfinite(base_alpha) or base_alpha <= 0.0:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires --distill-alpha > 0"
+        )
+    if not math.isfinite(weak_alpha) or not 0.0 < weak_alpha < 1.0:
+        raise ValueError(
+            "--distill-alpha-weak-consensus-lambda requires a finite "
+            "--distill-alpha-weak in (0, 1)"
+        )
+
+    teacher_logits, teacher_mask = teacher
+    correct_counts = consensus.get("correct_counts")
+    gradient_scales = consensus.get("gradient_scales")
+    meta = consensus.get("meta")
+    if not isinstance(teacher_logits, torch.Tensor) or teacher_logits.ndim < 1:
+        raise ValueError("teacher logits must be a tensor with a row dimension")
+    if not isinstance(teacher_mask, torch.Tensor) or teacher_mask.ndim != 1:
+        raise ValueError("teacher mask must be a one-dimensional tensor")
+    if not isinstance(correct_counts, torch.Tensor) or correct_counts.ndim != 1:
+        raise ValueError("consensus correct_counts must be one-dimensional")
+    if not isinstance(gradient_scales, torch.Tensor) or gradient_scales.ndim != 1:
+        raise ValueError("consensus gradient_scales must be one-dimensional")
+    if not isinstance(meta, dict):
+        raise ValueError("consensus reliability metadata is missing")
+    model_count = int(meta.get("model_count", -1))
+    if model_count < 1:
+        raise ValueError("consensus reliability metadata has invalid model_count")
+
+    row_count = int(teacher_mask.shape[0])
+    lengths = {
+        "teacher_logits": int(teacher_logits.shape[0]),
+        "correct_counts": int(correct_counts.shape[0]),
+        "gradient_scales": int(gradient_scales.shape[0]),
+        "labels": len(y),
+    }
+    if any(length != row_count for length in lengths.values()):
+        raise ValueError(
+            "conditioned-alpha row length mismatch: "
+            f"mask={row_count} "
+            + " ".join(f"{name}={length}" for name, length in lengths.items())
+        )
+    if not bool(torch.isfinite(teacher_mask).all()) or bool((teacher_mask < 0).any()):
+        raise ValueError("teacher mask must contain finite nonnegative values")
+    if not bool(torch.isfinite(gradient_scales).all()) or bool((gradient_scales < 0).any()):
+        raise ValueError("consensus gradient scales must be finite and nonnegative")
+
+    train_rows = sorted(set(int(idx) for idx in train_idx))
+    if any(idx < 0 or idx >= row_count for idx in train_rows):
+        raise ValueError("train_idx contains an out-of-range row")
+
+    updated_mask = teacher_mask.clone()
+    updated_scales = gradient_scales.clone()
+    class_meta = {}
+    touched_rows = 0
+    coefficient_target = 1.0 - weak_alpha
+    tolerance = 1e-6
+
+    for class_id in WEAK4_CLASS_IDS:
+        rows = [
+            idx
+            for idx in train_rows
+            if int(y[idx]) == class_id and int(correct_counts[idx]) >= 0
+        ]
+        if not rows:
+            raise ValueError(
+                f"conditioned-alpha found no original training rows for {ALL_CLASSES[class_id]}"
+            )
+        row_idx = torch.tensor(rows, dtype=torch.long)
+        if bool((teacher_mask[row_idx] <= 0).any()):
+            missing = int((teacher_mask[row_idx] <= 0).sum())
+            raise ValueError(
+                "conditioned-alpha requires full teacher coverage for original Weak4 "
+                f"rows: class={ALL_CLASSES[class_id]} missing={missing}"
+            )
+        class_counts = correct_counts[row_idx].to(torch.long)
+        if bool(((class_counts < 0) | (class_counts > model_count)).any()):
+            raise ValueError(
+                f"conditioned-alpha counts out of range for {ALL_CLASSES[class_id]}"
+            )
+        current_alpha = base_alpha * teacher_mask[row_idx].float()
+        expected_alpha = torch.full_like(current_alpha, weak_alpha)
+        if not torch.allclose(current_alpha, expected_alpha, rtol=0.0, atol=tolerance):
+            raise ValueError(
+                "conditioned-alpha expected every original Weak4 row to carry "
+                f"alpha={weak_alpha}: class={ALL_CLASSES[class_id]} "
+                f"observed_min={float(current_alpha.min()):.9f} "
+                f"observed_max={float(current_alpha.max()):.9f}"
+            )
+
+        reliability = 1.0 - class_counts.float() / float(model_count)
+        reliability_mean = reliability.mean()
+        conditioned_alpha = weak_alpha + slope * (reliability - reliability_mean)
+        if not bool(torch.isfinite(conditioned_alpha).all()):
+            raise ValueError("conditioned-alpha produced non-finite alpha values")
+        if bool(((conditioned_alpha < 0.0) | (conditioned_alpha > 1.0)).any()):
+            raise ValueError(
+                "conditioned-alpha would leave [0, 1]; reduce "
+                "--distill-alpha-weak-consensus-lambda"
+            )
+        if not math.isclose(
+            float(conditioned_alpha.mean()), weak_alpha, rel_tol=0.0, abs_tol=tolerance
+        ):
+            raise ValueError(
+                f"conditioned-alpha mean drift for {ALL_CLASSES[class_id]}"
+            )
+
+        base_scales = gradient_scales[row_idx].float()
+        base_scale_mean = float(base_scales.mean())
+        if not math.isclose(base_scale_mean, 1.0, rel_tol=0.0, abs_tol=tolerance):
+            raise ValueError(
+                "conditioned-alpha requires incoming class-normalized scales: "
+                f"class={ALL_CLASSES[class_id]} mean={base_scale_mean:.9f}"
+            )
+        uncompensated_mass = float(((1.0 - conditioned_alpha) * base_scales).mean())
+        if not math.isfinite(uncompensated_mass) or uncompensated_mass <= 0.0:
+            raise ValueError(
+                f"conditioned-alpha has invalid hard-backbone mass for {ALL_CLASSES[class_id]}"
+            )
+        compensation = coefficient_target / uncompensated_mass
+        if not math.isfinite(compensation) or compensation <= 0.0 or compensation > 1.0 + tolerance:
+            raise ValueError(
+                "conditioned-alpha compensation is outside the pre-registered "
+                f"(0, 1] range: class={ALL_CLASSES[class_id]} factor={compensation}"
+            )
+        compensated_scales = base_scales * compensation
+        compensated_mass = float(
+            ((1.0 - conditioned_alpha) * compensated_scales).mean()
+        )
+        if not math.isclose(
+            compensated_mass, coefficient_target, rel_tol=0.0, abs_tol=tolerance
+        ):
+            raise ValueError(
+                f"conditioned-alpha compensation drift for {ALL_CLASSES[class_id]}"
+            )
+
+        updated_mask[row_idx] = conditioned_alpha / base_alpha
+        updated_scales[row_idx] = compensated_scales.to(updated_scales.dtype)
+        by_count = {}
+        for count in range(model_count + 1):
+            count_mask = class_counts == count
+            count_rows = int(count_mask.sum())
+            by_count[str(count)] = {
+                "rows": count_rows,
+                "alpha": (
+                    float(conditioned_alpha[count_mask].mean()) if count_rows else None
+                ),
+                "scale": (
+                    float(compensated_scales[count_mask].mean()) if count_rows else None
+                ),
+            }
+        label = ALL_CLASSES[class_id]
+        class_meta[label] = {
+            "rows": len(rows),
+            "reliability_mean": float(reliability_mean),
+            "alpha_mean": float(conditioned_alpha.mean()),
+            "alpha_min": float(conditioned_alpha.min()),
+            "alpha_max": float(conditioned_alpha.max()),
+            "base_scale_mean": base_scale_mean,
+            "uncompensated_hard_backbone_mass": uncompensated_mass,
+            "compensation_factor": compensation,
+            "compensated_scale_mean": float(compensated_scales.mean()),
+            "compensated_scale_max": float(compensated_scales.max()),
+            "compensated_hard_backbone_mass": compensated_mass,
+            "by_correct_count": by_count,
+        }
+        touched_rows += len(rows)
+
+    updated_consensus = dict(consensus)
+    updated_meta = copy.deepcopy(meta)
+    updated_meta["distill_alpha_weak_consensus"] = {
+        "formula_version": "class-centered-v1-hard-backbone-mass-preserved",
+        "lambda": slope,
+        "weak_alpha_baseline": weak_alpha,
+        "hard_backbone_mass_target": coefficient_target,
+        "touched_original_weak4_rows": touched_rows,
+        "train_replay_rows_untouched": int(
+            sum(int(correct_counts[idx]) < 0 for idx in train_rows)
+        ),
+        "classes": class_meta,
+    }
+    updated_consensus["gradient_scales"] = updated_scales
+    updated_consensus["meta"] = updated_meta
+    args.consensus_reliability_meta = updated_meta
+    print(
+        "consensus-conditioned Weak4 alpha: "
+        f"lambda={slope} weak_alpha={weak_alpha} touched={touched_rows} "
+        + " ".join(
+            f"{label}:k={values['compensation_factor']:.6f},"
+            f"alpha={values['alpha_min']:.6f}-{values['alpha_max']:.6f}"
+            for label, values in class_meta.items()
+        )
+    )
+    return (teacher_logits, updated_mask), updated_consensus
+
+
+def build_training_signals(samples, y, train_idx, args):
+    """Build ID-aligned teacher/consensus tensors and combine them once."""
+    teacher = build_teacher_targets(samples, args)
+    consensus = build_consensus_reliability(samples, y, train_idx, args)
+    teacher = apply_consensus_distill_alpha(teacher, consensus, args)
+    teacher, consensus = apply_consensus_conditioned_weak_alpha(
+        teacher, consensus, y, train_idx, args
+    )
+    return teacher, consensus
+
+
 def find_terminal_classifier_head(model):
     """Find the final Linear producing the canonical 14 action logits."""
     candidates = []
@@ -1803,6 +2134,9 @@ def run(args):
             return
 
         train_start = time.perf_counter()
+        final_teacher, final_consensus = build_training_signals(
+            final_samples, final_y, final_idx, args
+        )
         final_model = train_model(
             tokenizer,
             final_encoded_features,
@@ -1812,10 +2146,8 @@ def run(args):
             final_idx,
             args,
             device,
-            teacher=build_teacher_targets(final_samples, args),
-            consensus=build_consensus_reliability(
-                final_samples, final_y, final_idx, args
-            ),
+            teacher=final_teacher,
+            consensus=final_consensus,
         )
         train_sec = time.perf_counter() - train_start
         artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
@@ -1950,10 +2282,11 @@ def run(args):
         return
 
     train_start = time.perf_counter()
+    teacher, consensus = build_training_signals(samples, y, train_idx, args)
     model = train_model(
         tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device,
-        teacher=build_teacher_targets(samples, args),
-        consensus=build_consensus_reliability(samples, y, train_idx, args),
+        teacher=teacher,
+        consensus=consensus,
     )
     train_sec = time.perf_counter() - train_start
 
@@ -2063,6 +2396,10 @@ def run(args):
             final_encoded_features, final_lengths, _ = tokenize_texts(tokenizer, final_texts, args, train_path, cache_scope="final")
             print(f"final replay_size={final_replay_size}")
         final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
+        final_train_samples = samples if args.replay_mode == "none" else final_samples
+        final_teacher, final_consensus = build_training_signals(
+            final_train_samples, final_y, final_idx, args
+        )
         final_model = train_model(
             tokenizer,
             final_encoded_features,
@@ -2072,13 +2409,8 @@ def run(args):
             final_idx,
             args,
             device,
-            teacher=build_teacher_targets(samples if args.replay_mode == "none" else final_samples, args),
-            consensus=build_consensus_reliability(
-                samples if args.replay_mode == "none" else final_samples,
-                final_y,
-                final_idx,
-                args,
-            ),
+            teacher=final_teacher,
+            consensus=final_consensus,
         )
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, report_metrics)
         artifact_size = dir_size_mb(args.output_dir)
@@ -2219,6 +2551,25 @@ def parse_args():
                         help="KD alpha override for teacher-matched original rows whose true label is "
                              "Weak4 (list_directory/read_file/grep_search/glob_pattern); other matched "
                              "rows keep --distill-alpha (team condalpha option)")
+    parser.add_argument(
+        "--distill-alpha-weak-consensus-lambda",
+        type=float,
+        default=0.0,
+        help=(
+            "class-centered consensus reliability slope for matched original "
+            "Weak4 rows; preserves both mean Weak4 alpha and per-class nominal "
+            "hard-backbone mass after the existing consensus sieve"
+        ),
+    )
+    parser.add_argument(
+        "--distill-alpha-c0",
+        type=float,
+        default=None,
+        help=(
+            "KD alpha floor for teacher-matched rows whose ID-aligned consensus "
+            "correct_count is zero; applied after the Weak4 override"
+        ),
+    )
     parser.add_argument("--distill-temp", type=float, default=2.0)
     parser.add_argument(
         "--consensus-reliability",
@@ -2335,6 +2686,58 @@ def parse_args():
             parser.error("--distill-alpha-weak requires --distill-logits")
         if args.distill_alpha <= 0:
             parser.error("--distill-alpha-weak requires --distill-alpha > 0 (mask carries alpha_weak/alpha)")
+    if (
+        not math.isfinite(args.distill_alpha_weak_consensus_lambda)
+        or args.distill_alpha_weak_consensus_lambda < 0.0
+    ):
+        parser.error(
+            "--distill-alpha-weak-consensus-lambda must be finite and >= 0"
+        )
+    if args.distill_alpha_weak_consensus_lambda > 0.0:
+        if not args.distill_logits:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires --distill-logits"
+            )
+        if args.distill_alpha_weak is None:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires --distill-alpha-weak"
+            )
+        if (
+            not math.isfinite(args.distill_alpha_weak)
+            or not 0.0 < args.distill_alpha_weak < 1.0
+        ):
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires a finite "
+                "--distill-alpha-weak in (0, 1)"
+            )
+        if not args.consensus_reliability:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires "
+                "--consensus-reliability"
+            )
+        if not args.consensus_class_normalize:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires class-normalized "
+                "consensus scales"
+            )
+        if not math.isfinite(args.distill_alpha) or args.distill_alpha <= 0.0:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda requires --distill-alpha > 0"
+            )
+        if args.distill_alpha_c0 is not None:
+            parser.error(
+                "--distill-alpha-weak-consensus-lambda cannot be combined with "
+                "--distill-alpha-c0"
+            )
+    if args.distill_alpha_c0 is not None:
+        if not math.isfinite(args.distill_alpha_c0) or not 0.0 <= args.distill_alpha_c0 <= 1.0:
+            parser.error("--distill-alpha-c0 must be a finite value in [0, 1]")
+        if not args.distill_logits:
+            parser.error("--distill-alpha-c0 requires --distill-logits")
+        if not args.consensus_reliability:
+            parser.error("--distill-alpha-c0 requires --consensus-reliability")
+        if not math.isfinite(args.distill_alpha) or args.distill_alpha <= 0:
+            parser.error("--distill-alpha-c0 requires --distill-alpha > 0")
     if args.consensus_backbone_weights and not args.consensus_reliability:
         parser.error("--consensus-backbone-weights requires --consensus-reliability")
     if not args.consensus_class_normalize and not args.consensus_reliability:
