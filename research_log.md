@@ -1343,3 +1343,24 @@ decide whether to refit, package, and spend a Public slot.
 - **Decision: 근접 격자 탐색은 종료한다. 챔피언 seed 수확은 기존 지시대로
   마지막 날 전까지 금지하며, 마지막 날에도 주력 개선축이 아닌 낮은 확신도의
   마지막 카드로 격하한다.**
+
+### 2026-07-12 - Weak4 residual specialist 두 카드 clean CV — 모두 REJECT
+
+- non-KD HCX fixed-session 모델이 한 번도 학습하지 않은 14,001행의 raw logits만
+  parent로 사용했다. validation-tuned class bias와 70k stitched OOF consensus는
+  모두 제외했다. oracle은 full Weak4-internal에서 full Macro `+0.115846`, 사전
+  등록 live-pair top2에서 `+0.021315`라 이론적 headroom 자체는 충분했다.
+- Card A는 typed byte/event/task/main 입력의 8,136,819-parameter 독립
+  KEEP/SWITCH 모델이다. 3-fold OOF full Macro는 `0.765997→0.765082`
+  (`-0.000915`), Weak4 Macro `-0.003204`, 145 rescue/160 harm였고 세 fold가
+  모두 음수였다.
+- Card B는 mBERT + policy serializer + main numeric feature를 쓰는 zero-init
+  bounded live-pair residual이다. 3-fold OOF는 `0.765997→0.765966`
+  (`-0.000031`), 3 rescue/3 harm/5 neutral change로 사실상 identity였다.
+  fit 행에서도 residual이 거의 활성화되지 않았고 head LR `1e-3`, `1e-2`
+  activation screen도 각각 fold-0 `+0.000455`, `+0.000015`에 그쳤다.
+- **Decision: 두 카드 모두 offline gate에서 반려한다.** final refit,
+  `script.py`/package 통합, T4 benchmark와 Public 제출은 진행하지 않는다.
+  이는 과거 LoRA 4-way specialist의 실패와 별개 계약을 실제로 검증한 결과이며,
+  현재 구현의 5-way scratch 및 balanced live-pair residual recipe를 닫는다.
+  상세: `experiments/artifacts/20260712_weak4_residual_cards_decision.json`.
