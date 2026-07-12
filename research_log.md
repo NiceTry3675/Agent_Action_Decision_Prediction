@@ -1294,3 +1294,16 @@ decide whether to refit, package, and spend a Public slot.
   갱신하지 못했다.
 - **Decision: 승격하지 않고 챔피언 `kd_sieve_ca_s42.zip`을 유지한다.** 별도
   양성 근거가 없으므로 c0 alpha grid나 더 강한 alpha 재시도는 열지 않는다.
+
+### 2026-07-12 - layer-6-MLP-only INT8 partial-FP16 Public 0.79382 — 동률, precision 레인 종료
+
+- `kd_ca_mlp6_s42.zip`은 `kd_sieve_ca_s42`의 동일 가중치·zero bias/rules를
+  유지하면서 layer 6 MLP의 `down_proj`/`gate_proj`/`up_proj` 세 행렬만
+  row-wise INT8로 두고 나머지 모델 tensor를 FP16으로 보존한 precision-only
+  재패키징이다. 패키지 크기는 1,019,133,957 bytes다.
+- Public은 **`0.79382`**로 exact 챔피언 `0.7938816426` 대비
+  **`-0.0000616426`**이며 `0.002` 노이즈 band보다 훨씬 작다. 따라서 현재
+  챔피언에서 full-INT8 양자화가 유의미한 점수 병목이라는 증거는 없다.
+- **Decision: 동률로 반려하고 더 작은 full-INT8 챔피언을 유지한다.** 이 결과는
+  과거 학습 precision/RoPE 문제까지 일반적으로 부정하지는 않지만, 현재 챔피언의
+  배포 양자화 축에서는 partial-FP16 추가 제출이나 규칙과의 결합을 진행하지 않는다.
