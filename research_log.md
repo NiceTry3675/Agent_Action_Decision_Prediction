@@ -1248,3 +1248,49 @@ decide whether to refit, package, and spend a Public slot.
   때문에 이 한 점을 메커니즘의 정밀한 인과 추정으로 과해석하지는 않지만,
   Public 승격 기준에는 명확히 미달했다. 별도 독립 신호 없이 slope grid나
   완만한 lambda 재시도는 열지 않는다.
+
+### 2026-07-12 - OOF dark-tail transplant 정적 감사 — 계약만 통과, payload/refit 보류
+
+- M8와 M7/M8/v6 OOF를 모두 챔피언 KD 온도 `T=3`에서 해석하고, 공식 클래스
+  확률을 정확히 보존한 채 비공식 13-class 조건부 분포만 섞는 계약을 canonical
+  `c=0` 12,776행에 적용했다. `c>0`은 bit-exact 불변이며 ID·label·class-order,
+  consensus histogram과 c0 ID digest 검사를 모두 통과했다.
+- 사전 지정 `rho=0.5`에서 M8 공식 클래스가 원래 argmax인 비율은 15.50%뿐이고,
+  이식 뒤 13.45%였다. 원 M8 argmax 유지율은 92.43%, 평균 L1은 0.04383이며
+  M8/OOF conditional-tail top 일치는 90.47%였다. 따라서 "공식 확률 보존 =
+  teacher top mode 보존" 전제는 성립하지 않고, T3 기준 새 tail 정보도 제한적이다.
+  OOF를 `T=1`로 잘못 해석한 caution arm은 argmax를 18.33% 바꾸고 entropy를
+  크게 낮춰 부적합함을 확인했다.
+- **Decision: 정적 수학 계약은 유효하지만 효용은 미확인이다. teacher payload나
+  full refit/Public을 만들지 않는다.** 재개하려면 먼저 row-specific frozen/
+  permutation 반려 gate로 OOF tail의 행별 정보가 무작위 대조군을 이기는지
+  검증한다. 상세: `experiments/artifacts/20260712_oof_dark_tail_static_audit.json`.
+
+### 2026-07-12 - soft Macro-F1 frozen-head 사전 gate — REJECT
+
+- cached HCX hidden 위 zero-init residual head 두 arm을 같은 초기화·base loss·순서·
+  optimizer로 2ep 학습했다. 1ep는 control/candidate parameter와 Adam moments가
+  bit-exact였고, 2ep candidate에만 preregistered soft-F1 `lambda=0.05`를
+  1,024행 class-complete window로 추가했다. 세 order seed 모두 매 epoch 55,999행을
+  drop/duplicate 없이 한 번씩 사용했다.
+- seed 42/777/2026의 paired raw Macro-F1 delta는 각각
+  `+0.000128/-0.000253/+0.000126`, 평균 **`+0.00000029`**로 gate `+0.002`에
+  크게 미달했다. Weak4 변화는 미세한 양수였지만 `web_search` 평균 delta가
+  `-0.000980`이라 priority-class 비음수 조건도 실패했다.
+- **Decision: 이 preregistered soft-F1 카드는 반려한다. full-model refit/Public,
+  lambda/window grid를 열지 않는다.** frozen backbone·replay 미포함·큰 macro
+  window라는 낙관적 반려 proxy에서도 효과가 없었다. 상세:
+  `experiments/artifacts/20260712_soft_macro_f1_head_prevalidation.json`.
+
+### 2026-07-12 - c=0 KD alpha floor 0.8 Public 0.792 — 승격 실패
+
+- `kd_sieve_ca_c0a8_s42.zip`은 정확한 `kd_sieve_ca_s42` 챔피언에서
+  teacher-matched canonical `c=0` 원본 행의 KD alpha만 최소 `0.8`로 올렸다.
+  non-c0 Weak4 `0.7`, non-c0 기타 `0.5`, replay/unmatched KD mask, hard
+  consensus sieve와 zero bias/rules는 그대로인 단일변수 full refit이다.
+- Public은 **`0.792`**, 런타임은 **`6:03/10:00`**이었다. 챔피언 `0.7938`
+  대비 `-0.0018`, 런타임 `+5s`이며 사전 정의한 `0.002` 노이즈 band 안이다.
+  따라서 c0 alpha floor의 인과적 방향을 주장할 수는 없지만, 최종 점수 instance는
+  갱신하지 못했다.
+- **Decision: 승격하지 않고 챔피언 `kd_sieve_ca_s42.zip`을 유지한다.** 별도
+  양성 근거가 없으므로 c0 alpha grid나 더 강한 alpha 재시도는 열지 않는다.
