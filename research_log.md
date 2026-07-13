@@ -1485,3 +1485,235 @@ decide whether to refit, package, and spend a Public slot.
   the final decision metric. If a correctly isolated semantic decoder remains
   at `10^-4`, is fold-unstable, or hurts SIM, close the remaining SIM
   specialist lane.
+
+### 2026-07-13 - SIM first-principles reset: router/semantic lanes close; early mixed-loss card opens
+
+- Re-audited SIM across deployable trajectory filtering, future-row joint
+  decoding, cross-session templates/retrieval, full metadata, semantic relabels,
+  a shared HCX hidden-state specialist, and training-objective interventions.
+  The full report is
+  `experiments/artifacts/20260713_sim_from_scratch_audit.json`.
+- Cross-row information is genuinely strong but unusable on hidden topology:
+  session Viterbi reached Full `+0.005913` and SIM `+0.006274` with all folds
+  positive, while history-only Markov/phase corrections stopped at roughly
+  `+0.00015~0.00050`. The strict same-test graph pack was already Public
+  bit-identical to the champion, so future-row smoothing is not a deployment
+  lane.
+- Repeated exact/delex prompts and task families produced high-purity subsets
+  only in already-easy classes. After conditioning on main Weak4, high-purity
+  exact coverage was zero and delex coverage was 15 rows at only 33.3%
+  accuracy. Character/full-row retrieval was materially negative. Full
+  metadata also worsened label NLL in all three folds; its best adaptive tail
+  added only about `+0.000056` beyond main-only calibration.
+- Semantic prompting is now explicitly closed, superseding the prior wording
+  that left a “semantic judge” open. On 223 resolved GPT-5.6 SIM relabel rows,
+  champion official-action accuracy was 54.3% versus 22.0% for semantic top;
+  on their 159 disagreements, main was official 57.9% versus semantic 12.6%.
+  An LLM may still be trained as an **official recorded-policy imitator**, but
+  must not be asked for the semantically ideal next action.
+- A clean fixed-validation shared-decoder probe also failed. The parent HCX had
+  never trained on the 14,001 rows; among 5,284 SIM/main-Weak4 routes, the
+  top-two oracle was Full `+0.047115`, yet a frozen hidden+main KEEP/SWITCH head
+  reached only Full `+0.000191`, SIM `+0.000037`, with folds
+  `+0.000778/+0.000461/-0.000646`. A small head on the existing representation
+  is therefore not the missing specialist.
+- One training-objective proxy cleared the research gate: downweighting the
+  **entire hard+KD mixed loss** on original `sess_sim`, `turn<=2` rows to raw
+  scale `0.25`, normalized back to mean one inside each SIM true class. A
+  paired frozen-head probe across three order seeds gave Full
+  `+0.001251/+0.001116/+0.001496` (mean `+0.001288`) and SIM
+  `+0.001176/+0.001039/+0.001592` (mean `+0.001269`). Weak4 itself averaged
+  `-0.000548`; like conditional alpha, the mechanism is relief of shared
+  representation pressure and improvement in mid classes. Hard-only early
+  attenuation averaged `+0.000838`; inverse-session and SIM-only weights were
+  only `+0.000125/+0.000154` Full.
+- **Decision:** the only new matched full-refit/Public candidate is champion +
+  `--sim-early-turn-loss-scale 0.25`, with AU/replay unchanged and the final
+  per-row mixed loss scaled. This is not promoted locally: `0.25` was selected
+  on the same fixed surface and the proxy has no replay/full fine-tune. Keep it
+  a single-variable seed42 Public card. The remaining high-cost second-priority
+  test is an end-to-end decoder trained on clean OOF `SIM + main-Weak4` rows to
+  predict official `KEEP/read/grep/list/glob`, including c=0; graph, template,
+  retrieval, zero-shot semantics, frozen-head, source-only, dual-head, and
+  session-balance lanes are closed at current evidence.
+
+### 2026-07-13 - HCX-1.5B mixed-INT4 T4 runtime gate: reject
+
+- Ran the clean `999,127,688 B` candidate ZIP and the existing champion ZIP on
+  the same Tesla T4, Python 3.11.15, torch 2.7.1+cu128 stack using the same
+  deterministic 30,000-row proxy. Both produced and validated all 30,000
+  submission rows. Full metrics are in
+  `experiments/artifacts/20260713_hcx15b_t4_runtime.json`.
+- The candidate batch grid chose 16: 2,048-row times for batches
+  16/32/48/64 were `61.172/66.404/74.394/75.304s`; every setting had 100%
+  argmax agreement and none OOMed. Mixed-INT4 restoration/model load took
+  `109.511s`.
+- Candidate clean wall was `1169.517s`; the champion control was `481.583s`,
+  a same-T4 ratio of `2.42848x`. Scaling the champion's `358s` server anchor
+  gives `869.397s`, exceeding the 600-second limit by `269.397s`.
+- **Decision:** reject the HCX-1.5B mixed-INT4 package for submission. Codec
+  fidelity and host memory are acceptable, but storage compression does not
+  offset dense 1.5B inference cost. Do not spend a Public slot on this ZIP.
+
+### 2026-07-13 - HCX-1.5B T4 correction: fair batch64 and forward-only timing
+
+- Repeated the same deterministic 30,000-row T4 comparison with both packages'
+  original `batch_size=64` unchanged and split serialization, tokenizer load,
+  mixed-codec restore/model load, tokenization, CUDA-event forward, transfer/pad
+  overhead, and CSV post-processing. Both package metadata SHA values remained
+  unchanged. Full metrics are in
+  `experiments/artifacts/20260713_hcx15b_b64_techniques.json`; this supersedes
+  interpreting the earlier candidate-b16 clean wall as pure inference.
+- Candidate CUDA forward was `1054.093s` and its full sorted inference loop was
+  `1057.171s`; model restore/load was another `107.307s`, tokenization
+  `13.688s`, and post-processing `0.293s`. The champion CUDA forward was
+  `448.287s`, loop `451.348s`, load `12.369s`, tokenization `13.085s`, and
+  post-processing `0.466s`. The fair forward and loop ratios were therefore
+  `2.35138x` and `2.34225x`. Scaling the forward ratio by the champion's
+  `358s` server anchor gives about `841.8s`, still well over 600 seconds.
+- A candidate-only attention-mask A/B on the same 4,096 rows passed all safety
+  guards and produced exact logits/predictions, but reduced loop time only
+  `147.956s -> 144.938s` (`2.04%`). Profiling showed FP16 GEMMs dominate; the
+  mask-free efficient-attention saving is too small to change the gate.
+- The Qwen3.5-style fresh-process `torch.compile(dynamic=True,
+  mode="reduce-overhead")` probe also failed. On 512 rows, eager was `17.832s`,
+  cold compiled was `212.463s`, and the second warm compiled pass was
+  `25.499s` (about `43%` slower than eager). Its 427 cache files occupied
+  `23,664,306 B`, versus only `872,312 B` remaining in the candidate ZIP.
+- **Decision:** the fair batch64 and forward-only correction confirms the
+  runtime rejection. Mask removal is exact but immaterial; dynamic compile is
+  slower and cannot fit. Do not package or submit this dense-FP16 execution
+  path. A future 1.5B lane requires actual low-bit compute or structural
+  compute reduction, not storage-only INT4, batching, masks, or compile garnish.
+
+### 2026-07-13 - SIM recorded-policy decoder: Lane B card locked as diagnostic
+
+- Locked the second-priority SIM specialist as an end-to-end HCX-0.5B decoder,
+  not a semantic judge and not a `current_v1` extension. It routes only
+  `sess_sim` rows whose parent top-1 is canonical Weak4 and receives only
+  `current_prompt`, all preceding assistant action names in order, and seven
+  row-z-normalized parent-posterior values. The direct output space is
+  `KEEP/read/grep/list/glob`; there is no threshold, cap, replay, KD,
+  consensus feature, rule, or post-outer tuning. The fixed recipe is
+  full fine-tuning, length 128, three epochs, unweighted CE with label
+  smoothing 0.02, backbone/head learning rates `2e-5/5e-4`, seed 42.
+- The three supplied parent files cover all 70,000 rows and 9,429 sessions
+  exactly once with no session crossing. The locked route has 26,761 rows.
+  HCX tokenization over the full route is mean 46.29, p99 74, maximum 100;
+  neither prompt nor trajectory is truncated at length 128. The constructed
+  dataset SHA is `ab47eafd1a2395bc55d35cdd40f9a31cac88d2b3d8eca25f711e34ddb0462beb`.
+- Methodology correction: a row-level three-fold parent OOF stitch is not a
+  clean level-2 specialist OOF surface. If folds are mixed, the parent model
+  that produced a specialist-training row may have trained on the specialist
+  validation fold. The current champion lineage also uses a full-refit M8
+  teacher and a consensus artifact explicitly marked `full_data_refit_only`.
+  The available parent payloads do not prove those label-dependent inputs were
+  fold-local.
+- **Decision:** the affordable B run is therefore a diagnostic only. Within
+  each parent fold, use a session-hash three-fold specialist CV (`3 x 3 = 9`
+  fits), giving exactly-once coverage of all route and full rows without mixing
+  parent folds. Quality is reported with the preregistered Full/SIM/Weak4,
+  three-parent-sign, and rescue-versus-harm checks, but promotion is fail-closed
+  regardless of the score. Strict evidence would require at least nine nested
+  main fits plus holdout-excluding teacher and consensus generation.
+- A second standalone HCX int8 model would put the package near 1.02 GB and is
+  not yet deployable under the 1 GB limit. If the end-to-end diagnostic shows
+  material signal, open INT4 compression or shared-backbone LoRA as a separate
+  packaging experiment; do not substitute either into this preregistered card.
+
+### 2026-07-13 - SIM early-turn mixed-loss card refit and package complete
+
+- Ran the exact seed-42 sieve x conditional-alpha champion full-refit with the
+  single added training variable `--sim-early-turn-loss-scale 0.25`. The saved
+  metadata confirms class-normalized scaling on `15,818/64,975` original SIM
+  rows, with AU and replay unchanged, zero class bias, and no rule layer.
+- The A100 run completed all 15,000 optimizer steps in `3674.475s`, with final
+  train loss `0.11994`, zero AMP skipped steps, all three epoch checkpoints,
+  and a 1090.6 MB fp16 HF artifact. CLI auto-collect succeeded and the lane was
+  released normally before the explicit result/model pulls.
+- Built the int8-only Public candidate `submissions/kd_ca_sim025_s42.zip`:
+  170/219 tensors quantized, 512,065,277 bytes, SHA-256
+  `d721461653be8aabdf9b59e48f36487ba8acacb777897ae2738117c487918eab`.
+  Archive roots are exactly `script.py`, `requirements.txt`, and `model/`; no
+  fp16 checkpoint is present. Per explicit user instruction, both 512-row
+  fidelity verification and offline GPU/CPU smoke were skipped. **Decision:**
+  package was sent as a Public-only candidate; no local quality score was
+  claimed. Public returned `0.790`, approximately `-0.00388` from the exact
+  locally reproducible seed42 champion (`0.7938816426`) and `-0.00534` from
+  the then-current team champion (`0.79534`). **Final decision:** reject this
+  exact scale/recipe card and keep both baselines unchanged at that point. The
+  frozen-head proxy gain did not transfer to the final target; because HCX
+  instance variance is wide, do not generalize this single point into a
+  precise causal estimate of every possible SIM early-turn weighting scheme.
+
+### 2026-07-13 - SIM recorded-policy decoder Lane B: minimal serializer rejected
+
+- The preregistered direct five-way decoder was stopped after two independent
+  parent-0 inner folds both predicted `KEEP` on every routed row. Loss fell
+  below the constant-prior entropy, so this was decision collapse rather than
+  a dead optimizer, but the resulting Full/SIM deltas were exactly zero.
+- Re-decoding the raw logits as a binary switch gate plus conditional action
+  did not recover a usable policy: the gate contained ranking signal, but the
+  selected switches had materially more harms than rescues. A small KEEP-logit
+  bias found on the first fold produced no switches on the untouched second
+  fold and was closed as non-reproducing post-hoc calibration.
+- A separately implemented factorized objective (unweighted binary gate plus
+  valid-three conditional action loss, decoded by joint probability without a
+  threshold) was then run on the same first split. It also predicted `KEEP` on
+  every row. Its conditional head used only two of the four alternatives, and
+  forcing its raw gate at zero was strongly negative. Detailed fold, raw-logit,
+  and calibration results are in
+  `experiments/artifacts/20260713_sim_policy_decoder_lane_b_diagnostic.json`.
+- **Decision:** reject the current minimal
+  `prompt + ordered action names + parent 7d` decoder and do not spend the
+  remaining seven direct folds, class-weight/focal sweeps, a package build, or
+  a Public slot on it. This result does not test a richer candidate-relative
+  decoder with selective causal state evidence from action args/results and
+  workspace deltas; that would be a new preregistered lane, not continuation or
+  rescue of this one.
+
+### 2026-07-13 - team Public champion sequence: gated ensemble -> R1 -> R1b
+
+- The first team update, [`kd_ens2_s202s909`](https://2026aiswai.slack.com/archives/C0BE7C9R2UT/p1783939183866309),
+  combined a champion-recipe seed202 INT8 main model with a seed909 INT4
+  secondary model. The secondary runs only where main-model `margin < 1.0`
+  (about 25%), then logits are averaged; a `430s` pre-secondary guard falls
+  back to the main model. Team-reported OOF gain was `+0.00183`.
+  Public reached `0.79426` in `7:28`, up `+0.0003783574` from the exact seed42
+  champion `0.7938816426` and about `+0.00049` from the documented standalone
+  seed202 result `0.79377`.
+- The second update, [`kd_ens2_s202s909_r1`](https://2026aiswai.slack.com/archives/C0BE7C9R2UT/p1783949394606869),
+  kept the ensemble decision recipe and added one hard override:
+  `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user`. It
+  changes about 19 hidden-test rows. The roughly 12-line block sits in
+  `run_hf_inference` immediately after ensemble-logit averaging and finalizing
+  `pred_ids`. The rule was derived on the seed42 champion OOF surface, where
+  all three folds were positive
+  (`+0.00104/+0.00096/+0.00055`, mean about `+0.00085`, precision `0.67`).
+  Deployment on the seed202+seed909 ensemble reached `0.79534` in `7:27`,
+  another `+0.00108` and a total `+0.0014583574` over seed42. The mechanism
+  targets the `web_search` false-positive / `ask_user` recall boundary; no
+  per-class F1 values were supplied.
+- The third update, `kd_ens2_s202s909_r1b`, contains **both R1 and R1b**.
+  R1b is the same low-budget mechanism on a second error branch:
+  `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`.
+  Its train audit covers 37 rows at precision `0.757`. R1 and R1b have
+  disjoint source predictions, so they cannot conflict. Public reached
+  `0.79546`, another `+0.00012`, `+0.00120` over ens2, and
+  `+0.0015783574` over the exact seed42 local champion.
+- All three Public increments are below the `0.002` interpretation band and
+  do not independently establish broad causal effects. R1 has separate
+  all-positive seed42 OOF support; no held-out/OOF delta was reported for R1b.
+  Public is the complete final target, so the decision is to promote
+  `0.79546` as the team champion, retain `0.79534` and `0.79426` as the two
+  immediately superseded ledger entries, and keep the exact seed42
+  `kd_sieve_ca_s42.zip` as the locally reproducible fallback.
+- Artifact boundary is explicit: the team reported 757 MB for the base pack
+  and 723 MB plus completed build/offline-smoke/flip checks for R1, but neither
+  archive, seed909 weights, exact ensemble/rule code, metadata, nor training
+  commands are in this repo. R1b package size, runtime, and smoke status were
+  not reported. The local generic cascade uses a different blend path and the
+  local rule engine has no budget hard override, so none is called a
+  reproduction. No `experiments/results.csv` rows were added for these three
+  team submissions because their required exact `train_command` values cannot
+  be recovered from package names.

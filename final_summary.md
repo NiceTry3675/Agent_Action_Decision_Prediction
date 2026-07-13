@@ -2,9 +2,63 @@
 
 ## Current Public Baseline
 
-### Team and local Public champion: sieve × conditional-alpha stack (`0.7938`)
+### Team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
 
-- Public Macro-F1: `0.7938` (`submissions/kd_sieve_ca_s42.zip`, reported
+- Public Macro-F1: `0.79546` (`kd_ens2_s202s909_r1b`, teammate result reported
+  2026-07-13). Despite the suffix, this pack contains **both R1 and R1b** on
+  top of the ens2 base; package size and server runtime were not reported.
+- R1b is the second low-budget policy rule:
+  `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`.
+  It covers 37 train rows at precision `0.757`. It shares R1's mechanism: the
+  generator changes policy as budget is exhausted, while the model cannot
+  reliably learn the numeric threshold because of digit tokenization.
+- R1 (`web_search -> ask_user`) and R1b (`apply_patch -> edit_file`) have
+  disjoint source predictions, so they cannot collide. Both are evaluated in
+  the post-ensemble rule block immediately after ensemble-logit averaging and
+  finalizing `pred_ids`.
+- Public improved `+0.00012` over the R1 pack, `+0.00120` over the no-rule
+  ensemble, and `+0.0015783574` over the exact local champion `0.7938816426`.
+  The new increment is far inside the repo's `0.002` interpretation band and
+  has no reported held-out/OOF delta, so it is promoted only as the highest
+  final-score instance, not as standalone directional recipe evidence.
+- Weak-boundary evidence now covers `web_search -> ask_user` and
+  `apply_patch -> edit_file`. No new F1 values were shared for the required
+  audit set (`list_directory`, `read_file`, `grep_search`, `glob_pattern`,
+  `web_search`, `lint_or_typecheck`, or `run_tests` vs `run_bash`), so none
+  are inferred.
+- Artifact status: the exact R1b archive, scripts, model metadata, seed
+  checkpoints, training commands, smoke result, size, and runtime are not
+  local/reported yet. Do not treat the current repo's generic cascade/rule
+  engine as an exact reproduction.
+
+### Same-day previous team champion: gated 2-seed ensemble + budget R1 (`0.79534`)
+
+- `kd_ens2_s202s909_r1.zip` adds
+  `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` after
+  ensemble `pred_ids` finalization. It changes about 19 hidden-test rows.
+- R1 was derived on the seed42 champion OOF surface, where all three folds
+  were positive (`+0.00104/+0.00096/+0.00055`, mean about `+0.00085`,
+  precision `0.67`). Deployment on ens2 reached Public `0.79534` (`+0.00108`)
+  in `7:27/10:00`.
+- The team reported a 723 MB package with build, offline smoke, and flip
+  verification complete. The exact archive and code remain team-side.
+
+### Same-day previous team champion: gated 2-seed ensemble (`0.79426`)
+
+- `kd_ens2_s202s909.zip`: champion-recipe seed202 INT8 main model + seed909
+  INT4 secondary model. The secondary forward runs only on rows where the
+  main-model `margin < 1.0` (about 25%), then the two logits are averaged; a
+  pre-secondary `430s` time guard falls back to the main model when needed.
+- Public Macro-F1 `0.79426`, runtime `7:28/10:00`, immediately superseded by
+  R1. This is `+0.0003783574` over the exact seed42 local champion and about
+  `+0.00049` over the documented standalone seed202 result `0.79377`.
+- The team reported OOF `+0.00183`, a 757 MB pre-submission package, and
+  successful timing/smoke checks. The exact seed909 artifact, ensemble code,
+  blend metadata, and package are team-side only.
+
+### Previous team and current locally reproducible champion: sieve × conditional-alpha (`0.7938816426`)
+
+- Public Macro-F1: `0.7938816426` (`submissions/kd_sieve_ca_s42.zip`, reported
   2026-07-11). Server inference `5:58/10:00`.
 - Exactly the `kdm8_sieve_s42` recipe below with one added variable:
   `--distill-alpha-weak 0.7` — teacher-matched original rows whose true label
@@ -165,16 +219,45 @@ val-tuning) `0.780` -> Qwen3-0.6B **distilled** from an OOF-diversity teacher
 blend `0.782` -> HCX-0.5B refit, same champion recipe, base-model swap only
 `0.7852` -> **HCX-0.5B distilled from the M8 full-refit teacher**
 `0.78913` (`kd_m8_refit.zip`) -> conditional-alpha KD `0.78962` (artifact
-absorbed) -> OOF-consensus gradient sieve `0.7917` -> **sieve ×
-conditional-alpha `0.7938`** (current team and locally reproducible Public
-champion). The
+absorbed) -> OOF-consensus gradient sieve `0.7917` -> sieve ×
+conditional-alpha `0.7938816426` (current locally reproducible champion) ->
+gated seed202+seed909 ensemble `0.79426` -> budget-R1 ensemble `0.79534` ->
+**budget-R1+R1b ensemble `0.79546`** (current team Public champion). The
 non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 (`submissions/hcx05b_refit.zip`,
 `submissions/m7_qwen3_refit.zip`, `submissions/kd_m8blend_qwen3_refit.zip`).
 
 ## Model Configuration
 
-### Team and local Public champion: sieve × conditional-alpha HCX-0.5B KD (`0.7938`)
+### Team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
+
+- Team-side `kd_ens2_s202s909_r1b` uses the ensemble configuration below and
+  includes both low-budget overrides after ensemble `pred_ids` finalization:
+  R1 maps `web_search -> ask_user`; R1b maps `apply_patch -> edit_file`.
+  Their source predictions are disjoint, so rule order cannot create a
+  collision. R1b's train audit is 37 rows at precision `0.757`.
+- Package size, runtime, and smoke status were not reported for R1b.
+- The exact implementation and both deployed seed artifacts are not local;
+  no training command should be inferred by substituting seed values into the
+  seed42 command.
+
+### Previous team champion: gated seed202+seed909 ensemble + R1 (`0.79534`)
+
+- Team-side `kd_ens2_s202s909_r1.zip` adds the R1
+  `web_search -> ask_user` low-budget override to the ens2 pack. Reported
+  package size/runtime are 723 MB and `7:27/10:00`; build, smoke, and flip
+  verification were reported complete.
+
+### Previous team champion: gated seed202+seed909 ensemble (`0.79426`)
+
+- Team-side package `kd_ens2_s202s909.zip`: seed202 INT8 main model, seed909
+  INT4 secondary model, secondary inference on rows with `margin < 1.0`
+  (about 25%), logit averaging, and a `430s` pre-secondary time guard.
+  Reported package size/runtime are 757 MB and `7:28/10:00`.
+- The local generic cascade is only analogous: its blend space and rule/time
+  behavior differ, so it is not a drop-in reproduction of this package.
+
+### Previous team and current local champion: sieve × conditional-alpha HCX-0.5B KD (`0.7938816426`)
 
 - Package: `submissions/kd_sieve_ca_s42.zip` (512 MB), fp16 source at
   `experiments/incoming/models/kd_sieve_condalpha_refit/`, int8 deployment
@@ -281,7 +364,10 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 | `kd_m8_refit` (was `kd_hcx_m8`): HCX-0.5B + KD from M8 (Qwen3.5-0.8B) alone as teacher (`m8_qwen35_refit_train70k_fp16.pt`, full-refit not OOF), base recipe = `hcx05b_refit_s42`, alpha=0.5 temp=3, no rules layer | n/a (refit; matched-recipe seed42 fixed screen raw `0.783852` / 2stage `0.787801` — mildly optimistic, full-refit teacher saw val rows) | n/a | n/a | `0.78913` | Prior team/local baseline, absorbed 2026-07-07 and repackaged as `submissions/kd_m8_refit.zip`. +0.0039 vs non-KD HCX-0.5B. |
 | `condalpha-KD`: `kd_m8_refit` recipe, with KD alpha raised `0.5 -> 0.7` only on teacher-matched original Weak4 rows; other matched originals stay at `0.5`, replay/unmatched rows stay KD-masked, temp `3.0` | n/a (teammate submission; fp16 checkpoint absorbed 2026-07-11 at `experiments/incoming/models/kd_condalpha_refit/`) | n/a | n/a | `0.78962` | Previous team Public champion; +0.00049 vs `kd_m8_refit`, inside the 0.002 noise band. |
 | `kdm8_sieve_s42`: `kd_m8_refit` recipe + M7/M8/v6 OOF-correctness gradient sieve on the hard-label backbone branch only; full hard-label head, unchanged M8 KD, class-normalized scales, replay unsieved, zero bias/rules | n/a (full-refit-only by construction) | n/a | n/a | `0.7917` | Previous champion. +0.00208 vs `condalpha-KD`, clearing the 0.002 noise floor; exact package locally smoke-tested. |
-| `kd_sieve_ca_s42`: `kdm8_sieve_s42` recipe + `--distill-alpha-weak 0.7` as the only variable (matched Weak4-true originals KD alpha 0.7, other matched 0.5, replay/unmatched KD-masked, T3) | n/a (full-refit-only) | n/a | n/a | `0.7938` | **Current team and local Public champion.** +0.0021 vs `kdm8_sieve_s42` at matched seed42, above the 0.002 noise floor — conditional alpha adds on top of the sieve. Runtime 5:58/10:00; int8 argmax fidelity 100% (512/512). |
+| `kd_sieve_ca_s42`: `kdm8_sieve_s42` recipe + `--distill-alpha-weak 0.7` as the only variable (matched Weak4-true originals KD alpha 0.7, other matched 0.5, replay/unmatched KD-masked, T3) | n/a (full-refit-only) | n/a | n/a | `0.7938816426` | **Current locally reproducible champion; previous team champion.** +0.0021 vs `kdm8_sieve_s42` at matched seed42, above the 0.002 noise floor — conditional alpha adds on top of the sieve. Runtime 5:58/10:00; int8 argmax fidelity 100% (512/512). |
+| `kd_ens2_s202s909`: seed202 INT8 main + seed909 INT4 secondary; secondary runs where main-model `margin < 1.0` (about 25%), logits averaged, `430s` pre-secondary fallback guard | n/a (team-side seed refits) | team-reported gated ensemble `+0.00183` | n/a | `0.79426` | **Same-day intermediate team champion.** `+0.0003783574` vs the exact seed42 local champion and about `+0.00049` vs standalone seed202 `0.79377`; runtime 7:28. Public increments are inside the 0.002 band, so promote the instance without a broad causal claim. |
+| `kd_ens2_s202s909_r1`: preceding ensemble + `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` immediately after ensemble `pred_ids` finalization | n/a (team-side inference rule) | team-reported seed42 rule OOF `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67` | n/a | `0.79534` | **Previous team Public champion.** `+0.00108` vs the no-R1 ensemble and `+0.0014583574` vs the exact seed42 local champion; runtime 7:27. All-positive seed42 OOF support; superseded by R1+R1b. |
+| `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | n/a; train rule audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Current team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. Promote the final-score instance only; no R1b OOF/runtime/package report yet. |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local
@@ -289,8 +375,16 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Package And Smoke
 
-- Current champion: `kd_sieve_ca_s42.zip` (`0.7938`), 512 MB; GPU and CPU
-  zip-extracted offline smokes passed.
+- Current team champion: team-side `kd_ens2_s202s909_r1b` (`0.79546`), which
+  contains both R1 and R1b. Package size, runtime, and smoke status were not
+  reported; exact archive and scripts are not local.
+- Same-day previous team champion: team-side `kd_ens2_s202s909_r1.zip`
+  (`0.79534`), reported 723 MB / `7:27`; build, offline smoke, and flip
+  verification were reported complete.
+- Earlier same-day team champion: team-side `kd_ens2_s202s909.zip`
+  (`0.79426`), reported 757 MB / `7:28`; exact archive is not local.
+- Current locally reproducible champion: `kd_sieve_ca_s42.zip`
+  (`0.7938816426`), 512 MB; GPU and CPU zip-extracted offline smokes passed.
 - Previous champion: `kdm8_sieve_s42.zip` (`0.7917`), 512 MB; zip-extracted
   offline smoke passed.
 - Previous local baseline: `kd_m8_refit.zip` (`0.78913`), 512 MB.
@@ -299,24 +393,23 @@ fixed/OOF screens (see KD-fold-leak finding above).
 - Fallbacks: `hcx05b_refit.zip` (512 MB, `0.7852`),
   `kd_m8blend_qwen3_refit.zip` (515 MB, `0.782`), `m7_qwen3_refit.zip`
   (539 MB, `0.780`)
-- Archive root: `script.py`, `requirements.txt`, `model/`
-- Offline zip-extracted smoke passed with `TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1`
+- Locally held archive root: `script.py`, `requirements.txt`, `model/`
+- Local zip-extracted offline smoke passed with
+  `TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1`
   under a `transformers>=4.51,<4.52` PYTHONPATH overlay (matches the shipped
   `requirements_qwen3.txt`).
-- CPU-only smoke passed with `CUDA_VISIBLE_DEVICES=''`.
-- Output file: `output/submission.csv`
-- Output columns: exactly `id,action`
-- Output row count and id order match `sample_submission.csv`.
-- All predictions are in the 14 valid labels.
+- Local CPU-only smoke passed with `CUDA_VISIBLE_DEVICES=''`.
+- Local smoke output file: `output/submission.csv`
+- Local smoke output columns: exactly `id,action`
+- Local smoke row count and id order match `sample_submission.csv`.
+- All local smoke predictions are in the 14 valid labels.
 
 ## Next Improvement Candidates
 
-- **HCX-0.5B is now the base line to build on for future levers**: it slots
-  into the existing `current_v1` serializer, bias/rules, and cascade infra
-  with just the base-model + tokenizer swap already done here, and its ~11%
-  shorter tokenization reopens ensemble/cascade timing room the Qwen3-0.6B
-  line didn't have. No rule-boosts layer has been tuned on it yet — an OOF
-  rule-boost pass (same pipeline as M7/KD) is a plausible next increment.
+- **Endgame team base is now the R1+R1b-enabled seed202+seed909 ensemble**:
+  subsequent team submissions should preserve both rules unless an isolated
+  ablation says otherwise. Locally, `kd_sieve_ca_s42.zip` remains the
+  reproducible fallback until the teammate archive/script/meta are handed off.
 - **Do not re-run KD with a same-fold-split OOF teacher and trust the local
   screen** — see the KD-fold-leak finding above. If attempting KD again,
   either build the teacher OOF on a different fold seed/split than the
@@ -326,14 +419,14 @@ fixed/OOF screens (see KD-fold-leak finding above).
   matched-seed42 held-out screen (2026-07-07) measured the kd_m8_refit student
   x m7 blend at `-0.0027` (w50) vs `+0.0086` for the non-KD HCX x m7 pair —
   KD from a Qwen-family teacher absorbed the cross-family signal. The
-  cascade-on-kd-baseline lane is closed; do not revisit without a
-  non-Qwen-family second leg showing a fresh blend gain.
+  cross-architecture cascade-on-KD lane remains closed. This does not apply to
+  the now-validated same-recipe seed-diversity ensemble axis.
 - Make any new promotion decision from OOF logits, not fixed split alone.
 - Prioritize weak-class gains for `list_directory`, `read_file`, `grep_search`, `web_search`, and `glob_pattern`.
 - Keep rule and sparse ensemble changes only if they improve OOF after 2-stage bias tuning.
-- Inference margin is no longer as tight as the Qwen3-0.6B line was (8:50-8:55):
-  HCX-0.5B runs `6:29/10:00`, leaving ~3:31 — still verify with a timing check
-  before adding any second model/ensemble leg to a package.
+- The last reported runtime is the R1 pack's `7:27/10:00`; R1b runtime was not
+  reported. The ens2 `430s` pre-secondary guard remains part of the stated
+  base recipe, but re-smoke the exact R1b handoff before any further stack.
 - Encoder-family re-screen (fair champion-recipe conditions) results:
   - `mdeberta-v3-base` (canonical lr 1e-5): raw `0.702023` / 2stage `0.721257` — closed, no signal.
   - `microsoft/deberta-v3-base` (EN): fixed 2stage `0.746753` — inside the base448 band, ensemble-diversity candidate only.

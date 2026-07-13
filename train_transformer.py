@@ -279,6 +279,93 @@ def add_replay_examples(samples, y, train_idx, args):
     return new_samples, new_y, new_train_idx, sample_weights, len(replay_samples)
 
 
+def apply_sim_early_turn_loss_scale(samples, y, train_idx, sample_weights, args):
+    """Reweight the complete mixed loss of early original SIM rows.
+
+    The raw multiplier is applied to non-replay ``sess_sim`` rows at turns 1-2,
+    then normalized to mean one inside each SIM true class on the actual
+    training split. AU rows and replay rows are deliberately untouched.
+    """
+
+    scale = float(getattr(args, "sim_early_turn_loss_scale", 1.0))
+    if not math.isfinite(scale) or not 0.0 < scale <= 1.0:
+        raise ValueError("sim early-turn loss scale must be finite and in (0, 1]")
+    if len(samples) != len(y) or len(samples) != len(sample_weights):
+        raise ValueError("SIM early-turn loss inputs have inconsistent row counts")
+
+    updated = list(sample_weights)
+    if scale == 1.0:
+        args.sim_early_turn_loss_meta = {
+            "enabled": False,
+            "raw_scale": 1.0,
+            "turn_max": 2,
+        }
+        return updated
+
+    by_class = {}
+    turn_by_index = {}
+    for idx in train_idx:
+        sample = samples[idx]
+        if sample.get("_is_replay"):
+            continue
+        sample_id = safe_text(sample.get("id"))
+        if not sample_id.startswith("sess_sim_"):
+            continue
+        meta = sample.get("session_meta") or {}
+        turn_value = meta.get("turn_index")
+        try:
+            turn = int(turn_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"SIM early-turn loss requires integer turn_index: id={sample_id!r} "
+                f"value={turn_value!r}"
+            ) from exc
+        label = int(y[idx])
+        by_class.setdefault(label, []).append(idx)
+        turn_by_index[idx] = turn
+
+    if not by_class:
+        raise ValueError("SIM early-turn loss found no original sess_sim training rows")
+
+    per_class = {}
+    target_rows = 0
+    for label, indices in sorted(by_class.items()):
+        early_count = sum(turn_by_index[idx] <= 2 for idx in indices)
+        raw_mean = (early_count * scale + len(indices) - early_count) / len(indices)
+        if raw_mean <= 0.0 or not math.isfinite(raw_mean):
+            raise ValueError(f"invalid SIM early-turn class mean for label={label}: {raw_mean}")
+        early_multiplier = scale / raw_mean
+        later_multiplier = 1.0 / raw_mean
+        for idx in indices:
+            multiplier = early_multiplier if turn_by_index[idx] <= 2 else later_multiplier
+            updated[idx] *= multiplier
+        target_rows += early_count
+        per_class[ALL_CLASSES[label]] = {
+            "rows": len(indices),
+            "early_rows": early_count,
+            "raw_mean": raw_mean,
+            "early_multiplier": early_multiplier,
+            "later_multiplier": later_multiplier,
+        }
+
+    meta = {
+        "enabled": True,
+        "raw_scale": scale,
+        "turn_max": 2,
+        "normalization": "mean_one_within_sim_true_class",
+        "sim_rows": sum(len(indices) for indices in by_class.values()),
+        "target_rows": target_rows,
+        "per_class": per_class,
+    }
+    args.sim_early_turn_loss_meta = meta
+    print(
+        "SIM early-turn mixed-loss scale: "
+        f"raw={scale} target={target_rows}/{meta['sim_rows']} "
+        "normalization=SIM-true-class-mean1 AU/replay=unchanged"
+    )
+    return updated
+
+
 def filter_train_indices(train_idx, y, mode):
     if mode == "none":
         return list(train_idx)
@@ -1815,6 +1902,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "bf16": bool(args.bf16),
         "explorer4_loss_weight": float(args.explorer4_loss_weight),
         "explorer4_loss_balance": bool(args.explorer4_loss_balance),
+        "sim_early_turn_loss": getattr(args, "sim_early_turn_loss_meta", None),
         "consensus_reliability": getattr(args, "consensus_reliability_meta", None),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
@@ -2143,6 +2231,13 @@ def run(args):
                 args,
             )
         final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
+        final_sample_weights = apply_sim_early_turn_loss_scale(
+            final_samples,
+            final_y,
+            final_idx,
+            final_sample_weights,
+            args,
+        )
         print(f"split=final_refit train={len(final_idx)} replay_size={final_replay_size}")
         token_start = time.perf_counter()
         final_texts, text_cache_path = build_serialized_texts(
@@ -2292,6 +2387,13 @@ def run(args):
     val_idx = select_balanced_subset(val_idx, y, args.quick_val_size, args.seed + 17)
     samples, y, train_idx, sample_weights, replay_size = add_replay_examples(samples, y, train_idx, args)
     train_idx = filter_train_indices(train_idx, y, args.train_label_filter)
+    sample_weights = apply_sim_early_turn_loss_scale(
+        samples,
+        y,
+        train_idx,
+        sample_weights,
+        args,
+    )
     fold_text = f" fold={args.fold_id}/{args.n_folds}" if args.split == "session_oof" else ""
     print(f"split={args.split}{fold_text} train={len(train_idx)} val={len(val_idx)} full_val={full_val_count}")
 
@@ -2411,8 +2513,9 @@ def run(args):
             final_encoded_features = encoded_features
             final_lengths = lengths
             final_y = y
-            final_sample_weights = sample_weights
+            final_sample_weights = [1.0] * len(samples)
             final_idx = list(range(len(samples)))
+            final_train_samples = samples
         else:
             final_samples, final_y, final_idx, final_sample_weights, final_replay_size = add_replay_examples(
                 base_samples,
@@ -2429,8 +2532,15 @@ def run(args):
             )
             final_encoded_features, final_lengths, _ = tokenize_texts(tokenizer, final_texts, args, train_path, cache_scope="final")
             print(f"final replay_size={final_replay_size}")
+            final_train_samples = final_samples
         final_idx = filter_train_indices(final_idx, final_y, args.train_label_filter)
-        final_train_samples = samples if args.replay_mode == "none" else final_samples
+        final_sample_weights = apply_sim_early_turn_loss_scale(
+            final_train_samples,
+            final_y,
+            final_idx,
+            final_sample_weights,
+            args,
+        )
         final_teacher, final_consensus = build_training_signals(
             final_train_samples, final_y, final_idx, args
         )
@@ -2708,6 +2818,15 @@ def parse_args():
     parser.add_argument("--replay-mode", choices=["none", "last1", "last2"], default="none")
     parser.add_argument("--max-replay-samples", type=int, default=20000)
     parser.add_argument("--replay-sample-weight", type=float, default=0.5)
+    parser.add_argument(
+        "--sim-early-turn-loss-scale",
+        type=float,
+        default=1.0,
+        help=(
+            "raw whole-loss multiplier for non-replay sess_sim rows at turn_index<=2; "
+            "normalized to mean 1 inside each SIM true class (1 disables)"
+        ),
+    )
     parser.add_argument("--bucket-multiplier", type=int, default=8)
     parser.add_argument("--eval-bucket-multiplier", type=int, default=50)
     parser.add_argument("--pad-to-multiple-of", type=int, default=8)
@@ -2715,6 +2834,11 @@ def parse_args():
     parser.add_argument("--no-save-val-logits", dest="save_val_logits", action="store_false")
     parser.add_argument("--logits-dir", default="experiments/logits")
     args = parser.parse_args()
+    if (
+        not math.isfinite(args.sim_early_turn_loss_scale)
+        or not 0.0 < args.sim_early_turn_loss_scale <= 1.0
+    ):
+        parser.error("--sim-early-turn-loss-scale must be finite and in (0, 1]")
     if args.rdrop_alpha > 0 and not args.dropout:
         parser.error(
             "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "

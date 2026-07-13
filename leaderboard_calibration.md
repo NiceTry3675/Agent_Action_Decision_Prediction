@@ -14,21 +14,36 @@ Experiment details live in `experiments/results.csv`.
 
 ## Current Baseline
 
-- Team and locally reproducible Public champion: sieve × conditional-alpha
-  stack, Public `0.7938` (`kd_sieve_ca_s42.zip`, 2026-07-11, runtime
-  `5:58/10:00`).
-- Delta: `+0.0021` over the sieve champion `0.7917` at matched seed42 with a
-  single variable (`--distill-alpha-weak 0.7`) — clears the `0.002` noise
-  floor: conditional alpha adds on top of the consensus sieve.
-- Recipe: `kdm8_sieve_s42` unchanged (consensus backbone-gradient sieve, full
-  head, M8 KD, replay unsieved, zero bias/rules) + matched Weak4-true original
-  rows at KD alpha `0.7` (other matched `0.5`, replay/unmatched KD-masked,
-  T3). Full-refit-only; local held-out use is fail-closed. fp16 + int8
-  (argmax fidelity 512/512) present locally; GPU/CPU offline smokes passed.
+- Team Public champion: `kd_ens2_s202s909_r1b`, Public `0.79546`
+  (2026-07-13). It contains both low-budget rules on the gated seed202+seed909
+  ensemble: R1 maps `web_search -> ask_user`; R1b maps
+  `apply_patch -> edit_file`. Both use `budget_tokens_remaining < 5000` and
+  run after ensemble `pred_ids` finalization. Their source predictions are
+  disjoint, so they cannot conflict.
+- R1b's train audit covers 37 rows at precision `0.757`; no held-out/OOF delta
+  was reported. Public improved `+0.00012` over R1, `+0.00120` over ens2, and
+  `+0.0015783574` over the exact seed42 local champion. Runtime, package size,
+  and smoke status were not reported for R1b.
+- Immediately prior champions: R1-only `kd_ens2_s202s909_r1.zip` scored
+  `0.79534` (`7:27`, 723 MB), after the no-rule ens2 pack scored `0.79426`
+  (`7:28`, 757 MB). R1 retains its all-positive seed42 OOF support; R1b does
+  not yet have comparable validation evidence.
+- All three Public increments are below the `0.002` interpretation band, so
+  they do not independently establish broad recipe effects. Public is the
+  100% final target, so the highest instance is nevertheless promoted.
+- Current locally reproducible champion remains `kd_sieve_ca_s42.zip`, exact
+  Public `0.7938816426`, runtime `5:58/10:00`. The three new archives, seed909
+  model, ensemble/rule implementations, metadata, and exact commands are
+  team-side only; no local reproduction is claimed.
 
 ## Notes
 
-- The largest recurring errors remain around `grep_search`, `read_file`, `list_directory`, and `glob_pattern`.
+- The largest recurring errors remain around `grep_search`, `read_file`,
+  `list_directory`, and `glob_pattern`. R1 specifically targets the
+  `web_search` false-positive / `ask_user` recall boundary; R1b targets the
+  `apply_patch` / `edit_file` boundary. No new per-class F1 was shared for
+  those classes, `lint_or_typecheck`, or `run_tests` vs `run_bash`, so the
+  ledger records no inferred weak-class values.
 - Alternative encoder notes are summarized in `final_summary.md`; full rows stay in `experiments/results.csv`.
 
 ## Promotion Rule (2026-07-04: Public-gated)
@@ -92,3 +107,7 @@ score lands.
 | 2026-07-12 | `kd_sieve_ca_c0a8_s42.zip` / `...kd_sieve_ca_c0a8_refit_s42`: exact `kd_sieve_ca_s42` recipe plus KD alpha floor `0.8` on teacher-matched canonical `c=0` originals only; non-c0 Weak4 remains `0.7`, non-c0 others `0.5`, replay/unmatched KD-masked, hard sieve unchanged | n/a (full-refit-only) | **0.792** | -0.0018 vs `kd_sieve_ca_s42` | **Not promoted.** Runtime **6:03/10:00**. The delta is inside the `0.002` noise band, so it is not directional evidence that the c0 alpha floor helps or hurts; it simply did not improve the final-score instance. With no independent positive signal, do not open a c0-alpha grid. Champion remains `0.7938`. |
 | 2026-07-12 | `kd_ca_mlp6_s42.zip`: exact `kd_sieve_ca_s42` champion weights with only layer 6 MLP `down_proj`/`gate_proj`/`up_proj` row-wise INT8 and all other model tensors FP16; zero bias/rules unchanged | n/a (precision-only repack) | **0.79382** | -0.0000616426 vs exact champion `0.7938816426` | **Neutral; not promoted.** The partial-FP16 path is Public-equivalent to the compact full-INT8 champion and far inside the `0.002` noise band. This is strong evidence that final INT8 quantization is not a material score bottleneck for this champion instance; retain the smaller full-INT8 package and do not spend slots on this hybrid precision axis. Package size 1,019,133,957 bytes; runtime not reported. |
 | 2026-07-13 | `kd_ca_blend12_s42.zip`: exact `kd_sieve_ca_s42` champion weights plus the 12 frozen rules from `20260706_blend_m7m8v6_oof_rules_rule_boosts.json`; champion class bias remains all-zero, no sparse/graph/prior/leak | proxy only: positive across HCX fixed instances, but rule selection shared the 70k label universe | **0.7927** | approximately -0.00118 vs exact champion `0.7938816426` | **Not promoted.** The delta is inside the `0.002` interpretation band, so it is not broad causal evidence against rule transfer, but Public is the complete final target and this exact inference-only pack is lower. Close this blend-12-on-champion card and retain the zero-rule champion; runtime not reported. |
+| 2026-07-13 | `kd_ens2_s202s909.zip`: team-side seed202 INT8 main + seed909 INT4 secondary; run the secondary only where main-model `margin < 1.0` (about 25%), average logits, and skip the secondary when pre-forward elapsed time exceeds `430s` | team-reported gated-ensemble OOF `+0.00183`; exact OOF reference score not supplied | **0.79426** | `+0.0003783574` vs exact seed42 champion `0.7938816426`; about `+0.00049` vs documented seed202 `0.79377` | **NEW TEAM PUBLIC CHAMPION**, immediately superseded by R1 below. Runtime **7:28/10:00**; reported pre-submit size 757 MB and smoke/timing checks passed. The Public gains are inside the `0.002` band, so this promotes the final-score instance without claiming a broad ensemble effect. Exact package, seed909 artifact, implementation, metadata, and commands are not local. |
+| 2026-07-13 | `kd_ens2_s202s909_r1.zip`: preceding ensemble + direct `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` override immediately after ensemble `pred_ids` finalization | team-reported seed42 rule OOF mean about `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67`; about 19 hidden-test flips | **0.79534** | `+0.00108` vs `kd_ens2_s202s909`; `+0.0014583574` vs exact seed42 local champion | **NEW TEAM PUBLIC CHAMPION, superseded same day by R1+R1b.** Runtime **7:27/10:00** and reported package size 723 MB; build, offline smoke, and flip verification reported complete. Public delta alone is inside the interpretation band, but all-positive seed42 OOF supports the same direction. Exact package/code remain team-side. |
+| 2026-07-13 | `kd_ca_sim025_s42.zip` / `...kd_sieve_ca_simearly025_refit_s42`: exact seed42 sieve x conditional-alpha recipe plus class-normalized whole-loss raw scale `0.25` on original SIM rows with `turn_index <= 2`; AU/replay unchanged | n/a (full-refit-only; frozen-head proxy was positive but not a valid Public estimate) | **0.790** | approximately `-0.00388` vs exact local champion `0.7938816426`; `-0.00534` vs then-current team champion `0.79534` | **Rejected; baseline unchanged at decision time.** The exact card did not improve the complete final target. This is sufficient to reject this scale/recipe instance, while HCX instance variance prevents treating one Public point as a precise causal estimate of all early-turn reweighting. Runtime was not reported; fidelity and offline smoke were skipped by explicit user instruction before submission. |
+| 2026-07-13 | `kd_ens2_s202s909_r1b`: ens2 base with **both** R1 and R1b; R1b is `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; R1/R1b source predictions are disjoint | train rule audit only: 37 rows, precision `0.757`; no held-out/OOF delta reported | **0.79546** | `+0.00012` vs R1; `+0.00120` vs ens2; `+0.0015783574` vs exact local champion | **NEW TEAM PUBLIC CHAMPION.** Promote as the highest final-score instance only: the increment is inside the `0.002` band and R1b lacks held-out evidence. Package size, runtime, smoke status, exact archive/code, and train command were not reported/local; retain `kd_sieve_ca_s42.zip` as the local fallback. |

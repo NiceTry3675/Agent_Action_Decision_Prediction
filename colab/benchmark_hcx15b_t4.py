@@ -30,6 +30,113 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 
+REPLICA_PYTHON = Path("/content/venv311/bin/python")
+REPLICA_ENV_FLAG = "AADP_T4_REPLICA_ACTIVE"
+
+
+def run_setup(command, timeout):
+    print("SETUP", " ".join(map(str, command)), flush=True)
+    started = time.perf_counter()
+    subprocess.run(list(map(str, command)), check=True, timeout=timeout)
+    print(f"SETUP_DONE seconds={time.perf_counter() - started:.1f}", flush=True)
+
+
+def replica_ready():
+    if not REPLICA_PYTHON.is_file():
+        return False
+    probe = subprocess.run(
+        [
+            str(REPLICA_PYTHON),
+            "-c",
+            (
+                "import sys, torch, transformers, safetensors, sklearn, joblib, sentencepiece; "
+                "assert sys.version_info[:2] == (3, 11); "
+                "assert torch.__version__.split('+')[0] == '2.7.1'; "
+                "assert transformers.__version__ == '4.46.3'; "
+                "assert safetensors.__version__ == '0.8.0'; "
+                "assert sklearn.__version__ == '1.8.0'; "
+                "assert joblib.__version__ == '1.5.3'"
+            ),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if probe.returncode:
+        print("REPLICA_PROBE_FAILED", probe.stdout[-4000:], flush=True)
+    return probe.returncode == 0
+
+
+def ensure_replica_and_reexec():
+    """Run the timing probe under the eval-server Python/torch stack."""
+    if os.environ.get(REPLICA_ENV_FLAG) == "1":
+        if not replica_ready():
+            raise RuntimeError("replica child started with an invalid dependency stack")
+        return
+
+    if not REPLICA_PYTHON.is_file():
+        if shutil.which("python3.11") is None:
+            run_setup(
+                ["add-apt-repository", "-y", "ppa:deadsnakes/ppa"],
+                timeout=300,
+            )
+            run_setup(["apt-get", "update", "-qq"], timeout=600)
+            run_setup(
+                [
+                    "apt-get",
+                    "install",
+                    "-y",
+                    "-q",
+                    "python3.11",
+                    "python3.11-venv",
+                    "python3.11-dev",
+                ],
+                timeout=900,
+            )
+        run_setup(["python3.11", "-m", "venv", "/content/venv311"], timeout=300)
+
+    if not replica_ready():
+        run_setup(
+            [str(REPLICA_PYTHON), "-m", "pip", "install", "-q", "--upgrade", "pip"],
+            timeout=600,
+        )
+        run_setup(
+            [
+                str(REPLICA_PYTHON),
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "torch==2.7.1",
+                "--index-url",
+                "https://download.pytorch.org/whl/cu128",
+            ],
+            timeout=1800,
+        )
+        run_setup(
+            [
+                str(REPLICA_PYTHON),
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "transformers==4.46.3",
+                "safetensors==0.8.0",
+                "scikit-learn==1.8.0",
+                "joblib==1.5.3",
+                "sentencepiece",
+            ],
+            timeout=1200,
+        )
+    if not replica_ready():
+        raise RuntimeError("failed to prepare the Python 3.11 / torch 2.7.1 replica stack")
+
+    env = dict(os.environ, **{REPLICA_ENV_FLAG: "1", "PYTHONNOUSERSITE": "1"})
+    command = [str(REPLICA_PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]]
+    print("REEXEC", " ".join(command), flush=True)
+    completed = subprocess.run(command, cwd=ROOT, env=env)
+    raise SystemExit(completed.returncode)
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -206,6 +313,7 @@ def run_clean_package(extract_dir, rows, batch_size, timeout):
 
 
 def main():
+    ensure_replica_and_reexec()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--zip", required=True)
     parser.add_argument("--reference-zip")
@@ -299,7 +407,18 @@ def main():
                     args.server_reference_seconds * report["same_t4_wall_ratio"]
                 )
         wall = report["clean_run"]["wall_seconds"]
-        report["verdict"] = "GREEN" if wall <= 510 else "YELLOW" if wall <= 600 else "RED"
+        verdict_seconds = report.get("projected_server_seconds", wall)
+        report["verdict_basis"] = (
+            "projected_server_seconds"
+            if "projected_server_seconds" in report
+            else "candidate_wall_seconds"
+        )
+        report["verdict_seconds"] = verdict_seconds
+        report["verdict"] = (
+            "GREEN" if verdict_seconds <= 510
+            else "YELLOW" if verdict_seconds <= 600
+            else "RED"
+        )
         report["completed_at"] = now_iso()
         save_report(args.output, report)
         print("T4_RESULT", json.dumps({
