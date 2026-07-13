@@ -2385,6 +2385,18 @@ INT8_PATCH_ROWS_SUFFIX = ".__patch_rows__"
 INT8_PATCH_IDX_SUFFIX = ".__patch_idx__"
 INT8_AUX_SUFFIXES = (INT8_SCALE_SUFFIX, INT8_PATCH_ROWS_SUFFIX, INT8_PATCH_IDX_SUFFIX)
 
+INT4_SCALE_SUFFIX = ".__scale__"
+INT4_BASE_ROW_IDX_SUFFIX = ".__base_row_idx__"
+INT4_INT8_ROW_IDX_SUFFIX = ".__int8_row_idx__"
+INT4_INT8_ROWS_SUFFIX = ".__int8_rows__"
+INT4_INT8_ROW_SCALE_SUFFIX = ".__int8_row_scale__"
+INT4_ROW_AUX_SUFFIXES = (
+    INT4_BASE_ROW_IDX_SUFFIX,
+    INT4_INT8_ROW_IDX_SUFFIX,
+    INT4_INT8_ROWS_SUFFIX,
+    INT4_INT8_ROW_SCALE_SUFFIX,
+)
+
 
 def load_int8_state_dict(path, dtype=torch.float32, shared_from=None):
     """Reconstruct an fp state_dict from a quantize_checkpoint.py int8 codec file.
@@ -2411,9 +2423,9 @@ def load_int8_state_dict(path, dtype=torch.float32, shared_from=None):
             shaped = scale.view(-1, *([1] * (tensor.ndim - 1)))
             state[name] = (tensor.float() * shaped).to(dtype)
         elif tensor.is_floating_point():
-            state[name] = tensor.to(dtype)
+            state[name] = tensor.to(dtype=dtype, copy=True)
         else:
-            state[name] = tensor
+            state[name] = tensor.clone()
     shared_names = meta.get("shared_tensors") or []
     if shared_names:
         if not shared_from:
@@ -2433,6 +2445,71 @@ def load_int8_state_dict(path, dtype=torch.float32, shared_from=None):
     return state
 
 
+def load_int4_state_dict(path, dtype=torch.float16):
+    """Reconstruct fp weights from the local int4 group/mixed storage codec.
+
+    ``int4-mixed-v1`` can keep selected tensors in fp16, store selected full
+    tensors rowwise-int8, and split hot embedding rows into rowwise-int8 while
+    the remaining rows stay grouped int4. This is a storage codec only: the
+    returned model still runs with ordinary fp16/fp32 kernels.
+    """
+    from safetensors.torch import load_file
+
+    path = os.fspath(path)
+    packed = load_file(path)
+    with open(path + ".meta.json", encoding="utf-8") as f:
+        meta = json.load(f)
+    expected_formats = {f"int4-group{meta['group_size']}-v1", "int4-mixed-v1"}
+    if meta.get("format") not in expected_formats:
+        raise ValueError(f"unknown int4 codec format {meta.get('format')}")
+
+    quantized = set(meta["quantized"])
+    tensor_group_sizes = meta.get("tensor_group_sizes") or {}
+    split_rowwise_int8 = set(meta.get("split_rowwise_int8") or [])
+    rowwise_int8 = set(meta.get("rowwise_int8") or [])
+    state = {}
+    for name, tensor in packed.items():
+        if name.endswith(INT4_SCALE_SUFFIX) or name.endswith(INT4_ROW_AUX_SUFFIXES):
+            continue
+        if name in rowwise_int8:
+            scale = packed[name + INT4_SCALE_SUFFIX].float()
+            shaped = scale.view(-1, *([1] * (tensor.ndim - 1)))
+            state[name] = (tensor.float() * shaped).to(dtype)
+        elif name in quantized:
+            shape = meta["shapes"][name]
+            rows = tensor.shape[0]
+            lo = (tensor & 0x0F).to(torch.int8) - 8
+            hi = (tensor >> 4).to(torch.int8) - 8
+            q = torch.stack((lo, hi), dim=2).reshape(rows, -1)
+            scale = packed[name + INT4_SCALE_SUFFIX].float()
+            cols = 1
+            for dim in shape[1:]:
+                cols *= dim
+            group_size = int(tensor_group_sizes.get(name, meta["group_size"]))
+            padded_cols = ((cols + group_size - 1) // group_size) * group_size
+            q = q[:, :padded_cols]
+            w = (
+                q.float().reshape(rows, -1, group_size) * scale.unsqueeze(2)
+            ).reshape(rows, -1)
+            base_w = w[:, :cols]
+            if name in split_rowwise_int8:
+                restored = torch.empty(shape, dtype=dtype)
+                base_idx = packed[name + INT4_BASE_ROW_IDX_SUFFIX].long()
+                int8_idx = packed[name + INT4_INT8_ROW_IDX_SUFFIX].long()
+                restored[base_idx] = base_w.to(dtype)
+                int8_scale = packed[name + INT4_INT8_ROW_SCALE_SUFFIX].float().unsqueeze(1)
+                int8_w = packed[name + INT4_INT8_ROWS_SUFFIX].float() * int8_scale
+                restored[int8_idx] = int8_w.to(dtype)
+                state[name] = restored
+            else:
+                state[name] = base_w.reshape(shape).to(dtype)
+        elif tensor.is_floating_point():
+            state[name] = tensor.to(dtype=dtype, copy=True)
+        else:
+            state[name] = tensor.clone()
+    return state
+
+
 def disable_decoder_cache(model):
     """Sequence classification never reuses KV/cache; force it off for decoder
     configs whose library version may otherwise default to config.use_cache."""
@@ -2449,7 +2526,27 @@ def load_hf_model(hf_dir, device, shared_from=None):
     from transformers import AutoConfig, AutoModelForSequenceClassification
 
     dtype = torch.float16 if device.type == "cuda" else torch.float32
+    int4_path = os.path.join(hf_dir, "model.int4.safetensors")
     int8_path = os.path.join(hf_dir, "model.int8.safetensors")
+    if os.path.exists(int4_path):
+        # Decode before allocating the full model so the largest temporary
+        # dequantization tensor never overlaps a second 1.5B parameter copy.
+        state = load_int4_state_dict(int4_path, dtype=dtype)
+        config = AutoConfig.from_pretrained(hf_dir, local_files_only=True)
+        config.torch_dtype = dtype
+        model = AutoModelForSequenceClassification.from_config(config, torch_dtype=dtype)
+        if dtype == torch.float16:
+            model.half()
+        else:
+            model.float()
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        missing = [k for k in missing if not k.endswith("position_ids")]
+        if missing or unexpected:
+            raise RuntimeError(f"int4 checkpoint mismatch: missing={missing} unexpected={unexpected}")
+        del state
+        disable_decoder_cache(model)
+        print(f"Loaded int4-codec checkpoint {os.path.basename(int4_path)}")
+        return model.to(device)
     if os.path.exists(int8_path):
         config = AutoConfig.from_pretrained(hf_dir, local_files_only=True)
         if dtype == torch.float16:
@@ -3093,9 +3190,12 @@ def main():
     if not os.path.exists(hf_config_path):
         raise FileNotFoundError("Expected HuggingFace model artifacts at ./model/hf_model/config.json.")
     weight_paths = [os.path.join(model_dir, "hf_model", name)
-                    for name in ("model.int8.safetensors", "model.safetensors")]
+                    for name in ("model.int4.safetensors", "model.int8.safetensors", "model.safetensors")]
     if not any(os.path.exists(path) for path in weight_paths):
-        raise FileNotFoundError("Expected model weights at ./model/hf_model/ (model.int8.safetensors or model.safetensors).")
+        raise FileNotFoundError(
+            "Expected model weights at ./model/hf_model/ "
+            "(model.int4.safetensors, model.int8.safetensors, or model.safetensors)."
+        )
 
     print(f"Load transformer model from {model_dir}; device={device}")
     run_hf_inference(model_dir, data_dir, output_path, device)

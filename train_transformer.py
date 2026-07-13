@@ -1474,16 +1474,35 @@ def train_model(
     warmup_steps = int(total_steps * args.warmup_ratio)
     scheduler = get_linear_schedule_with_warmup(optimizer, warmup_steps, total_steps)
     # bf16 needs no loss scaling; a disabled scaler passes scale/unscale_/step through
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda" and not args.bf16)
+    scaler = torch.amp.GradScaler(
+        "cuda",
+        init_scale=args.amp_init_scale,
+        growth_interval=args.amp_growth_interval,
+        enabled=device.type == "cuda" and not args.bf16,
+    )
+    amp_step_stats = {
+        "attempted": 0,
+        "skipped": 0,
+        "enabled": bool(scaler.is_enabled()),
+        "init_scale": float(args.amp_init_scale),
+        "growth_interval": int(args.amp_growth_interval),
+    }
     rng = random.Random(args.seed)
 
     def optimizer_step():
+        amp_step_stats["attempted"] += 1
         scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         if not scaler.is_enabled() and not torch.isfinite(grad_norm):
             raise FloatingPointError(f"non-finite grad norm: {float(grad_norm.detach().cpu())}")
+        scale_before = float(scaler.get_scale()) if scaler.is_enabled() else 1.0
         scaler.step(optimizer)
         scaler.update()
+        scale_after = float(scaler.get_scale()) if scaler.is_enabled() else 1.0
+        # GradScaler lowers its scale exactly when it found non-finite gradients
+        # and skipped optimizer.step(). Keep this observable for cloud-run audits.
+        if scaler.is_enabled() and scale_after < scale_before:
+            amp_step_stats["skipped"] += 1
         scheduler.step()
         optimizer.zero_grad(set_to_none=True)
 
@@ -1636,6 +1655,20 @@ def train_model(
             except Exception as exc:
                 # checkpoint is insurance only — a Drive-mount hiccup must not kill the run
                 print(f"  epoch checkpoint FAILED (continuing): {exc}")
+    amp_step_stats["final_scale"] = float(scaler.get_scale()) if scaler.is_enabled() else 1.0
+    args.amp_step_stats = dict(amp_step_stats)
+    print(
+        "AMP optimizer steps: "
+        f"attempted={amp_step_stats['attempted']} skipped={amp_step_stats['skipped']} "
+        f"enabled={amp_step_stats['enabled']} init_scale={amp_step_stats['init_scale']:.1f} "
+        f"final_scale={amp_step_stats['final_scale']:.1f} "
+        f"growth_interval={amp_step_stats['growth_interval']}"
+    )
+    if args.require_zero_amp_skips and amp_step_stats["skipped"]:
+        raise FloatingPointError(
+            f"AMP skipped-step audit failed: skipped={amp_step_stats['skipped']} "
+            f"of attempted={amp_step_stats['attempted']}"
+        )
     return model
 
 
@@ -2214,6 +2247,7 @@ def run(args):
                     "class_bias": dict(zip(ALL_CLASSES, [float(x) for x in artifact_bias.tolist()])),
                     "device": str(device),
                     "runtime": runtime,
+                    "amp_optimizer_steps": getattr(args, "amp_step_stats", None),
                     "serializer_name": args.serializer,
                     "text_cache_path": str(text_cache_path),
                     "token_cache_path": str(token_cache_path),
@@ -2628,6 +2662,13 @@ def parse_args():
                         help="override model dropout probs (attention_dropout etc.) at load; decoder configs default to 0.0, required for --rdrop-alpha to bite")
     parser.add_argument("--class-weight-power", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=1.0)
+    parser.add_argument("--amp-init-scale", type=float, default=65536.0)
+    parser.add_argument("--amp-growth-interval", type=int, default=2000)
+    parser.add_argument(
+        "--require-zero-amp-skips",
+        action="store_true",
+        help="fail after training if CUDA GradScaler skipped any optimizer step",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--log-every", type=int, default=250)
     parser.add_argument("--gradient-checkpointing", action="store_true")

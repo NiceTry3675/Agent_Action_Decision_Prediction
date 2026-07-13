@@ -1364,3 +1364,124 @@ decide whether to refit, package, and spend a Public slot.
   이는 과거 LoRA 4-way specialist의 실패와 별개 계약을 실제로 검증한 결과이며,
   현재 구현의 5-way scratch 및 balanced live-pair residual recipe를 닫는다.
   상세: `experiments/artifacts/20260712_weak4_residual_cards_decision.json`.
+
+### 2026-07-13 - Frozen Blend-12 rules missed Public promotion
+
+- `kd_ca_blend12_s42.zip` kept the exact zero-rule INT8 parent and added only
+  12 frozen inference rules. Public was `0.7927` (`-0.00118` versus the
+  parent); the positive fixed proxies reused the rule-selection label universe
+  and were not independent.
+- **Decision:** keep the parent and close this exact card. The loss is inside
+  the `0.002` interpretation band, so it does not reject frozen rules in
+  general.
+
+### 2026-07-13 - Weak4 pair-residual follow-up failed to replicate
+
+- Completing the previously positive `head_lr=1e-3` arm produced fold deltas
+  `+0.000455/-0.000444/-0.000909`; pooled Macro fell
+  `0.765997→0.765701` (`-0.000296`) and Weak4 Macro fell `-0.001036`,
+  with 6 rescues and 12 harms.
+- Capacity and implementation were not the bottleneck: `delta_max=2` could
+  reach 420/426 rescues, the oracle gain was `+0.021002`, contract audits
+  found no mismatch, and selector AUC was null or worse. The strict five-voter
+  `c_clean` panel remains diagnostic-only because the prerequisite selector
+  gate failed.
+- **Decision:** close the current all-rescue pair-residual/LR-retry recipe; do
+  not train on `c_clean` or proceed to refit/package/T4/Public. This does not
+  directly reject every `c`-conditioned specialist.
+
+### 2026-07-13 - Weak4 exact-relation features failed two clean gates
+
+- The clean relation-graph probe used 13,226 scenario-grouped rows, including
+  2,460 routed rows. Selector AUC was `0.652375` for gap, `0.646157` for
+  existing main numerics, and `0.601442` for exact relations; the
+  relation-minus-numeric delta was negative in all folds and below the
+  permutation p95. Full Macro changed `0.758451→0.758326`
+  (`-0.000126`).
+- An independent compiler routed 5,749/14,001 parent-Weak4 rows with nested
+  session splits. Adding exact string/result relations to policy features
+  worsened target NLL by `+0.531386` at `C=1`; a low-C sensitivity still
+  gave `+0.023395` (3/3 worse, 95% CI
+  `[+0.015955,+0.031390]`). Removing cross-relations made the core null:
+  NLL `+0.000771` (CI `[-0.002783,+0.004156]`), AUC `+0.000787`.
+- **Decision:** the two observed relation schemas add no selector signal beyond
+  parent+policy: full cross-relations overfit and the core is null. Close this
+  compiler/GPU-specialist path without claiming that every rare deterministic
+  subset is impossible.
+
+### 2026-07-13 - HCX-1.5B capacity lane reopened; mixed-codec package candidate
+
+- The earlier blanket rejection of 1–2B students, based on the plain M8-KD/G4
+  screen (`-0.002032`), is withdrawn. HCX-1.5B completed a full seed-42 refit
+  with the champion sieve, class-conditional KD alpha
+  (Weak4 `0.7`, other `0.5`, `T=3`) and last-one replay. The A100 run
+  completed 15,000 optimizer steps with zero AMP skips in `7,097.9s`,
+  `1.95×` the separate A100-class 0.5B control; this was not a strict
+  same-VM timing pair.
+- A contaminated second-to-last pseudo-holdout favored 1.5B over the control by
+  `+0.004071` on 5k and `+0.006134` on 20k, with all five monitored weak
+  classes positive. Because the refit had seen the same sessions and later
+  history, this is only a relative ranking proxy, not a Public estimate.
+- Uniform INT4 failed fidelity: group128/group32 matched fp16 argmax on only
+  `91.60%/94.53%` of 512 rows. A near-budget group11 codec reached `95.90%`;
+  preserving the score head in fp16 raised it to `98.63%`, while other local
+  precision relaxations were non-monotonic.
+- The final `int4-mixed-v1` stores observed-token embedding rows and selected
+  late-layer tensors in INT8, keeps an fp16 score head, and uses group11 INT4
+  elsewhere. Its probe ZIP is
+  `999,126,556 B`, passes ZIP size/CRC/root-layout checks, and matches fp16 on
+  `511/512` rows (`99.8047%`), with mean probability TV `0.004221`;
+  the sole change is `read_file→list_directory`.
+- **Decision:** uniform INT4 remains rejected, but the mixed codec is a
+  packaging-fidelity candidate. The model and codec are complete;
+  package/T4/Public remain pending. It is not submission-ready until the root
+  loader, clean offline smoke, and T4 ten-minute gate pass; Public remains the
+  promotion metric.
+
+### 2026-07-13 - SIM trajectory routing: shallow selector rejected; semantic judge remains open
+
+- The champion OOF has 70,000 rows (raw Macro `0.790696`), including 64,975
+  SIM rows from 8,330 fold-disjoint sessions. Five fold-local trajectory tables
+  proposed Weak4 alternatives when main top-1 was Weak4. Their union can rescue
+  2,946 errors, for a perfect-selector Full Macro ceiling of `+0.024147`.
+  This proves candidate headroom, not that the available inputs can identify
+  the rescues.
+- The corrected state3 router excludes every inner validation group from table
+  fit, router fit, and its Macro-F1 utility confusion matrix. It reached Full
+  `+0.000033`, Weak4 `+0.000116`, but SIM-only `-0.000134` and SIM Weak4
+  `-0.000469`; fold deltas were
+  `-0.000462/+0.000357/+0.000190`. The best post-hoc threshold was only
+  `+0.000123` and negative in two folds; the first all-nonnegative audited
+  setting was zero-switch identity.
+- A five-label posterior reached Full `+0.000077`. Expanding its nested family
+  selection across `pair_main`, no-count, row-context, and `full` engineered
+  features raised this to Full `+0.000102`, Weak4 `+0.000358`, SIM-only
+  `+0.000084`, and SIM Weak4 `+0.000294`, with fold deltas
+  `+0.000066/+0.000302/-0.000063`. Every fold chose a different family and
+  `full` was never selected. These are engineered categorical/numeric
+  features, not raw prompt/history semantics.
+- A common label5 recipe chosen after inspecting the outer results reached Full
+  `+0.000171`, SIM `+0.000151`, with folds
+  `+0.000239/+0.000302/-0.000034`. It is post-hoc diagnostic evidence, still
+  5.9× below the `+0.001` research screen, and not promotion evidence.
+- Remaining limitations are fixed-main level-2 dependency, table fit-size shift
+  (`2/9→4/9→2/3→full`), table-dependent proposals, and adaptive reuse of the
+  same outer OOF.
+- **Decision:** close further threshold/count/context tuning of this shallow
+  statistical router. Keep identity and do not refit, package, or spend a
+  Public slot on it. The full-row semantic-judge hypothesis remains open.
+- **Open test:** the experiment did not test a rule/table candidate generator
+  followed by a full-row semantic LLM judge. Restrict that specialist to SIM
+  rows with main top-1 Weak4; exclude AU and the general 14-way task. For each
+  candidate, provide all non-identifier row semantics: `current_prompt`, full
+  ordered `history` (`role/content/name/args/result_summary`), relevant
+  `session_meta` including `turn_index` and `workspace`, row-normalized main
+  Weak4 scores, candidate label, and compact proposal provenance. Predict
+  candidate-relative `RESCUE/HARM/NEUTRAL` and switch only on confident
+  `RESCUE`.
+- Lock the schema/model before a fresh session-held-out evaluation. Use
+  `≥+0.001` Full Macro, all three folds positive, and positive SIM-only impact
+  only as the screen that justifies nested-main/full-refit cost; Public remains
+  the final decision metric. If a correctly isolated semantic decoder remains
+  at `10^-4`, is fold-unstable, or hurts SIM, close the remaining SIM
+  specialist lane.
