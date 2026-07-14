@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "decision_utc": "2026-07-14T13:41:00Z",
+  "control": {
+    "experiment_id": "20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control",
+    "macro_f1_raw": 0.7853807927575701,
+    "macro_f1_bias_tuned": 0.7898761971014776,
+    "macro_f1_bias_tuned_2stage": 0.7905935626417743,
+    "metrics_path": "experiments/artifacts/20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control_metrics.json"
+  },
+  "lane_a_relational_kd": {
+    "experiment_id": "20260714_133216_gpu_transformer_session_current_v1_len384_replay-last1_kd_relgram005_screen_s42",
+    "run_name": "20260714_133236_20260714_133216_gpu_transformer_session_current_v1_len384_re",
+    "metrics_path": "experiments/artifacts/20260714_133216_gpu_transformer_session_current_v1_len384_replay-last1_kd_relgram005_screen_s42_metrics.json",
+    "macro_f1": {
+      "raw": 0.7840919762175866,
+      "raw_delta": -0.0012888165399834728,
+      "bias_tuned": 0.7871274127159987,
+      "bias_tuned_delta": -0.002748784385478875,
+      "bias_tuned_2stage": 0.7878755069722672,
+      "bias_tuned_2stage_delta": -0.0027180556695071134
+    },
+    "required_class_delta_raw": {
+      "list_directory": -0.0008638546051564777,
+      "read_file": -0.0005224047386847008,
+      "grep_search": -0.003890062918684656,
+      "glob_pattern": 0.001383522096380263,
+      "web_search": -0.010550605172263694,
+      "lint_or_typecheck": -0.01808502642984189,
+      "run_tests": -0.005607250169622935,
+      "run_bash": 0.0003465125566753935
+    },
+    "required_class_delta_bias_tuned_2stage": {
+      "list_directory": -0.0009530884153473584,
+      "read_file": 0.002842816502697354,
+      "grep_search": -0.010711495324747355,
+      "glob_pattern": 0.0007341214011001851,
+      "web_search": -0.009458360502003771,
+      "lint_or_typecheck": -0.01477788548831338,
+      "run_tests": 0.00026127093796268763,
+      "run_bash": -0.0001338246347319938
+    },
+    "integrity": {
+      "hidden_payload_sha256": "73fc1546c3928269cfa9d01579e23a6e2218e895614ed7fbb4fd31bbb7be8a19",
+      "matched_original_rows": 70000,
+      "masked_replay_rows": 10000,
+      "reference_argmax_agreement": 0.9971285462379456,
+      "reference_max_abs": 0.107421875
+    },
+    "decision": "reject_refit"
+  },
+  "lane_b_replay_predecessor": {
+    "experiment_id": "20260714_134048_gpu_transformer_session_current_v1_len384_replay-last1_kd_replaypred_screen_s42",
+    "run_name": "20260714_134104_20260714_134048_gpu_transformer_session_current_v1_len384_re",
+    "metrics_path": "experiments/artifacts/20260714_134048_gpu_transformer_session_current_v1_len384_replay-last1_kd_replaypred_screen_s42_metrics.json",
+    "macro_f1": {
+      "raw": 0.7820224512462525,
+      "raw_delta": -0.003358341511317642,
+      "bias_tuned": 0.7844103085692586,
+      "bias_tuned_delta": -0.005465888532218965,
+      "bias_tuned_2stage": 0.7857087731574338,
+      "bias_tuned_2stage_delta": -0.004884789484340457
+    },
+    "required_class_delta_raw": {
+      "list_directory": -0.0018309095578235013,
+      "read_file": 0.0013361032266808737,
+      "grep_search": -0.005095253244311815,
+      "glob_pattern": 0.0027985136709001157,
+      "web_search": -0.007054841687301305,
+      "lint_or_typecheck": -0.01733591520587041,
+      "run_tests": -0.005831887410834735,
+      "run_bash": -0.002873563218390829
+    },
+    "required_class_delta_bias_tuned_2stage": {
+      "list_directory": -0.004038125942645632,
+      "read_file": 0.002931151160202039,
+      "grep_search": -0.016206587087444713,
+      "glob_pattern": 0.0006656368829175419,
+      "web_search": -0.006530526061776065,
+      "lint_or_typecheck": -0.011742912609848943,
+      "run_tests": -0.0013948003710683166,
+      "run_bash": -0.005759142996745625
+    },
+    "integrity": {
+      "index_rows": 55999,
+      "tail_candidates": 48853,
+      "matched_before_cap": 46775,
+      "dropped_predecessor_missing": 2078,
+      "selected_after_cap": 10000,
+      "drop_policy": "drop_before_balanced_cap_on_missing_or_nonexact_predecessor"
+    },
+    "decision": "reject_refit"
+  },
+  "consolidation_decision": "Do not launch either conditional full refit, do not pull the 1.1GB screen models, and do not spend a Public slot. Both single-variable screens are directionally negative and materially regress priority classes despite isolated read_file/glob_pattern gains."
+}

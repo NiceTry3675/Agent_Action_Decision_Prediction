@@ -1,10 +1,11 @@
 {
-  "status": "ready_blocked_on_positive_screen",
+  "status": "rejected_not_launched",
   "lane": "b",
   "required_gpu": "A100",
   "plan": "colab/replay_predecessor_lane_b_refit_plan.json",
   "experiment_suffix": "kd_sieve_ca_replaypred_refit_s42",
-  "prerequisite": "Review kd_replaypred_screen_s42 against the matched A100 control using experiments/manifests/20260714_lane_b_replay_predecessor_screen.json.",
+  "prerequisite": "Closed: the matched screen was negative at raw (-0.003358) and 2-stage (-0.004885) with priority-class regressions.",
+  "decision_artifact": "experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json",
   "hypothesis": "Correct predecessor state removes future budget/turn/workspace contamination from champion replay while retaining history, labels, balancing, cap, and sample weight.",
   "single_variable": {
     "flag": "--replay-meta-mode predecessor",

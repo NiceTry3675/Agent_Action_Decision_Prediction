@@ -2126,3 +2126,25 @@ decide whether to refit, package, and spend a Public slot.
   commands were not received. The exact deployed trio therefore still has no
   reconstructible OOF surface. Binary assets remain gitignored; the tracked
   index is `experiments/manifests/20260714_team_champion_assets.json`.
+
+### 2026-07-14 - relational KD and predecessor-replay screens rejected
+
+- Both seed42 matched-A100 screens completed, auto-collected, were pulled by
+  explicit run name, and their idle VMs were released before local analysis.
+  Relational KD scored raw/bias/2-stage `0.784092/0.787127/0.787876`, deltas
+  `-0.001289/-0.002749/-0.002718` versus the matched control. Exact-predecessor
+  replay scored `0.782022/0.784410/0.785709`, deltas
+  `-0.003358/-0.005466/-0.004885`.
+- Both implementation contracts passed. Relational KD aligned all 70,000
+  original rows, masked 10,000 replay rows, and used a fidelity-gated hidden
+  payload. Predecessor replay reproduced its expected audit exactly: 46,775
+  matches, 2,078 fail-closed drops, and 10,000 selected after the unchanged
+  balanced cap. The negative scores therefore measure the intended levers,
+  not a cache/alignment failure.
+- Priority-class review rejects both directions: isolated `read_file` or
+  `glob_pattern` gains did not compensate for consistent `grep_search`,
+  `web_search`, and `lint_or_typecheck` losses; predecessor replay also hurt
+  `run_bash` and `run_tests`. **Decision:** do not launch either conditional
+  champion refit, do not pull the 1.1 GB screen models, and do not spend a
+  Public slot. The rfinal Public baseline remains unchanged. Full deltas are
+  in `experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json`.

@@ -1,5 +1,5 @@
 {
-  "status": "running",
+  "status": "completed_rejected",
   "lane": "a",
   "required_gpu": "A100",
   "plan": "colab/relational_kd_lane_a_screen_plan.json",
@@ -9,7 +9,11 @@
     "remote_log": "run_20260714_124015.log",
     "remote_pid": 16646,
     "start_arm": 3,
-    "note": "The exact hidden cache was already exported and fidelity-gated, so this invocation resumed at the HCX cache-stage arm."
+    "note": "The exact hidden cache was already exported and fidelity-gated, so this invocation resumed at the HCX cache-stage arm.",
+    "completed_utc": "2026-07-14T13:32:16Z",
+    "run_name": "20260714_133236_20260714_133216_gpu_transformer_session_current_v1_len384_re",
+    "auto_collect": "success",
+    "lane_released": true
   },
   "matched_control": {
     "experiment_id": "20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control",
@@ -77,6 +81,17 @@
     ".venv/bin/python colab/aadp_colab.py probe a"
   ],
   "launch_command": ".venv/bin/python colab/aadp_colab.py launch a colab/run_plan_remote.py -- --plan colab/relational_kd_lane_a_screen_plan.json",
+  "result": {
+    "macro_f1_raw": 0.7840919762175866,
+    "delta_raw_vs_control": -0.0012888165399834728,
+    "macro_f1_bias_tuned": 0.7871274127159987,
+    "delta_bias_tuned_vs_control": -0.002748784385478875,
+    "macro_f1_bias_tuned_2stage": 0.7878755069722672,
+    "delta_bias_tuned_2stage_vs_control": -0.0027180556695071134,
+    "hidden_payload_sha256": "73fc1546c3928269cfa9d01579e23a6e2218e895614ed7fbb4fd31bbb7be8a19",
+    "decision": "reject_refit",
+    "comparison_artifact": "experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json"
+  },
   "go_signal": "Promote only after reporting raw/2-stage delta and the required weak classes against the matched control; the separate champion full-refit card is the Public candidate.",
   "next_manifest_on_go": "experiments/manifests/20260714_lane_a_relational_kd_refit.json"
 }

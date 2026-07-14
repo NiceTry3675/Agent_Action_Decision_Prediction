@@ -25,7 +25,8 @@ Dacon retains the team's highest score, so lower-scoring probes cost only slots.
   which was `+0.0005` on the seed42 surface but negative on s202 — the same
   failure mode as the rejected `read_file -0.14` bias.
 - Rejected/fail-closed today: P1 soft prior (transfer), A4 hidden-kNN (no
-  hidden-state payload on the deployment surface — gate cannot run).
+  hidden-state payload on the deployment surface — gate cannot run),
+  relational hidden-KD, and exact-predecessor replay metadata.
 
 ### Active lanes
 
@@ -40,13 +41,12 @@ Dacon retains the team's highest score, so lower-scoring probes cost only slots.
   wiped by a transient 404/401 and keep-alive is dead — the VM survives on the
   Drive control plane only and may idle out; if reclaimed, remount is needed.
   Screen gate: control raw/bias/2stage `0.785381/0.789876/0.790594`.
-- **Lanes A/B (parallel session): relational-KD and replay-predecessor
-  screens/refits** — see `colab/relational_kd_lane_a_*.json`,
-  `colab/replay_predecessor_lane_b_*.json`, and
-  `experiments/manifests/20260714_lane_[ab]_*.json`. Both new
-  `train_transformer.py` axes default off (`--relational-kd-weight 0.0`,
-  `--replay-meta-mode current`); the default path is bit-identical
-  (unit-tested).
+- **Lanes A/B completed and released:** relational-KD and replay-predecessor
+  screens both failed the matched A100 control and their conditional refits
+  are closed. Results were auto-collected and pulled; the 1.1 GB screen models
+  remain on Drive and are intentionally not downloaded. See
+  `experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json`
+  and `experiments/manifests/20260714_lane_[ab]_*.json`.
 
 ### If a screen passes
 
@@ -59,3 +59,28 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
 ---
 
 ## Entries
+
+### 2026-07-14 ~22:42 — A/B breakthrough screens completed; both refits closed
+
+- Both fixed-session seed42 A100 screens completed in ~51 minutes, saved all
+  epoch checkpoints, auto-collected successfully, and were pulled by explicit
+  run name after normal VM release. The SIGKILL cleanup-bypass recovery did not
+  interrupt either detached trainer; no replacement VM or extra seed was used.
+- **Lane A relational hidden-KD:** raw/bias/2-stage
+  `0.784092/0.787127/0.787876`, versus matched control
+  `0.785381/0.789876/0.790594`; deltas
+  `-0.001289/-0.002749/-0.002718`. The implementation gate passed: all 70,000
+  original rows aligned, 10,000 replay rows were relation-masked, and the
+  hidden payload matched canonical teacher logits at `0.997129` argmax
+  agreement (`max_abs=0.107422`).
+- **Lane B exact-predecessor replay metadata:** raw/bias/2-stage
+  `0.782022/0.784410/0.785709`; deltas
+  `-0.003358/-0.005466/-0.004885`. Its audit exactly matched the card: 48,853
+  tail candidates, 46,775 exact predecessors, 2,078 fail-closed missing drops,
+  and the unchanged class-balanced cap selected 10,000.
+- Priority classes make the rejection directional rather than a near-tie:
+  isolated `read_file`/`glob_pattern` gains could not offset losses in
+  `grep_search`, `web_search`, and `lint_or_typecheck`; predecessor replay also
+  hurt `run_bash` and `run_tests`. **Decision:** launch neither champion refit,
+  pull neither screen model, and spend no Public slot. Full per-class deltas:
+  `experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json`.

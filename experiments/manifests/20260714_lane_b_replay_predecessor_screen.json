@@ -1,5 +1,5 @@
 {
-  "status": "running",
+  "status": "completed_rejected",
   "lane": "b",
   "required_gpu": "A100",
   "plan": "colab/replay_predecessor_lane_b_screen_plan.json",
@@ -9,7 +9,11 @@
     "remote_log": "run_20260714_124923.log",
     "remote_pid": 20209,
     "start_arm": 1,
-    "note": "The orphaned aadp-b control state was restored onto its proven existing A100 endpoint without replacing the VM, kernel, Drive mount, or daemon."
+    "note": "The orphaned aadp-b control state was restored onto its proven existing A100 endpoint without replacing the VM, kernel, Drive mount, or daemon.",
+    "completed_utc": "2026-07-14T13:40:48Z",
+    "run_name": "20260714_134104_20260714_134048_gpu_transformer_session_current_v1_len384_re",
+    "auto_collect": "success",
+    "lane_released": true
   },
   "matched_control": {
     "experiment_id": "20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control",
@@ -56,6 +60,16 @@
     ".venv/bin/python colab/aadp_colab.py probe b --expected-gpu A100"
   ],
   "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/replay_predecessor_lane_b_screen_plan.json",
+  "result": {
+    "macro_f1_raw": 0.7820224512462525,
+    "delta_raw_vs_control": -0.003358341511317642,
+    "macro_f1_bias_tuned": 0.7844103085692586,
+    "delta_bias_tuned_vs_control": -0.005465888532218965,
+    "macro_f1_bias_tuned_2stage": 0.7857087731574338,
+    "delta_bias_tuned_2stage_vs_control": -0.004884789484340457,
+    "decision": "reject_refit",
+    "comparison_artifact": "experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json"
+  },
   "go_signal": "Screen is rejection/sanity evidence, not the final metric. Continue to the separate refit card when raw and/or 2-stage delta is positive without a material priority-class collapse; report list_directory/read_file/grep_search/glob_pattern/web_search/lint_or_typecheck/run_tests versus run_bash.",
   "next_manifest_on_go": "experiments/manifests/20260714_lane_b_replay_predecessor_refit.json"
 }
