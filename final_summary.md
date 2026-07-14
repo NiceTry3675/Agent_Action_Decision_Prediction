@@ -2,7 +2,29 @@
 
 ## Current Public Baseline
 
-### Team Public champion: gated 3-seed ensemble + rfinal rules (`0.7963584846`)
+### Team Public champion: rfinal + R1i + sequence-exec (`0.7966` displayed)
+
+- Public Macro-F1 displayed `0.7966` (`submissions/rfinal_r1i_seqx.zip`,
+  2026-07-14, exact digits not yet recorded), runtime `7:29`, about
+  `+0.00024` over rfinal. Gap to Public 1st (`0.79862`) is about `0.00202`.
+- The pack is the exact received rfinal trio archive with models byte-identical
+  and only `script.py` changed: two zero-overlap hard rules appended after the
+  twig block on immutable-base masks — R1i (`base run_bash`,
+  `600 < elapsed <= 1200`, `edit_file` in last 5, softmax margin `<= 0.15`
+  -> argmax{run_tests, lint_or_typecheck}) and sequence-exec (SIM, CI passed,
+  last three actions read/edit/edit, `base run_tests` -> argmax{run_bash,
+  lint_or_typecheck}).
+- Both levers passed a new pre-submission transfer gate on the received
+  seed202 OOF folds (joint `+0.000405/+0.000373`, 21 rescues/11 harms); the
+  same gate rejected the P1 soft prior (negative on both s202 folds despite
+  `+0.0005` on the seed42 champion surface) and it was not shipped. Details:
+  `experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.json`.
+- The increment is inside the `0.002` noise band: promoted as the
+  highest-score instance, not causal evidence. CPU offline smoke passed from a
+  clean extraction; SHA256 `5d53f14d...b7ee`, 1,005,620,602 B (65 MiB under
+  the 1 GiB limit).
+
+### Previous team Public champion: gated 3-seed ensemble + rfinal rules (`0.7963584846`)
 
 - Public Macro-F1: `0.7963584846` (`kd_ens3_trio_rfinal`, teammate result
   reported 2026-07-14), runtime `7:28/10:00`; rank 7 when reported. This is
@@ -444,7 +466,8 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 | `kd_ens2_s202s909`: seed202 INT8 main + seed909 INT4 secondary; secondary runs where main-model `margin < 1.0` (about 25%), logits averaged, `430s` pre-secondary fallback guard | n/a (team-side seed refits) | team-reported gated ensemble `+0.00183` | n/a | `0.79426` | **Same-day intermediate team champion.** `+0.0003783574` vs the exact seed42 local champion and about `+0.00049` vs standalone seed202 `0.79377`; runtime 7:28. Public increments are inside the 0.002 band, so promote the instance without a broad causal claim. |
 | `kd_ens2_s202s909_r1`: preceding ensemble + `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` immediately after ensemble `pred_ids` finalization | n/a (team-side inference rule) | team-reported seed42 rule OOF `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67` | n/a | `0.79534` | **Previous team Public champion.** `+0.00108` vs the no-R1 ensemble and `+0.0014583574` vs the exact seed42 local champion; runtime 7:27. All-positive seed42 OOF support; superseded by R1+R1b. |
 | `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | recovered champion-recipe diagnostic OOF `+0.000312/+0.000197/+0.000125`, pooled `+0.000212`; train audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Previous team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. The recovered OOF is not the exact team ensemble surface; superseded by rfinal. |
-| `kd_ens3_trio_rfinal`: seed202 INT8 + seed909/seed7070 INT4 low-margin centered-logit trio, plus ten immutable-base rule behaviors | n/a (team-side full-refit members) | five-fold dual-seed rule diagnostic `+0.00154` to `+0.00289`, all positive, zero collisions; not exact trio OOF | n/a | `0.7963584846` | **Current team Public champion.** Runtime `7:28`; about 959 MiB. `+0.0008984846` vs R1+R1b, `+0.0020984846` vs ens2, and `+0.0024768420` vs the exact local champion. The unmodified rfinal is selected after a score-identical speed build ran slower (`7:37`). |
+| `kd_ens3_trio_rfinal`: seed202 INT8 + seed909/seed7070 INT4 low-margin centered-logit trio, plus ten immutable-base rule behaviors | n/a (team-side full-refit members) | five-fold dual-seed rule diagnostic `+0.00154` to `+0.00289`, all positive, zero collisions; not exact trio OOF | n/a | `0.7963584846` | **Previous team Public champion.** Runtime `7:28`; about 959 MiB. `+0.0008984846` vs R1+R1b, `+0.0020984846` vs ens2, and `+0.0024768420` vs the exact local champion. The unmodified rfinal is selected after a score-identical speed build ran slower (`7:37`). |
+| `rfinal_r1i_seqx`: exact rfinal archive (models byte-identical), script.py-only change appending R1i + sequence-exec on immutable-base masks | n/a (inference-only change) | s202 OOF transfer gate: joint `+0.000405/+0.000373`, both folds positive, 21 rescues/11 harms; P1 rejected at the same gate | n/a | `0.7966` (displayed) | **Current team Public champion.** Runtime `7:29`. About `+0.00024` vs rfinal — inside the `0.002` band; highest-score instance promotion, not causal evidence. First pack gated by a deployed-main-model transfer check before submission. |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local
@@ -489,7 +512,9 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Next Improvement Candidates
 
-- **Primary objective: close the `0.0022615154` gap to Public 1st.** Treat
+- **Primary objective: close the remaining ~`0.00202` gap to Public 1st
+  (updated 2026-07-14 after `rfinal_r1i_seqx` reached displayed `0.7966`).**
+  Treat
   additional sub-`0.002` rule garnish as consolidation only. Prioritize a new,
   orthogonal mechanism with plausible standalone scale above the gap. Keep an
   unchanged rfinal package for comparison, but submit lower-scoring probes when

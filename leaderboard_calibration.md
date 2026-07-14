@@ -14,14 +14,23 @@ Experiment details live in `experiments/results.csv`.
 
 ## Current Baseline
 
-- Team Public champion: `kd_ens3_trio_rfinal`, exact Public `0.7963584846`
+- Team Public champion: `rfinal_r1i_seqx.zip`, displayed Public `0.7966`
+  (2026-07-14, exact digits not yet recorded), runtime `7:29`. It is the exact
+  received `kd_ens3_trio_rfinal` archive with only `script.py` replaced: R1i
+  (exec margin rule) and sequence-exec appended after the twig block on
+  immutable-base masks, both transfer-validated on the seed202 OOF folds
+  (`+0.000405/+0.000373`; see
+  `experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.json`).
+  Public `+0.00024` vs rfinal — inside the noise band, promoted as the
+  highest-score instance per the endgame doctrine.
+- Previous team champion: `kd_ens3_trio_rfinal`, exact Public `0.7963584846`
   (2026-07-14), runtime `7:28`, about 959 MiB. It combines seed202 INT8 with
   low-margin seed909/seed7070 INT4 auxiliaries via centered-logit averaging,
   then applies ten immutable-base rule behaviors without cascading outputs.
-- Current standings: 1st is `0.79862`; the team is 7th at displayed `0.79635`,
-  exact `0.7963584846`. The exact gap is `0.0022615154`. Because the final
-  round permits no additional model submissions (user-confirmed), the active
-  target is a Public-stage breakthrough that clears this gap; post-qualification
+- Current standings: 1st is `0.79862`; the team is at displayed `0.7966`,
+  leaving a gap of about `0.00202`. Because the final round permits no
+  additional model submissions (user-confirmed), the active target is a
+  Public-stage breakthrough that clears this gap; post-qualification
   model iteration cannot be part of the plan.
 - Dacon automatically selects the team's highest submission score. A later
   lower-scoring submission does not replace `0.7963584846`, lower the rank, or
@@ -131,4 +140,5 @@ score lands.
 | 2026-07-13 | `kd_ens2_s202s909_r1.zip`: preceding ensemble + direct `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` override immediately after ensemble `pred_ids` finalization | team-reported seed42 rule OOF mean about `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67`; about 19 hidden-test flips | **0.79534** | `+0.00108` vs `kd_ens2_s202s909`; `+0.0014583574` vs exact seed42 local champion | **NEW TEAM PUBLIC CHAMPION, superseded same day by R1+R1b.** Runtime **7:27/10:00** and reported package size 723 MB; build, offline smoke, and flip verification reported complete. Public delta alone is inside the interpretation band, but all-positive seed42 OOF supports the same direction. Exact package/code remain team-side. |
 | 2026-07-13 | `kd_ca_sim025_s42.zip` / `...kd_sieve_ca_simearly025_refit_s42`: exact seed42 sieve x conditional-alpha recipe plus class-normalized whole-loss raw scale `0.25` on original SIM rows with `turn_index <= 2`; AU/replay unchanged | n/a (full-refit-only; frozen-head proxy was positive but not a valid Public estimate) | **0.790** | approximately `-0.00388` vs exact local champion `0.7938816426`; `-0.00534` vs then-current team champion `0.79534` | **Rejected; baseline unchanged at decision time.** The exact card did not improve the complete final target. This is sufficient to reject this scale/recipe instance, while HCX instance variance prevents treating one Public point as a precise causal estimate of all early-turn reweighting. Runtime was not reported; fidelity and offline smoke were skipped by explicit user instruction before submission. |
 | 2026-07-13 | `kd_ens2_s202s909_r1b`: ens2 base with **both** R1 and R1b; R1b is `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; R1/R1b source predictions are disjoint | train audit: 37 rows, precision `0.757`; recovered champion-recipe diagnostic OOF all positive (`+0.000312/+0.000197/+0.000125`, pooled `+0.000212`) | **0.79546** | `+0.00012` vs R1; `+0.00120` vs ens2; `+0.0015783574` vs exact local champion | **NEW TEAM PUBLIC CHAMPION, now superseded.** The increment is inside the `0.002` band and the recovered OOF is level-2 diagnostic. Exact archive/code/models are now preserved locally at `submissions/kd_ens2_s202s909_r1b.zip`; runtime and exact train commands remain unreported. |
-| 2026-07-14 | `kd_ens3_trio_rfinal`: seed202 INT8 main + seed909/seed7070 INT4 low-margin auxiliaries, centered-logit averaging, ten immutable-base rules | five-fold dual-seed diagnostic `+0.00154` to `+0.00289`, all positive, zero collisions; not exact trio OOF | **0.7963584846** | `+0.0008984846` vs R1+R1b; `+0.0020984846` vs ens2; `+0.0024768420` vs exact local champion | **NEW TEAM PUBLIC CHAMPION.** Runtime `7:28`, about 959 MiB. A score-identical speed-path submission ran slower (`7:37`), so eager rfinal remains the champion reference while new probes may be submitted independently. The exact received champion archive/code/models are now local at `submissions/kd_ens3_trio_rfinal.zip`; exact training commands remain unavailable. |
+| 2026-07-14 | `kd_ens3_trio_rfinal`: seed202 INT8 main + seed909/seed7070 INT4 low-margin auxiliaries, centered-logit averaging, ten immutable-base rules | five-fold dual-seed diagnostic `+0.00154` to `+0.00289`, all positive, zero collisions; not exact trio OOF | **0.7963584846** | `+0.0008984846` vs R1+R1b; `+0.0020984846` vs ens2; `+0.0024768420` vs exact local champion | **TEAM PUBLIC CHAMPION** (superseded same day by `rfinal_r1i_seqx`). Runtime `7:28`, about 959 MiB. A score-identical speed-path submission ran slower (`7:37`), so eager rfinal remains the champion reference while new probes may be submitted independently. The exact received champion archive/code/models are now local at `submissions/kd_ens3_trio_rfinal.zip`; exact training commands remain unavailable. |
+| 2026-07-14 | `rfinal_r1i_seqx.zip`: exact rfinal archive, models byte-identical, script.py only change — R1i (`run_bash`, `600<elapsed<=1200`, edit_file in last 5, softmax margin `<=0.15` -> argmax{run_tests,lint}) + sequence-exec (SIM, CI passed, last3 read/edit/edit, `run_tests` -> argmax{run_bash,lint}) appended on immutable-base masks | s202 OOF transfer gate: joint stack `+0.000405/+0.000373` (both folds positive, 21 rescues/11 harms); P1 soft prior rejected at the same gate (negative both folds) | **0.7966** (displayed; exact digits pending) | about `+0.00024` vs rfinal | **NEW TEAM PUBLIC CHAMPION.** Runtime `7:29` (+1s vs rfinal, within variance). Inside the `0.002` band — a consolidation instance, not causal evidence. First pack whose levers passed a deployed-main-model (seed202) transfer gate before submission; the same gate rejected P1, which had been positive on the seed42 champion surface. |

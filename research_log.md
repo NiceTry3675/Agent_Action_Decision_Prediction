@@ -2062,6 +2062,50 @@ decide whether to refit, package, and spend a Public slot.
   SIM-positive, budget/family audits, rescue:harm at least 1.5, zero-init
   bit-exactness, preserved R1/R1b, and one variable per Public submission.
 
+### 2026-07-14 - s202 transfer gate: P1 rejected, R1i + seq-exec packaged on rfinal
+
+- Ran the three unshipped rule-era levers through a transfer gate on the newly
+  received seed202 session-OOF folds 1/2 (the deployed trio's main model), with
+  the full deployed rfinal pipeline reproduced as the baseline. Reproduction
+  fidelity: the deployed rule stack scored `+0.001660/+0.002890` versus raw on
+  the two folds, inside the team's reported five-fold audit band.
+- **P1 (`ci_phase` soft prior, w0.1 s10) is rejected for deployment**: it was
+  `+0.0005` with all folds positive on the seed42 champion diagnostic surface
+  but `-0.000235/-0.000038` on the s202 folds with harms matching rescues.
+  This is the same model-specific calibration failure mode as the rejected
+  `read_file -0.14` bias; do not ship it on any surface it was not tuned on.
+- **R1i and sequence-exec transfer**: R1i `+0.000263/+0.000189` (13/8
+  rescue/harm pooled), seq-exec `+0.000143/+0.000185` (8/3). Their joint stack
+  is `+0.000405/+0.000373` (mean `+0.000389`), both folds positive. Their
+  sources (`run_bash`, `run_tests` immutable base) have zero overlap with every
+  deployed rule, so no cascade path exists.
+- A4 hidden-kNN stays unshipped fail-closed: the s202 handoff has no hidden
+  states, so its transfer gate cannot be run.
+- Packaged `submissions/rfinal_r1i_seqx.zip` (SHA256 `5d53f14d...b7ee`,
+  1,005,620,602 B, 65 MiB under the 1 GiB limit): byte-identical
+  `kd_ens3_trio_rfinal` model/model_b/model_c entries with only `script.py`
+  replaced — the two rules appended after the twig block on immutable
+  `base_pred_rules` masks. Clean-extraction offline CPU smoke passed: full
+  3-member low-margin ensemble path, all 12 rule printouts, 5 rows, exact
+  `id,action` contract, valid labels, id order match.
+- **Decision:** this is a consolidation card (both rules are adaptive and far
+  below the `0.002` band; expected scale roughly `+0.0003..+0.0005` if
+  transfer holds on the trio surface). Full per-fold counts and method are
+  in `experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.json`.
+- **Public result (user-reported, same day): `0.7966` in `7:29` — NEW TEAM
+  PUBLIC CHAMPION**, about `+0.00024` over rfinal `0.7963584846`, near the low
+  end of the predicted `+0.0003..+0.0005` band. Inside the noise band, so it
+  is promoted as the highest-score instance, not causal evidence. Gap to
+  Public 1st (`0.79862`) narrows to about `0.00202`. The s202 transfer gate is
+  now validated end-to-end as a pre-submission filter: it admitted two levers
+  that landed positive and rejected P1, which had looked positive on the
+  seed42 surface.
+
+---
+
+**This log is frozen here. All later entries live in
+`research_log_final12h.md` (user directive, 2026-07-14 ~23:00 KST).**
+
 ### 2026-07-14 - teammate champion assets absorbed
 
 - Preserved the exact received archives byte-for-byte at
