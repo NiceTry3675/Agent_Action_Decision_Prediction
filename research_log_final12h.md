@@ -59,6 +59,39 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
 
 ## Entries
 
+### 2026-07-15 ~02:50 — mainT swap 0.797181265: NEW CHAMPION (+0.00056); gap to 1st now 0.00144
+
+- `rfinal_mainT_s42.zip` scored **0.797181265**, runtime `7:37` —
+  `+0.0005567925` over mgn125. **New team Public champion.** Gap to 1st
+  (`0.79863`, user-updated 07-15): `0.001448735`.
+- Read discipline: sub-0.002 instance win, not recipe evidence. The same
+  weights read neutral solo (`0.79368`), so this is a favorable main-draw
+  inside the ensemble — empirically, main swaps move ~±0.0006 at champion
+  scale (the correlation-shrinkage worry did not bind on this instance).
+- Consequences: every remaining main instance is a legitimate 1-slot
+  best-of-N draw around the new champion — teammate seed202-trioT (~03:30)
+  gets re-promoted from "optional" to "submit when ready" (as a mainT-pack
+  main swap), and an a1-refit (if the ~02:15 verdict passed) doubles as both
+  a hypothesis test and another draw. Base pack for all further main swaps is
+  now `rfinal_mainT_s42`.
+- Docs updated: `final_summary.md` champion section,
+  `leaderboard_calibration.md` ledger.
+
+### 2026-07-15 ~02:35 — trio-KD solo Public 0.79368: neutral tie; gen-2 dead, seed202 demoted
+
+- `kd_trioT_s42.zip` scored **0.79368**, runtime `5:57` — `-0.0002` vs the
+  M8-teacher single champion `0.7938816426`. Exact-tie class: the trio
+  teacher's ensemble dark knowledge did not convert to Macro-F1 at seed42.
+- Consequences: **gen-2 KD closed** (no gain to re-distill); teammate
+  seed202-trioT is no longer a gap-scale card — if its run completes, using
+  it is an optional best-of-N main-swap variance draw (~±0.001), not a
+  hypothesis test. The last genuine lever standing is the a1 replay-all axis
+  (same-fold verdict due ~02:15): if a1 wins both folds, the A100 should
+  preempt seed202 for the a1-refit rather than queue behind it.
+- `rfinal_mainT_s42` (main-swap probe) reads separately; expectation is
+  champion ± instance noise, with downside risk from higher student-member
+  correlation on routed rows.
+
 ### 2026-07-15 ~02:15 — trio-KD refit done; solo + main-swap packs built and smoked
 
 - Lane C run `run_20260714_155225` completed: teacher export (rows=70000,

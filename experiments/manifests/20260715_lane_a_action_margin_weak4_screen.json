@@ -1,8 +1,16 @@
 {
-  "status": "prepared",
+  "status": "in_flight",
   "lane": "a",
   "required_gpu": "A100",
   "plan": "colab/action_margin_weak4_lane_a_plan.json",
+  "in_flight": {
+    "bundle": "code_20260714_171129_6a49a121_dirty.tar.gz",
+    "git_commit": "6a49a121a085f8611cb16b889f47cc1915362958",
+    "launched_utc": "2026-07-14T17:16:36Z",
+    "remote_pid": 48816,
+    "verified": "Drive heartbeat reported the detached trainer alive with 96% A100 utilization; lane A was reattached to the same recorded endpoint after a transient CLI-only prune, and the locked local StateStore plus replacement keep-alive process were verified without allocating a VM.",
+    "release_policy": "Do not release lane A after completion. Require successful auto-collect and release_safe=true, then pull/compare while preserving the assignment, Drive mount, daemon, and keep-alive."
+  },
   "hypothesis": "The all-class action-margin objective contains useful Weak4 boundary information, but its non-Weak4 gradients cause the observed ask_user/plan_task loss. Restricting only the auxiliary to true-label Weak4 rows should retain the exploration gain without changing ordinary KD elsewhere.",
   "matched_control": {
     "experiment_id": "20260714_152551_gpu_transformer_session_current_v1_len384_replay-last1_kd_am_pair_control_s42",

@@ -2,15 +2,31 @@
 
 ## Current Public Baseline
 
-### Team Public champion: margin-1.25 routing widen (`0.7966244725`)
+### Team Public champion: trio-KD student as ensemble main (`0.797181265`)
+
+- Public Macro-F1 `0.797181265` (`submissions/rfinal_mainT_s42.zip`,
+  2026-07-15), runtime `7:37`. The mgn125 pack below with only `model/` (the
+  ensemble main) swapped: s202 M8-teacher INT8 ->
+  `kd_sieve_ca_trioT_refit_s42` INT8 (exact champion recipe, KD teacher
+  replaced by the deployment-faithful trio-ensemble teacher; INT8 fidelity
+  512/512). `+0.0005567925` over mgn125. Gap to Public 1st (`0.79863`,
+  updated 07-15 early AM): `0.001448735`.
+- Interpretation per doctrine: sub-0.002, an instance win, not causal
+  evidence — the same student scored a neutral `0.79368` solo
+  (`kd_trioT_s42.zip`, `-0.0002` vs the single champion), so the gain is a
+  favorable main-instance draw inside the ensemble, and main-swap draws
+  demonstrably move ~±0.0006 at champion scale. SHA256 `847e04e0...`,
+  1,002,963,703 B (67.5 MiB under the 1 GiB limit); clean-extraction offline
+  smoke passed.
+
+### Previous team Public champion: margin-1.25 routing widen (`0.7966244725`)
 
 - Public Macro-F1 exact `0.7966244725` (`submissions/rfinal_mgn125.zip`,
   2026-07-15), runtime `7:46`. Identical to the pack below except the ensemble
   routing threshold: raw-logit margin `<1.0 -> <1.25` (routing 24.4% -> 31.9%).
   `+0.0000118616` over `rfinal_r1i_seqx` — noise-level; retained as the
-  highest instance. Gap to Public 1st (`0.79862`): `0.0019955275`. The flat
-  increment shows the ensemble-gain gradient is ~zero beyond margin 1.0; a
-  1.5 widening is not worth a slot.
+  highest instance. The flat increment shows the ensemble-gain gradient is
+  ~zero beyond margin 1.0; a 1.5 widening is not worth a slot.
 
 ### Previous team Public champion: rfinal + R1i + sequence-exec (`0.7966126109`)
 
