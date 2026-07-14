@@ -1,5 +1,5 @@
 {
-  "status": "ready",
+  "status": "in_flight",
   "lane": "b",
   "required_gpu": "A100",
   "plan": "colab/action_margin_kd_lane_b_refit_plan.json",
@@ -33,5 +33,25 @@
   },
   "excluded_lane_b_alternative": "Do not run matched replay B0/B1/B2: three screens cost about 2h33m before refit, while 7284/10000 exact-common predecessor rows become hard-only duplicates and the prior composite was raw -0.003358.",
   "fallback_after_completion": "If lane A rejects action-margin, retain no local pull/package and use the warm lane next for the separately verified s202-consensus-voter refit only if time remains.",
-  "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_b_refit_plan.json"
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_b_refit_plan.json",
+  "launch_record": {
+    "bundle": "code_20260714_144517_dc6ddc52_dirty.tar.gz",
+    "commit": "dc6ddc526c5af27eda5e787394793005bc93ea04",
+    "launched_utc": "20260714_144759",
+    "session": "gpu-a100-s-kkb-ass1c1-1x8jyfchrljrf",
+    "remote_pid": 7708,
+    "remote_log": "run_20260714_144759.log",
+    "verification_utc": "20260714_145017",
+    "verification": {
+      "run_alive": true,
+      "gpu": "NVIDIA A100-SXM4-40GB",
+      "gpu_utilization_percent": 98,
+      "gpu_memory_mib": 11506,
+      "release_safe": false,
+      "local_keepalive_alive": true,
+      "action_margin_calibrated_weight": 0.2530416,
+      "action_margin_target_gradient_ratio": 0.1,
+      "action_margin_achieved_gradient_ratio": 0.1
+    }
+  }
 }
