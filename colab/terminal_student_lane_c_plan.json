@@ -1,5 +1,11 @@
 [
   {
+    "script": "colab/stage_hcx05b_base.py",
+    "args": [
+      "--asset-dir", "/content/drive/MyDrive/AADP_exchange_b/assets/hcx05b_base"
+    ]
+  },
+  {
     "script": "colab/verify_terminal_teacher.py",
     "args": [
       "--model-dir", "/content/drive/MyDrive/AADP_exchange_b/models/m8_terminal_imend_refit_s42",
