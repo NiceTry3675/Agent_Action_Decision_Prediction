@@ -52,7 +52,11 @@ full 10 submission slots.
    packs. Public = the final score, 100% — no private holdout (user-
    confirmed; not in rule.md). Public-best instance selection (best-of-N
    seed refits) is therefore legitimate and directly rewarded; the binding
-   constraint is the 10/day slot budget, not overfitting.
+   constraint is the 10/day slot budget, not overfitting. Dacon automatically
+   keeps the highest score across the team's submissions: a later lower score
+   does not replace the champion or reduce the standing. The only cost of a
+   low-scoring probe is its submission slot and elapsed time, so never reserve
+   the current champion as a supposedly necessary "last submission."
 4. Winner consolidation: `--final-model` full refit → repackage → resubmit.
    Session OOF (`--split session_oof` + `aggregate_oof.py`) is demoted to a
    tool — ensemble construction, bias/rule tuning, near-tie calls — not a
@@ -94,6 +98,13 @@ push`/`pull`; launch training in the background (`[launch]` cell or
 `vm_agent.py launch`), never synchronously in a notebook cell. CLI lanes use
 `aadp_colab.py down <lane>` for verified release; `cloud_sync.py unassign` is
 only for the legacy synchronous-notebook path.
+
+2026-07-14 endgame compute directive (user-confirmed): about 15 hours remain
+and one full A100 training run takes about 1.5 hours. GPU compute is not the
+resource to conserve now. Use available A100 lanes aggressively for genuinely
+new breakthrough hypotheses; do not reject or delay a promising orthogonal
+experiment merely because it consumes GPU time. Wall-clock completion,
+packaging feasibility, and the 10/day submission cap remain the real limits.
 
 ## Alternative encoders
 

@@ -2,11 +2,61 @@
 
 ## Current Public Baseline
 
-### Team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
+### Team Public champion: gated 3-seed ensemble + rfinal rules (`0.7963584846`)
+
+- Public Macro-F1: `0.7963584846` (`kd_ens3_trio_rfinal`, teammate result
+  reported 2026-07-14), runtime `7:28/10:00`; rank 7 when reported. This is
+  seed202 INT8 main + seed909 INT4 + seed7070 INT4, with the extra members
+  restricted to the seed202 low-margin (`<1.0`) surface and row-wise centered
+  logits averaged. The final archive is reported at about `959 MiB`.
+- Current standing snapshot: 1st place is `0.79862`; the team is 7th at the
+  displayed `0.79635` (exact score above), a gap of `0.0022615154`. The gap is
+  slightly larger than the repo's `0.002` interpretation band, so another
+  micro-rule-sized increment alone is unlikely to reach Public 1st.
+- User-confirmed competition constraint: there are no additional model
+  submissions in the final round. The active research objective is therefore
+  to find a Public-winning breakthrough before the submitted artifact is
+  frozen. Dacon automatically retains the highest score across submissions, so
+  a later lower-scoring experiment does not replace `rfinal` or reduce the
+  standing. Keep rfinal unchanged as a reproducible comparison artifact, not
+  as a score-protection or last-submission requirement. This is a search
+  direction, not a claim that a qualifying lever has already been found.
+- `rfinal` applies ten immutable-base rule behaviors after the ensemble:
+  low-budget R1/R1b; low-budget ask-user logit boost, constrained
+  `glob_pattern` rerouting, recent-read `grep_search -> read_file`, and
+  `plan_task -> ask_user`; failed-CI execution-to-patch; clean-SIM
+  `apply_patch -> edit_file`; a result-count read rule; and a narrow
+  turn/history garnish. Every mask is computed from the original ensemble
+  prediction, so rule outputs never cascade into later masks.
+- The rule stack passed the reported five-fold dual-seed diagnostic
+  (three seed42 folds plus two surviving seed202 folds): stack deltas were
+  positive in all folds (`+0.00154` to `+0.00289`) with zero rule collisions.
+  This is strong consolidation evidence, but not exact trio OOF: seed909 and
+  seed7070 were full-refit-only members and no aligned OOF for them was
+  reported.
+- Public improved `+0.0008984846` over the R1+R1b champion, `+0.0020984846`
+  over the no-rule ens2 base, and `+0.0024768420` over the exact locally
+  reproducible champion `0.7938816426`. The full rule line therefore clears
+  the `0.002` interpretation band relative to the no-rule ensemble, although
+  it combines multiple validated rules and a third member rather than
+  isolating one causal lever.
+- A score-preserving speed build tied exactly at `0.7963584846` but ran in
+  `7:37`; SDPA, member preload, and threaded overlap were all within server
+  timing variance. The unmodified eager `rfinal` (`7:28`) remains the current
+  champion reference. A separate chain/leak probe also tied exactly,
+  confirming no usable train-test session overlap.
+- Artifact boundary: the exact ens2 R1+R1b predecessor archive and two s202
+  OOF folds were handed off in Slack, but the final trio archive, seed7070
+  component, exact ten-rule patch scripts, and training commands are not in
+  this repo. `kd_sieve_ca_s42.zip` remains the exact local fallback.
+
+### Previous team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
 
 - Public Macro-F1: `0.79546` (`kd_ens2_s202s909_r1b`, teammate result reported
   2026-07-13). Despite the suffix, this pack contains **both R1 and R1b** on
-  top of the ens2 base; package size and server runtime were not reported.
+  top of the ens2 base. Its exact archive was handed off in Slack on
+  2026-07-14 (reported 871 MB stored / 723 MB deflated); server runtime was
+  not reported.
 - R1b is the second low-budget policy rule:
   `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`.
   It covers 37 train rows at precision `0.757`. It shares R1's mechanism: the
@@ -29,12 +79,14 @@
   audit set (`list_directory`, `read_file`, `grep_search`, `glob_pattern`,
   `web_search`, `lint_or_typecheck`, or `run_tests` vs `run_bash`), so none
   are inferred.
-- Artifact status: the exact R1b archive, scripts, model metadata, seed
-  checkpoints, training commands, smoke result, size, and runtime are not
-  local/reported yet. Do not treat the current repo's generic cascade/rule
-  engine as an exact reproduction.
+- Artifact status: the exact R1b archive is now available as a Slack
+  attachment and contains the submitted script, seed202 INT8 and seed909 INT4
+  models, and their metadata. Two s202 OOF folds were also handed off; s909
+  has no OOF. None has been absorbed into this repo, the exact training
+  commands remain unreported, and the local generic cascade/rule engine is
+  still not an exact reproduction.
 
-### Same-day previous team champion: gated 2-seed ensemble + budget R1 (`0.79534`)
+### Earlier team champion: gated 2-seed ensemble + budget R1 (`0.79534`)
 
 - `kd_ens2_s202s909_r1.zip` adds
   `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` after
@@ -46,7 +98,7 @@
 - The team reported a 723 MB package with build, offline smoke, and flip
   verification complete. The exact archive and code remain team-side.
 
-### Same-day previous team champion: gated 2-seed ensemble (`0.79426`)
+### Earlier team champion: gated 2-seed ensemble (`0.79426`)
 
 - `kd_ens2_s202s909.zip`: champion-recipe seed202 INT8 main model + seed909
   INT4 secondary model. The secondary forward runs only on rows where the
@@ -225,14 +277,25 @@ blend `0.782` -> HCX-0.5B refit, same champion recipe, base-model swap only
 absorbed) -> OOF-consensus gradient sieve `0.7917` -> sieve ×
 conditional-alpha `0.7938816426` (current locally reproducible champion) ->
 gated seed202+seed909 ensemble `0.79426` -> budget-R1 ensemble `0.79534` ->
-**budget-R1+R1b ensemble `0.79546`** (current team Public champion). The
+budget-R1+R1b ensemble `0.79546` -> **gated seed202+seed909+seed7070 trio +
+ten-rule rfinal `0.7963584846`** (current team Public champion). The
 non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 (`submissions/hcx05b_refit.zip`,
 `submissions/m7_qwen3_refit.zip`, `submissions/kd_m8blend_qwen3_refit.zip`).
 
 ## Model Configuration
 
-### Team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
+### Team Public champion: gated seed202+seed909+seed7070 trio + rfinal (`0.7963584846`)
+
+- Team-side `kd_ens3_trio_rfinal`: seed202 INT8 main, seed909 INT4 and
+  seed7070 INT4 auxiliaries, low-margin routing at seed202 raw-logit margin
+  `<1.0`, row-wise centered-logit averaging, and the ten immutable-base rule
+  behaviors summarized above. Reported runtime is `7:28/10:00`; reported
+  archive size is about `959 MiB`.
+- The exact final trio archive/config is not local. Do not infer the third
+  checkpoint or its command from other team-side seed artifacts.
+
+### Previous team champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
 
 - Team-side `kd_ens2_s202s909_r1b` uses the ensemble configuration below and
   includes both low-budget overrides after ensemble `pred_ids` finalization:
@@ -370,7 +433,8 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 | `kd_sieve_ca_s42`: `kdm8_sieve_s42` recipe + `--distill-alpha-weak 0.7` as the only variable (matched Weak4-true originals KD alpha 0.7, other matched 0.5, replay/unmatched KD-masked, T3) | n/a (full-refit-only) | n/a | n/a | `0.7938816426` | **Current locally reproducible champion; previous team champion.** +0.0021 vs `kdm8_sieve_s42` at matched seed42, above the 0.002 noise floor — conditional alpha adds on top of the sieve. Runtime 5:58/10:00; int8 argmax fidelity 100% (512/512). |
 | `kd_ens2_s202s909`: seed202 INT8 main + seed909 INT4 secondary; secondary runs where main-model `margin < 1.0` (about 25%), logits averaged, `430s` pre-secondary fallback guard | n/a (team-side seed refits) | team-reported gated ensemble `+0.00183` | n/a | `0.79426` | **Same-day intermediate team champion.** `+0.0003783574` vs the exact seed42 local champion and about `+0.00049` vs standalone seed202 `0.79377`; runtime 7:28. Public increments are inside the 0.002 band, so promote the instance without a broad causal claim. |
 | `kd_ens2_s202s909_r1`: preceding ensemble + `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` immediately after ensemble `pred_ids` finalization | n/a (team-side inference rule) | team-reported seed42 rule OOF `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67` | n/a | `0.79534` | **Previous team Public champion.** `+0.00108` vs the no-R1 ensemble and `+0.0014583574` vs the exact seed42 local champion; runtime 7:27. All-positive seed42 OOF support; superseded by R1+R1b. |
-| `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | recovered champion-recipe diagnostic OOF `+0.000312/+0.000197/+0.000125`, pooled `+0.000212`; train audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Current team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. Promote the final-score instance only; the recovered OOF is not the exact team ensemble surface, and runtime/package remain unreported. |
+| `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | recovered champion-recipe diagnostic OOF `+0.000312/+0.000197/+0.000125`, pooled `+0.000212`; train audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Previous team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. The recovered OOF is not the exact team ensemble surface; superseded by rfinal. |
+| `kd_ens3_trio_rfinal`: seed202 INT8 + seed909/seed7070 INT4 low-margin centered-logit trio, plus ten immutable-base rule behaviors | n/a (team-side full-refit members) | five-fold dual-seed rule diagnostic `+0.00154` to `+0.00289`, all positive, zero collisions; not exact trio OOF | n/a | `0.7963584846` | **Current team Public champion.** Runtime `7:28`; about 959 MiB. `+0.0008984846` vs R1+R1b, `+0.0020984846` vs ens2, and `+0.0024768420` vs the exact local champion. The unmodified rfinal is selected after a score-identical speed build ran slower (`7:37`). |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local
@@ -378,13 +442,17 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Package And Smoke
 
-- Current team champion: team-side `kd_ens2_s202s909_r1b` (`0.79546`), which
-  contains both R1 and R1b. Package size, runtime, and smoke status were not
-  reported; exact archive and scripts are not local.
-- Same-day previous team champion: team-side `kd_ens2_s202s909_r1.zip`
+- Current team champion: team-side `kd_ens3_trio_rfinal`
+  (`0.7963584846`), reported about 959 MiB / `7:28`. Exact final archive and
+  scripts are not local; the score-identical speed variant is not selected.
+- Previous team champion: `kd_ens2_s202s909_r1b` (`0.79546`). Its exact
+  831 MB Slack attachment (reported 871 MB stored / 723 MB deflated) and two
+  s202 OOF folds were handed off team-side, but have not been absorbed into
+  this repo.
+- Earlier team champion: team-side `kd_ens2_s202s909_r1.zip`
   (`0.79534`), reported 723 MB / `7:27`; build, offline smoke, and flip
   verification were reported complete.
-- Earlier same-day team champion: team-side `kd_ens2_s202s909.zip`
+- Earlier team champion: team-side `kd_ens2_s202s909.zip`
   (`0.79426`), reported 757 MB / `7:28`; exact archive is not local.
 - Current locally reproducible champion: `kd_sieve_ca_s42.zip`
   (`0.7938816426`), 512 MB; GPU and CPU zip-extracted offline smokes passed.
@@ -409,10 +477,22 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Next Improvement Candidates
 
-- **Endgame team base is now the R1+R1b-enabled seed202+seed909 ensemble**:
-  subsequent team submissions should preserve both rules unless an isolated
-  ablation says otherwise. Locally, `kd_sieve_ca_s42.zip` remains the
-  reproducible fallback until the teammate archive/script/meta are handed off.
+- **Primary objective: close the `0.0022615154` gap to Public 1st.** Treat
+  additional sub-`0.002` rule garnish as consolidation only. Prioritize a new,
+  orthogonal mechanism with plausible standalone scale above the gap. Keep an
+  unchanged rfinal package for comparison, but submit lower-scoring probes when
+  they buy useful information: the leaderboard retains the highest score and
+  imposes no score penalty for a worse later submission. Only slots and time
+  are consumed.
+- **Use A100 compute aggressively.** With about 15 hours remaining and a full
+  A100 training run taking about 1.5 hours, GPU cost is not a reason to defer a
+  credible breakthrough hypothesis. Favor genuinely orthogonal experiments
+  that can finish, package, and smoke within the remaining wall clock; do not
+  spend the window polishing already exhausted axes.
+- **Endgame team base is `kd_ens3_trio_rfinal`**. Rule, leak, transductive,
+  speed-path, TTA, relabeling, and architecture-edit lanes are closed by
+  today's evidence. Locally, `kd_sieve_ca_s42.zip` remains the reproducible
+  fallback.
 - **Do not re-run KD with a same-fold-split OOF teacher and trust the local
   screen** — see the KD-fold-leak finding above. If attempting KD again,
   either build the teacher OOF on a different fold seed/split than the
@@ -427,9 +507,9 @@ fixed/OOF screens (see KD-fold-leak finding above).
 - Make any new promotion decision from OOF logits, not fixed split alone.
 - Prioritize weak-class gains for `list_directory`, `read_file`, `grep_search`, `web_search`, and `glob_pattern`.
 - Keep rule and sparse ensemble changes only if they improve OOF after 2-stage bias tuning.
-- The last reported runtime is the R1 pack's `7:27/10:00`; R1b runtime was not
-  reported. The ens2 `430s` pre-secondary guard remains part of the stated
-  base recipe, but re-smoke the exact R1b handoff before any further stack.
+- The current champion package runtime is `7:28/10:00`. Three attempted speed
+  optimizations were timing-neutral; keep the eager rfinal artifact as the
+  comparison reference while breakthrough candidates are evaluated separately.
 - Encoder-family re-screen (fair champion-recipe conditions) results:
   - `mdeberta-v3-base` (canonical lr 1e-5): raw `0.702023` / 2stage `0.721257` — closed, no signal.
   - `microsoft/deberta-v3-base` (EN): fixed 2stage `0.746753` — inside the base448 band, ensemble-diversity candidate only.

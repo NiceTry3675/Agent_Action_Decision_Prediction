@@ -1343,6 +1343,11 @@ decide whether to refit, package, and spend a Public slot.
 - **Decision: 근접 격자 탐색은 종료한다. 챔피언 seed 수확은 기존 지시대로
   마지막 날 전까지 금지하며, 마지막 날에도 주력 개선축이 아닌 낮은 확신도의
   마지막 카드로 격하한다.**
+- **2026-07-14 correction:** the "last card" operational restriction above is
+  superseded. Dacon retains the highest score automatically; a later lower
+  score does not replace the champion or reduce the standing. Preserve the
+  plateau/seed-EV observation as historical evidence, but do not use submission
+  ordering or score-downside protection as a reason to block a new probe.
 
 ### 2026-07-12 - Weak4 residual specialist 두 카드 clean CV — 모두 REJECT
 
@@ -1976,3 +1981,82 @@ decide whether to refit, package, and spend a Public slot.
   reject student-only terminal pooling under this recipe; do not promote it to
   the sieve×consensus full refit or Public. The terminal-teacher lane remains
   in progress as the independent second ablation.
+
+### 2026-07-14 - terminal-teacher lane interrupted after export
+
+- The terminal M8 teacher full refit completed on lane B in `30295.436s`, and
+  its 70k-row fp16 training-logit payload was exported. Independent inspection
+  confirmed shape `[70000, 14]`, finite logits, unique aligned IDs, the exact
+  class order, terminal-token metadata, and train argmax accuracy `0.809171`.
+- Arm 4 failed before the student screen because the standalone verifier could
+  not import the repository-root `script` module. The import-path bug is fixed
+  locally; it did not invalidate the teacher model or exported logits. The
+  runtime assignment was lost afterward, so arm 5 never started. Auto-collect
+  was successful, the orphan A100 assignment was safely released, and the
+  explicit teacher run was pulled into `experiments/results.csv`.
+- **Decision:** terminal-teacher effectiveness is still unknown. Do not retrain
+  or reject it. After a human mounts a fresh lane B runtime, resume at arm 4 so
+  the corrected verifier gates the unchanged non-terminal student screen.
+
+### 2026-07-14 - D-1 closure: rfinal champion and research status
+
+- The team Public champion is now `kd_ens3_trio_rfinal` at exact Macro-F1
+  `0.7963584846`, runtime `7:28`, reported rank 7 and archive size about
+  959 MiB. The pack uses seed202 INT8 plus low-margin seed909/seed7070 INT4
+  centered-logit blending and ten immutable-base rule behaviors. Relative to
+  ens2 `0.79426`, the complete rule/ensemble line adds `+0.0020984846`; versus
+  the exact local champion it adds `+0.0024768420`.
+- Standing update: Public 1st is `0.79862`; the team is 7th at displayed
+  `0.79635` / exact `0.7963584846`, leaving `0.0022615154`. The final round has
+  no additional model submissions (user-confirmed), so the remaining research
+  objective is explicitly **Public 1st before artifact freeze**, not a later
+  final-round model revision.
+- **Direction:** retain the exact rfinal package as a reproducible comparison
+  artifact and search for one orthogonal breakthrough whose plausible scale
+  exceeds the full leader gap. This is not leaderboard downside protection:
+  Dacon automatically keeps the highest score, so a worse later submission
+  has no score penalty and cannot displace rfinal.
+  Further micro-rules below the `0.002` band are consolidation garnish, not the
+  primary lane. Reopening exhausted rule, speed, leak, TTA, relabeling, broad
+  metadata, or serializer axes does not satisfy this objective without new
+  independent evidence. Strict nested OOF is enabling infrastructure; the
+  actual score-lever candidates remain constrained numeric policy residual,
+  candidate-relative official-policy head, and inference-neutral relational
+  KD, each subject to the existing nine-part promotion gate.
+- Compute posture is explicitly aggressive. At the user-confirmed snapshot,
+  about 15 hours remain and one full A100 train takes about 1.5 hours, leaving
+  room for roughly ten sequential full runs before accounting for packaging
+  and smoke time, with more throughput if lanes run in parallel. Do not reject
+  a credible orthogonal hypothesis for GPU-cost reasons; wall clock, package
+  viability, and the 10/day submission limit are the constraints.
+- The rule stack passed the reported five-fold dual-seed audit with every fold
+  positive (`+0.00154` to `+0.00289`) and zero collisions. This is not exact
+  trio OOF: only three seed42 and two s202 folds exist, while s909/s7070 are
+  full-refit members. Preserve immutable `base_pred` masks and never cascade
+  rule outputs. The deployed team rule numbering differs from the discovery
+  labels used earlier in this log; package semantics, not provisional names,
+  are authoritative.
+- The earlier ens2 artifact-recovery gap is partly closed: the exact submitted
+  R1+R1b archive was handed off in Slack (SHA256
+  `aaacb3aa780e44e3c36382400824a8bc81a08aa2ce93a6fe7f5ea2bd882fd311`) with
+  seed202 INT8, seed909 INT4, the final script and metadata, plus surviving
+  s202 folds 1/2. Seed909 OOF still never existed, so the forensic conclusion
+  about the absence of an exact s202+s909 OOF surface remains valid. The files
+  have not been absorbed into this repo.
+- Speed-path experiments are closed. SDPA, member preload, and threaded
+  overlap were all within server variance; the combined speed build tied the
+  score exactly but ran `7:37`. Keep the unmodified eager rfinal. TTA produced
+  zero flips on 500 probes and is also closed.
+- Leak/transductive paths are closed in both directions. Test-chain and
+  train-test chain probes tied rfinal exactly, establishing one hidden row per
+  session and zero train-test session overlap; prompt lookup was strongly
+  negative in fold-safe OOF. Do not ship lookup artifacts. Test-time head
+  self-training was rejected by five-fold simulation (bias adaptation negative
+  in every fold; affine adaptation near zero), and label relabeling was closed
+  after the auditable chain cases showed no label errors.
+- Post-competition roadmap, in order: strict nested champion OOF; zero-init,
+  zero-sum numeric policy residual; candidate-relative official-policy head;
+  relational KD; bilevel loss router; then slice-conditional M9 teacher. The
+  shared promotion gate is all-positive outer folds, mean at least `+0.001`,
+  SIM-positive, budget/family audits, rescue:harm at least 1.5, zero-init
+  bit-exactness, preserved R1/R1b, and one variable per Public submission.
