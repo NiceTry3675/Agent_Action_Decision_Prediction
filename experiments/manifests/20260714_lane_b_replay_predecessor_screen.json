@@ -1,0 +1,61 @@
+{
+  "status": "running",
+  "lane": "b",
+  "required_gpu": "A100",
+  "plan": "colab/replay_predecessor_lane_b_screen_plan.json",
+  "experiment_suffix": "kd_replaypred_screen_s42",
+  "in_flight": {
+    "launched_utc": "2026-07-14T12:49:23Z",
+    "remote_log": "run_20260714_124923.log",
+    "remote_pid": 20209,
+    "start_arm": 1,
+    "note": "The orphaned aadp-b control state was restored onto its proven existing A100 endpoint without replacing the VM, kernel, Drive mount, or daemon."
+  },
+  "matched_control": {
+    "experiment_id": "20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control",
+    "macro_f1_raw": 0.785381,
+    "macro_f1_bias_tuned": 0.789876,
+    "macro_f1_bias_tuned_2stage": 0.790594,
+    "hardware": "lane B A100"
+  },
+  "single_quality_variable": "--replay-meta-mode predecessor",
+  "default_compatibility": "Without the flag, replay_meta_mode=current preserves the historical replay samples, selected IDs, source metadata, and cache key.",
+  "fixed_session_expected_audit": {
+    "train_rows": 55999,
+    "validation_rows": 14001,
+    "index_valid_rows": 55999,
+    "last1_tail_candidates": 48853,
+    "exact_matched_before_cap": 46775,
+    "dropped_predecessor_missing": 2078,
+    "other_drop_reasons": 0,
+    "selected_after_balanced_cap": 10000
+  },
+  "unmatched_policy": "Drop before the unchanged class-balanced cap. Never fall back to source/current metadata.",
+  "required_assets": [
+    {
+      "drive_path": "/content/drive/MyDrive/AADP_exchange_b/teacher/m8_qwen35_refit_train70k_fp16.pt",
+      "sha256": "5271d2745e6d1a601091f5850f8037ef0148922bdcee25d565b07866d16c5201"
+    },
+    {
+      "drive_path": "/content/drive/MyDrive/AADP_exchange_b/assets/hcx05b_base/model.safetensors",
+      "revision": "3da5046fb0195d14f2497de198136987d35fd644",
+      "size_bytes": 1132587360,
+      "sha256": "f40f63fa6a118eb9b59e8910c3ab5a6e6499805966284bb2cd41e197719d156b",
+      "companion_files": {
+        "config.json": {"size_bytes": 760, "sha256": "2f7b047eafde467097fddbfa7281da5579c6ad9920af06e52c8666c87729b745"},
+        "special_tokens_map.json": {"size_bytes": 1929, "sha256": "ec0481f56b50b66a4723b905c89345c52d45eed6571dd87a023285b99a929cc9"},
+        "tokenizer.json": {"size_bytes": 8029694, "sha256": "1ce80c377be4ae8a4e57758da0d6ee3dc6da3f25857d72c07a52a156d7de7fab"},
+        "tokenizer_config.json": {"size_bytes": 11905, "sha256": "64982c20eb3c1ebd5469934a1d576afc17a96e02df0d90c8e1c81233d27047e2"}
+      },
+      "policy": "Verify and atomically seed the local Hugging Face cache, then train with HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1."
+    }
+  ],
+  "prelaunch": [
+    ".venv/bin/python colab/aadp_colab.py push b",
+    "Human terminal: .venv/bin/python colab/aadp_colab.py up b --gpu A100",
+    ".venv/bin/python colab/aadp_colab.py probe b --expected-gpu A100"
+  ],
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/replay_predecessor_lane_b_screen_plan.json",
+  "go_signal": "Screen is rejection/sanity evidence, not the final metric. Continue to the separate refit card when raw and/or 2-stage delta is positive without a material priority-class collapse; report list_directory/read_file/grep_search/glob_pattern/web_search/lint_or_typecheck/run_tests versus run_bash.",
+  "next_manifest_on_go": "experiments/manifests/20260714_lane_b_replay_predecessor_refit.json"
+}

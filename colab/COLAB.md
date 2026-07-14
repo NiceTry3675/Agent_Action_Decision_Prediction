@@ -133,6 +133,34 @@ Recovery of an existing session should run only the required stage. `up
 to replace a live or uncollected workspace; use `bootstrap --force` only after
 manually confirming the VM is idle.
 
+### Emergency `up` cleanup bypass
+
+If `up` is wedged only after the lane is demonstrably ready, SIGKILLing the
+local `up` wrapper can preserve the already detached CLI keep-alive, remote
+kernel, Drive mount, and VM daemon. This is a recovery-only path, not the
+normal way to finish `up`:
+
+1. Record the tracked endpoint and prove it still appears account-wide.
+2. Prove the keep-alive is a separate local PID/process group from the `up`
+   wrapper; never signal the keep-alive.
+3. Require a fresh Drive heartbeat with the expected `control_mode=cli`, exact
+   exchange name, daemon PID, and no ownership mismatch. Confirm the Drive
+   mount and AADP workspace through the existing kernel when possible.
+4. SIGKILL only the local `up` wrapper. If it leaves a local `colab exec`
+   child holding the lane lock, remove that child only after repeating the
+   remote heartbeat/mount checks.
+5. Immediately re-run account-wide `sessions`, lane `status`, the GPU probe,
+   and heartbeat checks. The assignment remains billable and must retain a
+   live keep-alive until a later verified `down`.
+
+Never use this when assignment, endpoint ownership, keep-alive separation,
+mount, or daemon readiness is uncertain. A transient CLI 404/401 can prune
+only the local state while the assignment and daemon remain alive; in that
+case do not run `new` and do not hand-edit the token JSON. Reattach only after
+proving ownership from local history plus the lane-specific Drive heartbeat,
+using the CLI's locked `StateStore` API and a freshly listed runtime-proxy
+credential. `google-colab-cli==0.6.0` has no public orphan-adopt command.
+
 ## AADP persistence contract
 
 `cloud_sync.py push` deliberately sends the current tracked and non-ignored

@@ -1,0 +1,82 @@
+{
+  "status": "running",
+  "lane": "a",
+  "required_gpu": "A100",
+  "plan": "colab/relational_kd_lane_a_screen_plan.json",
+  "experiment_suffix": "kd_relgram005_screen_s42",
+  "in_flight": {
+    "launched_utc": "2026-07-14T12:40:15Z",
+    "remote_log": "run_20260714_124015.log",
+    "remote_pid": 16646,
+    "start_arm": 3,
+    "note": "The exact hidden cache was already exported and fidelity-gated, so this invocation resumed at the HCX cache-stage arm."
+  },
+  "matched_control": {
+    "experiment_id": "20260709_100552_gpu_transformer_session_current_v1_len384_replay-last1_kd_v1_len384_a100_b_control",
+    "macro_f1_raw": 0.785381,
+    "macro_f1_bias_tuned": 0.789876,
+    "macro_f1_bias_tuned_2stage": 0.790594,
+    "hardware": "A100 fp16"
+  },
+  "single_quality_variable": "Add lambda=0.05 centered cosine-Gram relational KD on the exact M8 classifier-input cache.",
+  "lambda": 0.05,
+  "lambda_rationale": "The row-normalized, double-centered Gram alignment loss is clamped to [0,2]. Lambda 0.05 therefore caps the auxiliary scalar contribution at 0.1, keeping focal plus logit-KD dominant while supplying a measurable relational gradient.",
+  "loss_contract": {
+    "name": "one_minus_centered_cosine_gram_alignment",
+    "coordinate_invariance": "Independent orthogonal rotations of student or teacher coordinates do not change the loss.",
+    "scale_invariance": "Independent positive global rescaling of student or teacher coordinates does not change the loss.",
+    "minimum_rows": 2,
+    "fewer_than_two_rows": "Differentiable zero attached to the student graph.",
+    "replay_policy": "Every replay row is relation-masked; the relation mask must exactly equal nonzero ordinary logit-KD coverage."
+  },
+  "teacher_export": {
+    "source_model": "/content/drive/MyDrive/AADP_exchange/models/m8_qwen35_refit",
+    "base_model": "igorktech/Qwen3.5-0.8B-Base-LM",
+    "serializer": "current_v1",
+    "max_length": 400,
+    "terminal_token": "",
+    "pooling": "last_nonpadding_classifier_input",
+    "expected_rows": 70000,
+    "expected_hidden_size": 1024,
+    "dtype": "float16",
+    "output": "/content/drive/MyDrive/AADP_exchange/teacher/m8_qwen35_refit_train70k_hidden_fp16.pt",
+    "fidelity_reference": "/content/drive/MyDrive/AADP_exchange/teacher/m8_qwen35_refit_train70k_fp16.pt",
+    "fidelity_reference_sha256": "5271d2745e6d1a601091f5850f8037ef0148922bdcee25d565b07866d16c5201",
+    "minimum_argmax_agreement": 0.995,
+    "maximum_absolute_logit_difference": 0.25,
+    "weight_source": "standard fp16 model.safetensors; custom low-bit files are explicitly ignored",
+    "reference_precision_note": "The established KD logits were exported from the canonical int8 storage-codec reconstruction. The fresh standard-fp16 forward matched 69799/70000 argmaxes (0.997128546), so the gate is 0.995 while the independent max-absolute-difference gate remains 0.25."
+  },
+  "base_model_cache": {
+    "drive_path": "/content/drive/MyDrive/AADP_exchange/assets/hcx05b_base/model.safetensors",
+    "revision": "3da5046fb0195d14f2497de198136987d35fd644",
+    "size_bytes": 1132587360,
+    "sha256": "f40f63fa6a118eb9b59e8910c3ab5a6e6499805966284bb2cd41e197719d156b",
+    "companion_files": {
+      "config.json": {"size_bytes": 760, "sha256": "2f7b047eafde467097fddbfa7281da5579c6ad9920af06e52c8666c87729b745"},
+      "special_tokens_map.json": {"size_bytes": 1929, "sha256": "ec0481f56b50b66a4723b905c89345c52d45eed6571dd87a023285b99a929cc9"},
+      "tokenizer.json": {"size_bytes": 8029694, "sha256": "1ce80c377be4ae8a4e57758da0d6ee3dc6da3f25857d72c07a52a156d7de7fab"},
+      "tokenizer_config.json": {"size_bytes": 11905, "sha256": "64982c20eb3c1ebd5469934a1d576afc17a96e02df0d90c8e1c81233d27047e2"}
+    },
+    "policy": "Verify and atomically seed the local Hugging Face cache, then train with HF_HUB_OFFLINE=1 and TRANSFORMERS_OFFLINE=1."
+  },
+  "fail_closed_cache_checks": [
+    "schema, kind, and usage scope",
+    "canonical 14-class order",
+    "unique IDs with exact original-train coverage",
+    "y_true alignment",
+    "serializer, teacher base model, terminal token, and max length",
+    "fp16 rank-2 hidden shape, finite values, row count, and hidden size",
+    "exact model-weight SHA256 and train.jsonl SHA256 provenance",
+    "exact equality with ordinary logit-KD coverage after replay expansion"
+  ],
+  "default_compatibility": "All new CLI options default inactive. With no relational cache/weight, forward calls and consensus return arity remain unchanged.",
+  "prelaunch": [
+    ".venv/bin/python colab/aadp_colab.py push a",
+    "Human terminal: .venv/bin/python colab/aadp_colab.py up a --gpu A100",
+    ".venv/bin/python colab/aadp_colab.py probe a"
+  ],
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch a colab/run_plan_remote.py -- --plan colab/relational_kd_lane_a_screen_plan.json",
+  "go_signal": "Promote only after reporting raw/2-stage delta and the required weak classes against the matched control; the separate champion full-refit card is the Public candidate.",
+  "next_manifest_on_go": "experiments/manifests/20260714_lane_a_relational_kd_refit.json"
+}

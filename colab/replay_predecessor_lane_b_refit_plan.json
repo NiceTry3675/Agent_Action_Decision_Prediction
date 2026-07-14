@@ -1,0 +1,50 @@
+[
+  {
+    "script": "colab/stage_hcx05b_base.py",
+    "args": []
+  },
+  {
+    "script": "train_transformer.py",
+    "env": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "args": [
+      "--base-model", "naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B",
+      "--lr", "2e-5",
+      "--device", "cuda",
+      "--split", "session",
+      "--serializer", "current_v1",
+      "--max-length", "384",
+      "--epochs", "3",
+      "--batch-size", "16",
+      "--grad-accum-steps", "1",
+      "--eval-batch-size", "64",
+      "--gradient-checkpointing",
+      "--class-weight-power", "0.5",
+      "--label-smoothing", "0.02",
+      "--loss", "focal",
+      "--focal-gamma", "2.0",
+      "--replay-mode", "last1",
+      "--max-replay-samples", "10000",
+      "--replay-sample-weight", "0.5",
+      "--replay-meta-mode", "predecessor",
+      "--distill-logits", "/content/drive/MyDrive/AADP_exchange_b/teacher/m8_qwen35_refit_train70k_fp16.pt",
+      "--distill-alpha", "0.5",
+      "--distill-alpha-weak", "0.7",
+      "--distill-temp", "3.0",
+      "--consensus-reliability", "/content/drive/MyDrive/AADP_exchange_b/anchors/20260710_m7_m8_v6_oof_consensus.pt",
+      "--consensus-backbone-weights", "0,0.25,0.75,1",
+      "--tokenize-batch-size", "1024",
+      "--seed", "42",
+      "--no-research-log",
+      "--save-fp16",
+      "--epoch-checkpoint-dir", "/content/drive/MyDrive/AADP_exchange_b/models/kd_sieve_ca_replaypred_refit_s42_ckpt",
+      "--output-dir", "/content/drive/MyDrive/AADP_exchange_b/models/kd_sieve_ca_replaypred_refit_s42",
+      "--experiment-suffix", "kd_sieve_ca_replaypred_refit_s42",
+      "--notes", "Exact kd_sieve_ca_s42 seed42 champion recipe plus one explicit variable: replay session_meta comes from the exact same-session predecessor original row. Missing or prompt/label-mismatched predecessors are dropped before the unchanged class-balanced cap; history, labels, cap=10000, replay weight=0.5, KD, sieve, and all remaining training settings are unchanged. Public-only candidate.",
+      "--final-model",
+      "--final-only"
+    ]
+  }
+]

@@ -7,6 +7,7 @@ Codex turn or websocket has ended.  Any failed arm stops the plan immediately.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -45,6 +46,13 @@ def main():
         python = spec.get("python", sys.executable)
         if not isinstance(python, str) or not python:
             raise ValueError(f"invalid arm {index}: python must be a non-empty string")
+        arm_env = spec.get("env", {})
+        if (
+            not isinstance(arm_env, dict)
+            or any(not isinstance(key, str) or not key for key in arm_env)
+            or any(not isinstance(value, str) for value in arm_env.values())
+        ):
+            raise ValueError(f"invalid arm {index}: env must map non-empty strings to strings")
         if args.drive_exchange:
             source = "/content/drive/MyDrive/AADP_exchange/"
             target = f"/content/drive/MyDrive/{args.drive_exchange}/"
@@ -55,7 +63,21 @@ def main():
             f"REMOTE PLAN arm={index}/{len(plan)} python={python} script={script} START",
             flush=True,
         )
-        result = subprocess.run(cmd)
+        # The training stack is PyTorch-only.  Explicitly disable discovery of
+        # installed TensorFlow/Flax backends before the child imports
+        # transformers; some Colab images otherwise hang during TensorFlow
+        # initialization after tokenization and before model loading.
+        child_env = os.environ.copy()
+        child_env.setdefault("USE_TORCH", "1")
+        child_env.setdefault("USE_TF", "0")
+        child_env.setdefault("USE_FLAX", "0")
+        # Colab's Xet-backed Hugging Face download path can deadlock with an
+        # incomplete blob held open and the HTTPS socket in CLOSE_WAIT.  The
+        # ordinary HTTP downloader is slower only during the one-time cache
+        # fill and is identical once from_pretrained reads the cached files.
+        child_env.setdefault("HF_HUB_DISABLE_XET", "1")
+        child_env.update(arm_env)
+        result = subprocess.run(cmd, env=child_env)
         elapsed = time.time() - started
         print(
             f"REMOTE PLAN arm={index}/{len(plan)} rc={result.returncode} "

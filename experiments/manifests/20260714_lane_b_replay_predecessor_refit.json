@@ -1,0 +1,76 @@
+{
+  "status": "ready_blocked_on_positive_screen",
+  "lane": "b",
+  "required_gpu": "A100",
+  "plan": "colab/replay_predecessor_lane_b_refit_plan.json",
+  "experiment_suffix": "kd_sieve_ca_replaypred_refit_s42",
+  "prerequisite": "Review kd_replaypred_screen_s42 against the matched A100 control using experiments/manifests/20260714_lane_b_replay_predecessor_screen.json.",
+  "hypothesis": "Correct predecessor state removes future budget/turn/workspace contamination from champion replay while retaining history, labels, balancing, cap, and sample weight.",
+  "single_variable": {
+    "flag": "--replay-meta-mode predecessor",
+    "reference_experiment": "20260711_052534_gpu_transformer_session_current_v1_len384_replay-last1_kd_sieve_condalpha_refit_s42",
+    "unchanged": [
+      "HCX-0.5B current_v1 len384 seed42",
+      "3 epochs, lr=2e-5, batch16, grad_accum1",
+      "focal gamma2, class_weight_power0.5, label_smoothing0.02",
+      "replay last1, balanced cap10000, sample_weight0.5",
+      "M8 alpha0.5, Weak4 alpha0.7, T3",
+      "canonical consensus hard-backbone weights 0,0.25,0.75,1",
+      "zero bias and no inference rules"
+    ]
+  },
+  "fail_closed_contract": {
+    "index_scope": "original train_idx rows only",
+    "key": "parsed (session_id, integer step)",
+    "required_exact_checks": [
+      "unique session/step key",
+      "predecessor session_meta.turn_index equals parsed step",
+      "predecessor current_prompt equals the replay history user event",
+      "predecessor label equals the replay history assistant action"
+    ],
+    "unmatched_policy": "drop before the unchanged class-balanced cap; never fall back to current/future metadata",
+    "duplicate_policy": "raise and abort because the predecessor would be ambiguous"
+  },
+  "full70k_expected_audit": {
+    "index_rows": 70000,
+    "index_valid_rows": 70000,
+    "last1_tail_candidates": 61000,
+    "exact_matched_before_cap": 58326,
+    "dropped_predecessor_missing": 2674,
+    "other_drop_reasons": 0,
+    "selected_after_balanced_cap": 10000,
+    "selected_rows_equal_later_source_meta": 0,
+    "legacy_default_selected_id_compatibility": "10000/10000 exact"
+  },
+  "required_assets": [
+    {
+      "drive_path": "/content/drive/MyDrive/AADP_exchange_b/teacher/m8_qwen35_refit_train70k_fp16.pt",
+      "sha256": "5271d2745e6d1a601091f5850f8037ef0148922bdcee25d565b07866d16c5201"
+    },
+    {
+      "drive_path": "/content/drive/MyDrive/AADP_exchange_b/anchors/20260710_m7_m8_v6_oof_consensus.pt",
+      "sha256": "040d4772e667fd5322038c50ac796aadc8e82344f094e702a9a8ba385a179864"
+    },
+    {
+      "drive_path": "/content/drive/MyDrive/AADP_exchange_b/assets/hcx05b_base/model.safetensors",
+      "revision": "3da5046fb0195d14f2497de198136987d35fd644",
+      "size_bytes": 1132587360,
+      "sha256": "f40f63fa6a118eb9b59e8910c3ab5a6e6499805966284bb2cd41e197719d156b",
+      "companion_files": {
+        "config.json": {"size_bytes": 760, "sha256": "2f7b047eafde467097fddbfa7281da5579c6ad9920af06e52c8666c87729b745"},
+        "special_tokens_map.json": {"size_bytes": 1929, "sha256": "ec0481f56b50b66a4723b905c89345c52d45eed6571dd87a023285b99a929cc9"},
+        "tokenizer.json": {"size_bytes": 8029694, "sha256": "1ce80c377be4ae8a4e57758da0d6ee3dc6da3f25857d72c07a52a156d7de7fab"},
+        "tokenizer_config.json": {"size_bytes": 11905, "sha256": "64982c20eb3c1ebd5469934a1d576afc17a96e02df0d90c8e1c81233d27047e2"}
+      }
+    }
+  ],
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/replay_predecessor_lane_b_refit_plan.json",
+  "postrun": [
+    ".venv/bin/python colab/aadp_colab.py status b",
+    ".venv/bin/python colab/aadp_colab.py list b",
+    "After release_safe=true: .venv/bin/python colab/aadp_colab.py down b",
+    ".venv/bin/python colab/aadp_colab.py pull b <explicit-run-name>",
+    ".venv/bin/python colab/aadp_colab.py pull-model b kd_sieve_ca_replaypred_refit_s42"
+  ],
+  "promotion": "Public-only one-variable comparison against kd_sieve_ca_s42 before any rfinal consolidation. The full-refit consensus recipe has no honest local validation claim."
+}

@@ -48,6 +48,12 @@ EXPLORER4_CLASS_ID_SET = set(EXPLORER4_CLASS_IDS)
 WEAK4_CLASSES = ALL_CLASSES[:4]
 WEAK4_CLASS_IDS = list(range(4))
 WEAK4_CLASS_ID_SET = set(WEAK4_CLASS_IDS)
+RELATIONAL_HIDDEN_SCHEMA_VERSION = 1
+RELATIONAL_HIDDEN_KIND = "pooled_classifier_hidden_v1"
+RELATIONAL_HIDDEN_USAGE_SCOPE = "full_data_refit_teacher_train_rows"
+RELATIONAL_HIDDEN_POOLING = "last_nonpadding_classifier_input"
+RELATIONAL_MIN_REFERENCE_ARGMAX_AGREEMENT = 0.995
+REPLAY_ORIGINAL_ID_RE = re.compile(r"^(?P<session>.+)-step_(?P<step>\d+)$")
 
 
 def safe_slug(value):
@@ -220,7 +226,85 @@ def balanced_cap_replay(examples, max_count, seed):
     return selected
 
 
-def replay_examples_for_sample(sample, pair_limit):
+def build_replay_predecessor_index(samples, y, train_idx):
+    """Index original training rows by exact ``(session, step)``.
+
+    The index is deliberately restricted to ``train_idx``.  This keeps a
+    malformed future split from borrowing validation metadata even though the
+    supported session-aware splits normally keep whole sessions together.
+    Rows with malformed IDs or time metadata are excluded; duplicate keys are
+    fatal because choosing either row would not be fail-closed.
+    """
+
+    if len(samples) != len(y):
+        raise ValueError("replay predecessor index inputs have inconsistent row counts")
+    if len(set(train_idx)) != len(train_idx):
+        raise ValueError("replay predecessor index received duplicate train indices")
+
+    index = {}
+    audit = Counter()
+    for sample_idx in train_idx:
+        if sample_idx < 0 or sample_idx >= len(samples):
+            raise ValueError(f"replay predecessor train index out of range: {sample_idx}")
+        sample = samples[sample_idx]
+        audit["index_rows"] += 1
+        match = REPLAY_ORIGINAL_ID_RE.fullmatch(safe_text(sample.get("id")))
+        if match is None:
+            audit["index_invalid_id"] += 1
+            continue
+        step = int(match.group("step"))
+        if step < 1:
+            audit["index_invalid_step"] += 1
+            continue
+        meta = sample.get("session_meta")
+        if not isinstance(meta, dict):
+            audit["index_invalid_meta"] += 1
+            continue
+        turn = meta.get("turn_index")
+        if isinstance(turn, bool):
+            audit["index_turn_mismatch"] += 1
+            continue
+        try:
+            turn = int(turn)
+        except (TypeError, ValueError):
+            audit["index_turn_mismatch"] += 1
+            continue
+        if turn != step:
+            audit["index_turn_mismatch"] += 1
+            continue
+
+        key = (match.group("session"), step)
+        if key in index:
+            other = index[key]
+            raise ValueError(
+                "ambiguous replay predecessor key "
+                f"{key!r}: indices {other['sample_idx']} and {sample_idx}"
+            )
+        index[key] = {
+            "sample_idx": sample_idx,
+            "sample_id": safe_text(sample.get("id")),
+            "current_prompt": safe_text(sample.get("current_prompt")),
+            "label_id": int(y[sample_idx]),
+            "session_meta": meta,
+        }
+        audit["index_valid_rows"] += 1
+    return index, audit
+
+
+def replay_examples_for_sample(
+    sample,
+    pair_limit,
+    replay_meta_mode="current",
+    predecessor_index=None,
+    audit=None,
+):
+    if replay_meta_mode not in ("current", "predecessor"):
+        raise ValueError(f"unknown replay metadata mode: {replay_meta_mode}")
+    if replay_meta_mode == "predecessor" and predecessor_index is None:
+        raise ValueError("predecessor replay metadata mode requires an exact predecessor index")
+    if audit is None:
+        audit = Counter()
+
     history = sample.get("history") or []
     candidates = []
     for idx, event in enumerate(history[:-1]):
@@ -233,42 +317,142 @@ def replay_examples_for_sample(sample, pair_limit):
                 candidates.append((idx, event, next_event, label))
 
     replay_samples = []
-    for idx, user_event, target_event, label in candidates[-pair_limit:]:
+    selected = candidates[-pair_limit:]
+    audit["source_rows"] += 1
+    audit["history_candidates"] += len(candidates)
+    audit["tail_candidates"] += len(selected)
+
+    source_match = None
+    source_step = None
+    history_turns = None
+    if replay_meta_mode == "predecessor" and selected:
+        source_match = REPLAY_ORIGINAL_ID_RE.fullmatch(safe_text(sample.get("id")))
+        if source_match is None:
+            audit["dropped_source_id"] += len(selected)
+            return replay_samples
+        source_step = int(source_match.group("step"))
+        if len(history) % 2 or any(
+            event.get("role") != ("user" if idx % 2 == 0 else "assistant_action")
+            for idx, event in enumerate(history)
+        ):
+            audit["dropped_history_shape"] += len(selected)
+            return replay_samples
+        history_turns = len(history) // 2
+        if source_step <= history_turns:
+            audit["dropped_history_step_range"] += len(selected)
+            return replay_samples
+
+    for idx, user_event, target_event, label in selected:
+        session_meta = sample.get("session_meta") or {}
+        predecessor = None
+        if replay_meta_mode == "predecessor":
+            # History contains the immediately preceding turns, capped at six.
+            # With alternating user/action events, raw event index ``idx`` maps
+            # exactly to this original step within the same session.
+            predecessor_step = source_step - history_turns + (idx // 2)
+            key = (source_match.group("session"), predecessor_step)
+            predecessor = predecessor_index.get(key)
+            if predecessor is None:
+                audit["dropped_predecessor_missing"] += 1
+                continue
+            if predecessor["current_prompt"] != safe_text(user_event.get("content")):
+                audit["dropped_prompt_mismatch"] += 1
+                continue
+            if predecessor["label_id"] != CLASS_TO_ID[label]:
+                audit["dropped_label_mismatch"] += 1
+                continue
+            session_meta = copy.deepcopy(predecessor["session_meta"])
+
+        replay_sample = {
+            "id": f"{safe_text(sample.get('id'))}::replay_{idx}_{label}",
+            "_is_replay": True,
+            "session_meta": session_meta,
+            "history": history[:idx],
+            "current_prompt": safe_text(user_event.get("content")),
+            # Training-only target metadata.  Serializers intentionally
+            # ignore private keys; only the privileged mode label
+            # builder may read this event.
+            "_privileged_target_event": {
+                "name": label,
+                "args": copy.deepcopy(target_event.get("args") or {}),
+                "result_summary": safe_text(target_event.get("result_summary")),
+            },
+        }
+        if predecessor is not None:
+            replay_sample["_replay_predecessor_id"] = predecessor["sample_id"]
+            replay_sample["_replay_predecessor_step"] = predecessor_step
         replay_samples.append(
             (
                 CLASS_TO_ID[label],
-                {
-                    "id": f"{safe_text(sample.get('id'))}::replay_{idx}_{label}",
-                    "_is_replay": True,
-                    "session_meta": sample.get("session_meta") or {},
-                    "history": history[:idx],
-                    "current_prompt": safe_text(user_event.get("content")),
-                    # Training-only target metadata.  Serializers intentionally
-                    # ignore private keys; only the privileged mode label
-                    # builder may read this event.
-                    "_privileged_target_event": {
-                        "name": label,
-                        "args": copy.deepcopy(target_event.get("args") or {}),
-                        "result_summary": safe_text(target_event.get("result_summary")),
-                    },
-                },
+                replay_sample,
             )
         )
+        audit["matched_candidates"] += 1
     return replay_samples
 
 
 def add_replay_examples(samples, y, train_idx, args):
     sample_weights = [1.0] * len(samples)
     if args.replay_mode == "none":
+        args.replay_predecessor_audit = None
         return samples, y, train_idx, sample_weights, 0
     if args.split not in ("session", "session_oof"):
         raise ValueError("Replay augmentation is only enabled for session-aware splits to avoid session leakage.")
 
     pair_limit = {"last1": 1, "last2": 2}[args.replay_mode]
+    replay_meta_mode = getattr(args, "replay_meta_mode", "current")
+    audit = Counter()
+    predecessor_index = None
+    if replay_meta_mode == "predecessor":
+        predecessor_index, index_audit = build_replay_predecessor_index(samples, y, train_idx)
+        audit.update(index_audit)
     replay_examples = []
     for sample_idx in train_idx:
-        replay_examples.extend(replay_examples_for_sample(samples[sample_idx], pair_limit))
+        replay_examples.extend(
+            replay_examples_for_sample(
+                samples[sample_idx],
+                pair_limit,
+                replay_meta_mode=replay_meta_mode,
+                predecessor_index=predecessor_index,
+                audit=audit,
+            )
+        )
+    pre_cap_count = len(replay_examples)
     replay_examples = balanced_cap_replay(replay_examples, args.max_replay_samples, args.seed + 101)
+    audit["matched_before_cap"] = pre_cap_count
+    audit["selected_after_cap"] = len(replay_examples)
+
+    dropped = sum(
+        count for name, count in audit.items() if name.startswith("dropped_")
+    )
+    if replay_meta_mode == "predecessor":
+        if audit["matched_candidates"] != pre_cap_count:
+            raise AssertionError(
+                "replay predecessor audit mismatch: "
+                f"matched={audit['matched_candidates']} examples={pre_cap_count}"
+            )
+        if audit["tail_candidates"] != pre_cap_count + dropped:
+            raise AssertionError(
+                "replay predecessor audit does not account for every tail candidate: "
+                f"tail={audit['tail_candidates']} matched={pre_cap_count} dropped={dropped}"
+            )
+        if any(
+            int(replay_sample["session_meta"]["turn_index"])
+            != int(replay_sample["_replay_predecessor_step"])
+            for _, replay_sample in replay_examples
+        ):
+            raise AssertionError("selected replay metadata turn does not match predecessor step")
+
+    args.replay_predecessor_audit = {
+        "mode": replay_meta_mode,
+        **{name: int(count) for name, count in sorted(audit.items())},
+        "dropped_candidates": int(dropped),
+        "drop_policy": (
+            "drop_before_balanced_cap_on_missing_or_nonexact_predecessor"
+            if replay_meta_mode == "predecessor"
+            else "legacy_current_source_metadata"
+        ),
+    }
 
     start_idx = len(samples)
     replay_samples = [sample for _, sample in replay_examples]
@@ -280,8 +464,14 @@ def add_replay_examples(samples, y, train_idx, args):
     sample_weights.extend([args.replay_sample_weight] * len(replay_samples))
     print(
         f"replay mode={args.replay_mode} generated={len(replay_samples)} "
-        f"cap={args.max_replay_samples} weight={args.replay_sample_weight}"
+        f"cap={args.max_replay_samples} weight={args.replay_sample_weight} "
+        f"meta_mode={replay_meta_mode} matched_before_cap={pre_cap_count} dropped={dropped}"
     )
+    if replay_meta_mode == "predecessor":
+        print(
+            "replay predecessor audit="
+            + json.dumps(args.replay_predecessor_audit, ensure_ascii=False, sort_keys=True)
+        )
     return new_samples, new_y, new_train_idx, sample_weights, len(replay_samples)
 
 
@@ -528,6 +718,11 @@ def cache_path(args, source_path, sample_count, kind, cache_scope="train"):
             f"-w{safe_slug(args.replay_sample_weight)}-scope-{safe_slug(cache_scope)}"
             f"-seed{args.seed}"
         )
+        # Keep the legacy/current cache key byte-compatible.  The corrected
+        # predecessor mode must never reuse text/token caches serialized with
+        # future/current-row metadata.
+        if getattr(args, "replay_meta_mode", "current") != "current":
+            replay += f"-meta-{safe_slug(args.replay_meta_mode)}"
         if getattr(args, "split", "") == "session_oof":
             replay += f"-oof{args.fold_id}of{args.n_folds}"
     return (
@@ -705,6 +900,267 @@ def build_teacher_targets(samples, args):
         + ")"
     )
     return logprobs, mask
+
+
+def build_relational_teacher_targets(samples, y, args, teacher=None):
+    """Load and ID-align a pooled teacher-hidden cache for relational KD.
+
+    The cache must cover every original training row exactly once. Replay rows
+    are deliberately absent and receive a false mask. When ordinary logit KD
+    is active, both masks must agree exactly so relational KD cannot leak onto
+    replay or another unmatched surface.
+    """
+    artifact_value = safe_text(getattr(args, "relational_teacher_hidden", ""))
+    if not artifact_value:
+        return None
+    path = Path(artifact_value)
+    if not path.is_file():
+        raise ValueError(f"relational teacher hidden cache is missing: {path}")
+    payload = torch_load(path)
+    if not isinstance(payload, dict):
+        raise ValueError("relational teacher hidden cache must be a dict payload")
+    if int(payload.get("schema_version", -1)) != RELATIONAL_HIDDEN_SCHEMA_VERSION:
+        raise ValueError(
+            "unsupported relational hidden schema_version: "
+            f"{payload.get('schema_version')!r}"
+        )
+    if payload.get("kind") != RELATIONAL_HIDDEN_KIND:
+        raise ValueError(f"unexpected relational hidden kind: {payload.get('kind')!r}")
+    if payload.get("usage_scope") != RELATIONAL_HIDDEN_USAGE_SCOPE:
+        raise ValueError(
+            "unexpected relational hidden usage_scope: "
+            f"{payload.get('usage_scope')!r}"
+        )
+    if list(payload.get("classes") or []) != ALL_CLASSES:
+        raise ValueError("relational teacher hidden class order does not match ALL_CLASSES")
+
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        raise ValueError("relational teacher hidden metadata is missing")
+    if metadata.get("serializer_name") != args.serializer:
+        raise ValueError(
+            "relational teacher serializer mismatch: "
+            f"cache={metadata.get('serializer_name')!r} student={args.serializer!r}"
+        )
+    expected_teacher = safe_text(
+        getattr(args, "relational_teacher_base_model", "")
+    )
+    if not expected_teacher:
+        raise ValueError("relational KD requires an explicit expected teacher base model")
+    if safe_text(metadata.get("base_model")) != expected_teacher:
+        raise ValueError(
+            "relational teacher base_model mismatch: "
+            f"cache={metadata.get('base_model')!r} expected={expected_teacher!r}"
+        )
+    expected_terminal = safe_text(
+        getattr(args, "relational_teacher_terminal_token", "")
+    )
+    if safe_text(metadata.get("terminal_token")) != expected_terminal:
+        raise ValueError(
+            "relational teacher terminal token mismatch: "
+            f"cache={metadata.get('terminal_token')!r} expected={expected_terminal!r}"
+        )
+    expected_max_length = int(
+        getattr(args, "relational_teacher_max_length", 0) or 0
+    )
+    if expected_max_length <= 0:
+        raise ValueError("relational KD requires an explicit teacher max length")
+    if int(metadata.get("max_length", -1)) != expected_max_length:
+        raise ValueError(
+            "relational teacher max_length mismatch: "
+            f"cache={metadata.get('max_length')!r} expected={expected_max_length}"
+        )
+    if metadata.get("pooling") != RELATIONAL_HIDDEN_POOLING:
+        raise ValueError(
+            "relational teacher pooling mismatch: "
+            f"{metadata.get('pooling')!r}"
+        )
+    model_sha = safe_text(metadata.get("model_weights_sha256"))
+    if not re.fullmatch(r"[0-9a-f]{64}", model_sha):
+        raise ValueError("relational teacher cache has no valid model_weights_sha256")
+    if metadata.get("prefer_fp16_weights") is not True:
+        raise ValueError("relational teacher cache was not exported from preferred fp16 weights")
+    model_weight_files = metadata.get("model_weight_files")
+    if (
+        not isinstance(model_weight_files, list)
+        or not model_weight_files
+        or any(not safe_text(name) for name in model_weight_files)
+        or any(".int8." in name or ".int4." in name for name in model_weight_files)
+    ):
+        raise ValueError(
+            "relational teacher cache has invalid standard-fp16 model weight provenance"
+        )
+    if safe_text(metadata.get("dtype")) != "fp16":
+        raise ValueError("relational teacher cache metadata dtype must be fp16")
+    if not safe_text(metadata.get("classifier_head")):
+        raise ValueError("relational teacher cache has no classifier_head provenance")
+
+    fidelity = metadata.get("asserted_reference_logits")
+    if not isinstance(fidelity, dict):
+        raise ValueError("relational teacher cache has no asserted logit fidelity")
+    agreement = float(fidelity.get("argmax_agreement", -1.0))
+    max_abs = float(fidelity.get("max_abs", math.inf))
+    if (
+        not math.isfinite(agreement)
+        or agreement < RELATIONAL_MIN_REFERENCE_ARGMAX_AGREEMENT
+    ):
+        raise ValueError(
+            "relational teacher logit-fidelity agreement is below "
+            f"{RELATIONAL_MIN_REFERENCE_ARGMAX_AGREEMENT}: {agreement}"
+        )
+    if not math.isfinite(max_abs) or max_abs > 0.25:
+        raise ValueError(
+            "relational teacher logit-fidelity max_abs exceeds 0.25: "
+            f"{max_abs}"
+        )
+    reference_sha = safe_text(fidelity.get("sha256"))
+    if not re.fullmatch(r"[0-9a-f]{64}", reference_sha):
+        raise ValueError("relational teacher cache has no valid reference-logit SHA256")
+    distill_path = Path(safe_text(getattr(args, "distill_logits", "")))
+    if not distill_path.is_file():
+        raise ValueError(
+            f"relational KD cannot verify missing ordinary teacher logits: {distill_path}"
+        )
+    actual_reference_sha = _sha256_file(distill_path)
+    if actual_reference_sha != reference_sha:
+        raise ValueError(
+            "relational teacher reference-logit fingerprint mismatch: "
+            f"cache={reference_sha!r} current={actual_reference_sha!r}"
+        )
+
+    train_path = Path(args.data_dir) / "train.jsonl"
+    if not train_path.is_file():
+        raise ValueError(f"relational KD cannot verify missing training data: {train_path}")
+    data_sha = safe_text(metadata.get("data_sha256"))
+    actual_data_sha = _sha256_file(train_path)
+    if data_sha != actual_data_sha:
+        raise ValueError(
+            "relational teacher data fingerprint mismatch: "
+            f"cache={data_sha!r} current={actual_data_sha!r}"
+        )
+
+    artifact_ids = [safe_text(sample_id) for sample_id in payload.get("ids") or []]
+    if not artifact_ids:
+        raise ValueError("relational teacher hidden cache has no ids")
+    if len(artifact_ids) != len(set(artifact_ids)):
+        raise ValueError("relational teacher hidden cache contains duplicate ids")
+    hidden = payload.get("hidden")
+    if not isinstance(hidden, torch.Tensor) or hidden.ndim != 2:
+        raise ValueError(
+            "relational teacher hidden must be a rank-2 tensor, got "
+            f"{getattr(hidden, 'shape', None)}"
+        )
+    if hidden.dtype != torch.float16:
+        raise ValueError(f"relational teacher hidden must be fp16, got {hidden.dtype}")
+    if hidden.shape[0] != len(artifact_ids) or hidden.shape[1] < 1:
+        raise ValueError(
+            "relational teacher hidden shape mismatch: "
+            f"ids={len(artifact_ids)} hidden={tuple(hidden.shape)}"
+        )
+    if int(metadata.get("hidden_size", -1)) != int(hidden.shape[1]):
+        raise ValueError(
+            "relational teacher hidden_size metadata mismatch: "
+            f"meta={metadata.get('hidden_size')!r} tensor={hidden.shape[1]}"
+        )
+    if int(metadata.get("row_count", -1)) != len(artifact_ids):
+        raise ValueError(
+            "relational teacher row_count metadata mismatch: "
+            f"meta={metadata.get('row_count')!r} ids={len(artifact_ids)}"
+        )
+    if not bool(torch.isfinite(hidden).all()):
+        raise ValueError("relational teacher hidden cache contains non-finite values")
+    artifact_y = torch.as_tensor(payload.get("y_true"), dtype=torch.long).view(-1)
+    if artifact_y.shape[0] != len(artifact_ids):
+        raise ValueError(
+            "relational teacher y_true row mismatch: "
+            f"ids={len(artifact_ids)} y_true={artifact_y.shape[0]}"
+        )
+
+    if len(samples) != len(y):
+        raise ValueError(f"samples/y length mismatch: {len(samples)} != {len(y)}")
+    original_rows = [
+        idx for idx, sample in enumerate(samples) if not sample.get("_is_replay", False)
+    ]
+    replay_rows = [
+        idx for idx, sample in enumerate(samples) if sample.get("_is_replay", False)
+    ]
+    original_ids = [safe_text(samples[idx].get("id")) for idx in original_rows]
+    if len(original_ids) != len(set(original_ids)):
+        raise ValueError("current original samples contain duplicate ids")
+    artifact_id_set = set(artifact_ids)
+    original_id_set = set(original_ids)
+    if artifact_id_set != original_id_set:
+        missing = sorted(original_id_set - artifact_id_set)[:5]
+        extra = sorted(artifact_id_set - original_id_set)[:5]
+        raise ValueError(
+            "relational teacher id coverage mismatch: "
+            f"cache={len(artifact_ids)} original={len(original_ids)} "
+            f"missing={missing} extra={extra}"
+        )
+
+    artifact_pos = {sample_id: idx for idx, sample_id in enumerate(artifact_ids)}
+    aligned_hidden = torch.zeros(
+        (len(samples), hidden.shape[1]), dtype=hidden.dtype
+    )
+    mask = torch.zeros(len(samples), dtype=torch.bool)
+    label_mismatches = []
+    for sample_idx in original_rows:
+        sample_id = safe_text(samples[sample_idx].get("id"))
+        source_idx = artifact_pos[sample_id]
+        source_label = int(artifact_y[source_idx])
+        if source_label != int(y[sample_idx]):
+            label_mismatches.append((sample_id, source_label, int(y[sample_idx])))
+            continue
+        aligned_hidden[sample_idx] = hidden[source_idx]
+        mask[sample_idx] = True
+    if label_mismatches:
+        raise ValueError(
+            "relational teacher labels do not match current training labels: "
+            f"{label_mismatches[:5]}"
+        )
+    if replay_rows and bool(mask[replay_rows].any()):
+        raise ValueError("relational teacher mask must exclude every replay row")
+    if teacher is not None:
+        if not isinstance(teacher, (tuple, list)) or len(teacher) != 2:
+            raise ValueError("ordinary teacher targets must be a (logits, mask) pair")
+        logit_mask = torch.as_tensor(teacher[1]).view(-1) > 0
+        if logit_mask.shape != mask.shape or not torch.equal(logit_mask, mask):
+            raise ValueError(
+                "relational teacher mask does not exactly match logit-KD coverage"
+            )
+
+    meta = {
+        "enabled": True,
+        "artifact_path": str(path),
+        "artifact_sha256": _sha256_file(path),
+        "schema_version": RELATIONAL_HIDDEN_SCHEMA_VERSION,
+        "kind": RELATIONAL_HIDDEN_KIND,
+        "usage_scope": RELATIONAL_HIDDEN_USAGE_SCOPE,
+        "teacher_base_model": expected_teacher,
+        "serializer_name": args.serializer,
+        "teacher_terminal_token": expected_terminal,
+        "teacher_max_length": expected_max_length,
+        "pooling": RELATIONAL_HIDDEN_POOLING,
+        "hidden_size": int(hidden.shape[1]),
+        "matched_original_rows": int(mask.sum()),
+        "masked_replay_rows": len(replay_rows),
+        "weight": float(args.relational_kd_weight),
+        "loss": "one_minus_centered_cosine_gram_alignment",
+        "model_weights_sha256": model_sha,
+        "model_weight_files": list(model_weight_files),
+        "reference_logits_sha256": reference_sha,
+        "reference_argmax_agreement": agreement,
+        "reference_max_abs": max_abs,
+        "data_sha256": data_sha,
+    }
+    args.relational_kd_meta = meta
+    print(
+        "relational KD cache: "
+        f"matched={int(mask.sum())}/{len(samples)} replay_masked={len(replay_rows)} "
+        f"hidden={tuple(hidden.shape)} weight={args.relational_kd_weight} "
+        f"teacher={expected_teacher} serializer={args.serializer}"
+    )
+    return {"hidden": aligned_hidden, "mask": mask, "meta": meta}
 
 
 def parse_consensus_backbone_weights(value, expected_count=None):
@@ -1300,14 +1756,15 @@ def apply_consensus_conditioned_weak_alpha(
 
 
 def build_training_signals(samples, y, train_idx, args):
-    """Build ID-aligned teacher/consensus tensors and combine them once."""
+    """Build ID-aligned teacher/consensus/relational tensors once."""
     teacher = build_teacher_targets(samples, args)
     consensus = build_consensus_reliability(samples, y, train_idx, args)
     teacher = apply_consensus_distill_alpha(teacher, consensus, args)
     teacher, consensus = apply_consensus_conditioned_weak_alpha(
         teacher, consensus, y, train_idx, args
     )
-    return teacher, consensus
+    relational = build_relational_teacher_targets(samples, y, args, teacher=teacher)
+    return teacher, consensus, relational
 
 
 def find_terminal_classifier_head(model):
@@ -1326,7 +1783,7 @@ def find_terminal_classifier_head(model):
             candidates.append((rank, name, module))
     if not candidates:
         raise ValueError(
-            "consensus sieve could not find a terminal Linear classifier with "
+            "could not find a terminal Linear classifier with "
             f"out_features={len(ALL_CLASSES)}"
         )
     candidates.sort(key=lambda item: (item[0], item[1]))
@@ -1334,10 +1791,130 @@ def find_terminal_classifier_head(model):
     best = [item for item in candidates if item[0] == best_rank]
     if len(best) != 1:
         raise ValueError(
-            "consensus sieve found ambiguous terminal classifier heads: "
+            "found ambiguous terminal classifier heads: "
             f"{[name for _, name, _ in best]}"
         )
     return best[0][2], best[0][1]
+
+
+def forward_with_classifier_input(model, encoded, classifier_head=None):
+    """Run one ordinary forward and capture the final classifier input."""
+    if classifier_head is None:
+        classifier_head, _ = find_terminal_classifier_head(model)
+    captured_inputs = []
+
+    def capture_head_input(_module, inputs):
+        if not inputs or not torch.is_tensor(inputs[0]):
+            raise ValueError("terminal classifier did not receive a positional tensor input")
+        captured_inputs.append(inputs[0])
+
+    handle = classifier_head.register_forward_pre_hook(capture_head_input)
+    try:
+        outputs = model(**encoded)
+    finally:
+        handle.remove()
+    if len(captured_inputs) != 1:
+        raise ValueError(
+            "terminal classifier must run exactly once in the sequence-classifier forward; "
+            f"observed={len(captured_inputs)}"
+        )
+    return outputs, captured_inputs[0]
+
+
+def pool_classifier_hidden(hidden, reference_logits, encoded):
+    """Pool the hidden state that produced each sequence-classification logit."""
+    if hidden.ndim == 2 and reference_logits.ndim == 2:
+        if hidden.shape[0] != reference_logits.shape[0]:
+            raise ValueError(
+                "classifier hidden/logit batch mismatch: "
+                f"hidden={tuple(hidden.shape)} logits={tuple(reference_logits.shape)}"
+            )
+        return hidden
+    if (
+        hidden.ndim == 3
+        and reference_logits.ndim == 2
+        and hidden.shape[0] == reference_logits.shape[0]
+    ):
+        attention_mask = encoded.get("attention_mask")
+        if attention_mask is None or tuple(attention_mask.shape) != tuple(hidden.shape[:2]):
+            raise ValueError(
+                "classifier hidden pooling needs a matching attention_mask"
+            )
+        positions = torch.arange(
+            attention_mask.shape[1], device=attention_mask.device
+        ).view(1, -1)
+        positions = positions.expand_as(attention_mask)
+        sequence_end = positions.masked_fill(
+            ~attention_mask.bool(), -1
+        ).max(dim=1).values
+        if bool((sequence_end < 0).any()):
+            raise ValueError("classifier hidden pooling encountered an all-padding sequence")
+        rows = torch.arange(hidden.shape[0], device=hidden.device)
+        return hidden[rows, sequence_end]
+    raise ValueError(
+        "cannot pool classifier hidden to sequence logits: "
+        f"hidden={tuple(hidden.shape)} logits={tuple(reference_logits.shape)}"
+    )
+
+
+def centered_cosine_gram_loss(student_hidden, teacher_hidden, mask=None, eps=1e-8):
+    """Coordinate/scale-invariant relational loss via centered cosine Grams.
+
+    Each representation is row-normalized, converted to a sample-by-sample
+    cosine Gram matrix, double-centered over the matched samples, and compared
+    with normalized kernel alignment. Independent orthogonal rotations and
+    global positive rescaling of either representation leave the loss intact.
+    """
+    if student_hidden.ndim != 2 or teacher_hidden.ndim != 2:
+        raise ValueError(
+            "relational hidden tensors must both be rank 2: "
+            f"student={tuple(student_hidden.shape)} teacher={tuple(teacher_hidden.shape)}"
+        )
+    if student_hidden.shape[0] != teacher_hidden.shape[0]:
+        raise ValueError(
+            "relational hidden batch mismatch: "
+            f"student={student_hidden.shape[0]} teacher={teacher_hidden.shape[0]}"
+        )
+    if mask is None:
+        mask = torch.ones(
+            student_hidden.shape[0], dtype=torch.bool, device=student_hidden.device
+        )
+    else:
+        mask = torch.as_tensor(mask, dtype=torch.bool, device=student_hidden.device)
+        if mask.ndim != 1 or mask.shape[0] != student_hidden.shape[0]:
+            raise ValueError(
+                "relational mask batch mismatch: "
+                f"mask={tuple(mask.shape)} hidden={student_hidden.shape[0]}"
+            )
+    if int(mask.sum()) < 2:
+        # Keep a differentiable zero attached to the student graph.
+        return student_hidden.sum() * 0.0
+
+    student = F.normalize(student_hidden[mask].float(), dim=-1, eps=eps)
+    teacher = F.normalize(
+        teacher_hidden.to(student_hidden.device)[mask].float(), dim=-1, eps=eps
+    ).detach()
+    student_gram = student @ student.transpose(0, 1)
+    teacher_gram = teacher @ teacher.transpose(0, 1)
+
+    def center(gram):
+        return (
+            gram
+            - gram.mean(dim=0, keepdim=True)
+            - gram.mean(dim=1, keepdim=True)
+            + gram.mean()
+        )
+
+    student_gram = center(student_gram)
+    teacher_gram = center(teacher_gram)
+    numerator = (student_gram * teacher_gram).sum()
+    denominator = torch.linalg.vector_norm(student_gram) * torch.linalg.vector_norm(
+        teacher_gram
+    )
+    if float(denominator.detach()) <= eps:
+        return student_hidden.sum() * 0.0
+    alignment = numerator / denominator.clamp_min(eps)
+    return (1.0 - alignment).clamp(min=0.0, max=2.0)
 
 
 def _pool_recomputed_head_logits(head_logits, reference_logits, encoded):
@@ -1370,7 +1947,12 @@ def _pool_recomputed_head_logits(head_logits, reference_logits, encoded):
 
 
 def forward_with_consensus_sieve(
-    model, encoded, backbone_scales, classifier_head=None, kd_backbone_scales=None
+    model,
+    encoded,
+    backbone_scales,
+    classifier_head=None,
+    kd_backbone_scales=None,
+    return_hidden=False,
 ):
     """Return (ordinary logits, hard-label logits with gated backbone gradient).
 
@@ -1386,24 +1968,9 @@ def forward_with_consensus_sieve(
     """
     if classifier_head is None:
         classifier_head, _ = find_terminal_classifier_head(model)
-    captured_inputs = []
-
-    def capture_head_input(_module, inputs):
-        if not inputs or not torch.is_tensor(inputs[0]):
-            raise ValueError("terminal classifier did not receive a positional tensor input")
-        captured_inputs.append(inputs[0])
-
-    handle = classifier_head.register_forward_pre_hook(capture_head_input)
-    try:
-        outputs = model(**encoded)
-    finally:
-        handle.remove()
-    if len(captured_inputs) != 1:
-        raise ValueError(
-            "terminal classifier must run exactly once in the sequence-classifier forward; "
-            f"observed={len(captured_inputs)}"
-        )
-    hidden = captured_inputs[0]
+    outputs, hidden = forward_with_classifier_input(
+        model, encoded, classifier_head=classifier_head
+    )
 
     def gated_logits(row_scales, branch):
         scales = torch.as_tensor(row_scales, dtype=hidden.dtype, device=hidden.device)
@@ -1421,8 +1988,21 @@ def forward_with_consensus_sieve(
 
     hard_logits = gated_logits(backbone_scales, "backbone")
     if kd_backbone_scales is None:
+        if return_hidden:
+            return (
+                outputs.logits,
+                hard_logits,
+                pool_classifier_hidden(hidden, outputs.logits, encoded),
+            )
         return outputs.logits, hard_logits
     kd_logits = gated_logits(kd_backbone_scales, "kd-backbone")
+    if return_hidden:
+        return (
+            outputs.logits,
+            hard_logits,
+            kd_logits,
+            pool_classifier_hidden(hidden, outputs.logits, encoded),
+        )
     return outputs.logits, hard_logits, kd_logits
 
 
@@ -1533,6 +2113,7 @@ def train_model(
     device,
     teacher=None,
     consensus=None,
+    relational=None,
 ):
     label_kwargs = dict(
         num_labels=len(ALL_CLASSES),
@@ -1546,6 +2127,17 @@ def train_model(
         consensus["meta"]["classifier_head"] = consensus_head_name
         args.consensus_reliability_meta = consensus["meta"]
         print(f"consensus sieve classifier head: {consensus_head_name}")
+    relational_classifier_head = consensus_classifier_head
+    if relational is not None:
+        if relational_classifier_head is None:
+            relational_classifier_head, relational_head_name = find_terminal_classifier_head(
+                model
+            )
+        else:
+            _, relational_head_name = find_terminal_classifier_head(model)
+        relational["meta"]["classifier_head"] = relational_head_name
+        args.relational_kd_meta = relational["meta"]
+        print(f"relational KD classifier head: {relational_head_name}")
 
     weights = class_weights([y[i] for i in train_idx], device, args.class_weight_power)
     weak4_ids = torch.tensor(WEAK4_CLASS_IDS, dtype=torch.long, device=device)
@@ -1676,6 +2268,9 @@ def train_model(
         model.train()
         total_loss = 0.0
         total_kl = 0.0
+        total_relational = 0.0
+        relational_batches = 0
+        relational_rows = 0
         seen = 0
         step = 0
         for step, batch_idx in enumerate(
@@ -1687,28 +2282,66 @@ def train_model(
             encoded = make_encoded_batch(tokenizer, encoded_features, batch_idx, args, device)
             with torch.amp.autocast(device_type="cuda", enabled=device.type == "cuda", dtype=torch.bfloat16 if args.bf16 else torch.float16):
                 if consensus is None:
-                    logits = model(**encoded).logits
+                    if relational is None:
+                        logits = model(**encoded).logits
+                        student_hidden = None
+                    else:
+                        outputs, classifier_input = forward_with_classifier_input(
+                            model,
+                            encoded,
+                            classifier_head=relational_classifier_head,
+                        )
+                        logits = outputs.logits
+                        student_hidden = pool_classifier_hidden(
+                            classifier_input, logits, encoded
+                        )
                     hard_logits = None
                     kd_logits = None
                 elif consensus["kd_gradient_scales"] is None:
                     batch_scales = consensus["gradient_scales"][batch_idx].to(device)
-                    logits, hard_logits = forward_with_consensus_sieve(
-                        model,
-                        encoded,
-                        batch_scales,
-                        classifier_head=consensus_classifier_head,
-                    )
+                    if relational is None:
+                        logits, hard_logits = forward_with_consensus_sieve(
+                            model,
+                            encoded,
+                            batch_scales,
+                            classifier_head=consensus_classifier_head,
+                        )
+                        student_hidden = None
+                    else:
+                        logits, hard_logits, student_hidden = forward_with_consensus_sieve(
+                            model,
+                            encoded,
+                            batch_scales,
+                            classifier_head=consensus_classifier_head,
+                            return_hidden=True,
+                        )
                     kd_logits = None
                 else:
                     batch_scales = consensus["gradient_scales"][batch_idx].to(device)
                     kd_batch_scales = consensus["kd_gradient_scales"][batch_idx].to(device)
-                    logits, hard_logits, kd_logits = forward_with_consensus_sieve(
-                        model,
-                        encoded,
-                        batch_scales,
-                        classifier_head=consensus_classifier_head,
-                        kd_backbone_scales=kd_batch_scales,
-                    )
+                    if relational is None:
+                        logits, hard_logits, kd_logits = forward_with_consensus_sieve(
+                            model,
+                            encoded,
+                            batch_scales,
+                            classifier_head=consensus_classifier_head,
+                            kd_backbone_scales=kd_batch_scales,
+                        )
+                        student_hidden = None
+                    else:
+                        (
+                            logits,
+                            hard_logits,
+                            kd_logits,
+                            student_hidden,
+                        ) = forward_with_consensus_sieve(
+                            model,
+                            encoded,
+                            batch_scales,
+                            classifier_head=consensus_classifier_head,
+                            kd_backbone_scales=kd_batch_scales,
+                            return_hidden=True,
+                        )
                 loss_values = per_row_loss(
                     logits, labels, batch_idx, hard_logits=hard_logits, kd_logits=kd_logits
                 )
@@ -1731,6 +2364,21 @@ def train_model(
                     loss_values = 0.5 * (loss_values + per_row_loss(logits2, labels, batch_idx)) + args.rdrop_alpha * rdrop_kl
                     total_kl += float(rdrop_kl.detach().mean().cpu()) * len(batch_idx)
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
+                if relational is not None:
+                    relation_mask = relational["mask"][batch_idx].to(
+                        device, non_blocking=True
+                    )
+                    relation_rows = int(relation_mask.sum())
+                    relation_loss = centered_cosine_gram_loss(
+                        student_hidden,
+                        relational["hidden"][batch_idx],
+                        mask=relation_mask,
+                    )
+                    loss = loss + args.relational_kd_weight * relation_loss
+                    if relation_rows >= 2:
+                        total_relational += float(relation_loss.detach().cpu())
+                        relational_batches += 1
+                        relational_rows += relation_rows
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"non-finite loss at epoch={epoch} step={step}")
             scaler.scale(loss / accum).backward()
@@ -1740,13 +2388,31 @@ def train_model(
             seen += len(batch_idx)
             if args.log_every and step % args.log_every == 0:
                 kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
-                print(f"    step={step:04d} loss={total_loss / max(1, seen):.5f}{kl_note}")
+                relational_note = (
+                    f" rel_gram={total_relational / max(1, relational_batches):.5f}"
+                    f" rel_rows={relational_rows}"
+                    if relational is not None
+                    else ""
+                )
+                print(
+                    f"    step={step:04d} loss={total_loss / max(1, seen):.5f}"
+                    f"{kl_note}{relational_note}"
+                )
         if step % accum != 0:
             optimizer_step()
         if device.type == "cuda":
             torch.cuda.synchronize()
         kl_note = f" rdrop_kl={total_kl / max(1, seen):.5f}" if args.rdrop_alpha > 0 else ""
-        print(f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}{kl_note}")
+        relational_note = (
+            f" rel_gram={total_relational / max(1, relational_batches):.5f}"
+            f" rel_batches={relational_batches} rel_rows={relational_rows}"
+            if relational is not None
+            else ""
+        )
+        print(
+            f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}"
+            f"{kl_note}{relational_note}"
+        )
         if args.epoch_checkpoint_dir:
             try:
                 save_epoch_checkpoint(
@@ -1901,7 +2567,9 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "serializer_name": args.serializer,
         "terminal_token": safe_text(getattr(args, "terminal_token", "")),
         "replay_mode": args.replay_mode,
+        "replay_meta_mode": getattr(args, "replay_meta_mode", "current"),
         "replay_sample_weight": args.replay_sample_weight,
+        "replay_predecessor_audit": getattr(args, "replay_predecessor_audit", None),
         "base_model": args.base_model,
         "model_class": getattr(args, "model_class", "auto"),
         "lora_r": int(getattr(args, "lora_r", 0) or 0),
@@ -1923,6 +2591,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "explorer4_loss_balance": bool(args.explorer4_loss_balance),
         "sim_early_turn_loss": getattr(args, "sim_early_turn_loss_meta", None),
         "consensus_reliability": getattr(args, "consensus_reliability_meta", None),
+        "relational_kd": getattr(args, "relational_kd_meta", None),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
         "saved_fp16": bool(args.save_fp16),
@@ -2282,7 +2951,7 @@ def run(args):
             return
 
         train_start = time.perf_counter()
-        final_teacher, final_consensus = build_training_signals(
+        final_teacher, final_consensus, final_relational = build_training_signals(
             final_samples, final_y, final_idx, args
         )
         final_model = train_model(
@@ -2296,6 +2965,7 @@ def run(args):
             device,
             teacher=final_teacher,
             consensus=final_consensus,
+            relational=final_relational,
         )
         train_sec = time.perf_counter() - train_start
         artifact_bias, source_metrics = load_class_bias_artifact(args.class_bias_artifact)
@@ -2368,6 +3038,10 @@ def run(args):
                     "text_cache_path": str(text_cache_path),
                     "token_cache_path": str(token_cache_path),
                     "replay_size": final_replay_size,
+                    "replay_meta_mode": getattr(args, "replay_meta_mode", "current"),
+                    "replay_predecessor_audit": getattr(
+                        args, "replay_predecessor_audit", None
+                    ),
                     "artifact_size_mb": artifact_size,
                     "rule_boosts_path": args.rule_boosts_path,
                     "explorer4_loss_weight": args.explorer4_loss_weight,
@@ -2375,6 +3049,7 @@ def run(args):
                     "consensus_reliability": getattr(
                         args, "consensus_reliability_meta", None
                     ),
+                    "relational_kd": getattr(args, "relational_kd_meta", None),
                 },
                 f,
                 ensure_ascii=False,
@@ -2439,11 +3114,14 @@ def run(args):
         return
 
     train_start = time.perf_counter()
-    teacher, consensus = build_training_signals(samples, y, train_idx, args)
+    teacher, consensus, relational = build_training_signals(
+        samples, y, train_idx, args
+    )
     model = train_model(
         tokenizer, encoded_features, lengths, y, sample_weights, train_idx, args, device,
         teacher=teacher,
         consensus=consensus,
+        relational=relational,
     )
     train_sec = time.perf_counter() - train_start
 
@@ -2562,7 +3240,7 @@ def run(args):
             final_sample_weights,
             args,
         )
-        final_teacher, final_consensus = build_training_signals(
+        final_teacher, final_consensus, final_relational = build_training_signals(
             final_train_samples, final_y, final_idx, args
         )
         final_model = train_model(
@@ -2576,6 +3254,7 @@ def run(args):
             device,
             teacher=final_teacher,
             consensus=final_consensus,
+            relational=final_relational,
         )
         save_hf_artifact(final_model, tokenizer, args.output_dir, bias, args, report_metrics)
         artifact_size = dir_size_mb(args.output_dir)
@@ -2670,13 +3349,18 @@ def run(args):
                 "fold_id": args.fold_id if args.split == "session_oof" else None,
                 "n_folds": args.n_folds if args.split == "session_oof" else None,
                 "replay_size": replay_size,
+                "replay_meta_mode": getattr(args, "replay_meta_mode", "current"),
                 "replay_sample_weight": args.replay_sample_weight,
+                "replay_predecessor_audit": getattr(
+                    args, "replay_predecessor_audit", None
+                ),
                 "train_label_filter": args.train_label_filter,
                 "explorer4_loss_weight": args.explorer4_loss_weight,
                 "explorer4_loss_balance": args.explorer4_loss_balance,
                 "consensus_reliability": getattr(
                     args, "consensus_reliability_meta", None
                 ),
+                "relational_kd": getattr(args, "relational_kd_meta", None),
             },
             f,
             ensure_ascii=False,
@@ -2745,6 +3429,39 @@ def parse_args():
         ),
     )
     parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument(
+        "--relational-teacher-hidden",
+        default="",
+        help=(
+            "fp16 pooled-classifier-hidden cache for training-only relational KD; "
+            "must cover every original row exactly and excludes replay"
+        ),
+    )
+    parser.add_argument(
+        "--relational-teacher-base-model",
+        default="",
+        help="exact teacher base_model expected in --relational-teacher-hidden",
+    )
+    parser.add_argument(
+        "--relational-teacher-max-length",
+        type=int,
+        default=0,
+        help="exact teacher export max_length expected in the hidden cache",
+    )
+    parser.add_argument(
+        "--relational-teacher-terminal-token",
+        default="",
+        help="exact terminal token expected in the teacher hidden cache (empty by default)",
+    )
+    parser.add_argument(
+        "--relational-kd-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "weight for one-minus centered cosine-Gram alignment on matched "
+            "original rows (0 disables with no forward-path change)"
+        ),
+    )
     parser.add_argument(
         "--consensus-reliability",
         default="",
@@ -2849,6 +3566,16 @@ def parse_args():
     parser.add_argument("--max-replay-samples", type=int, default=20000)
     parser.add_argument("--replay-sample-weight", type=float, default=0.5)
     parser.add_argument(
+        "--replay-meta-mode",
+        choices=["current", "predecessor"],
+        default="current",
+        help=(
+            "metadata source for replay rows: current preserves the historical "
+            "recipe; predecessor requires an exact same-session/step original "
+            "row and drops unmatched candidates before the balanced cap"
+        ),
+    )
+    parser.add_argument(
         "--sim-early-turn-loss-scale",
         type=float,
         default=1.0,
@@ -2869,6 +3596,8 @@ def parse_args():
         or not 0.0 < args.sim_early_turn_loss_scale <= 1.0
     ):
         parser.error("--sim-early-turn-loss-scale must be finite and in (0, 1]")
+    if args.replay_meta_mode == "predecessor" and args.replay_mode == "none":
+        parser.error("--replay-meta-mode predecessor requires --replay-mode last1 or last2")
     if args.rdrop_alpha > 0 and not args.dropout:
         parser.error(
             "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "
@@ -2876,6 +3605,35 @@ def parse_args():
         )
     if args.explorer4_loss_weight < 0:
         parser.error("--explorer4-loss-weight must be >= 0")
+    if not math.isfinite(args.relational_kd_weight) or args.relational_kd_weight < 0.0:
+        parser.error("--relational-kd-weight must be finite and >= 0")
+    relational_requested = bool(args.relational_teacher_hidden) or args.relational_kd_weight > 0.0
+    if relational_requested:
+        if args.relational_kd_weight <= 0.0:
+            parser.error(
+                "--relational-teacher-hidden requires --relational-kd-weight > 0"
+            )
+        if not args.relational_teacher_hidden:
+            parser.error(
+                "--relational-kd-weight > 0 requires --relational-teacher-hidden"
+            )
+        if not args.relational_teacher_base_model:
+            parser.error(
+                "relational KD requires --relational-teacher-base-model"
+            )
+        if args.relational_teacher_max_length <= 0:
+            parser.error(
+                "relational KD requires --relational-teacher-max-length > 0"
+            )
+        if not args.distill_logits:
+            parser.error(
+                "relational KD requires --distill-logits so replay/unmatched "
+                "coverage can be checked against the ordinary KD mask"
+            )
+        if args.rdrop_alpha > 0:
+            parser.error("relational KD does not support --rdrop-alpha")
+        if args.train_label_filter != "none":
+            parser.error("relational KD does not support --train-label-filter")
     if args.distill_alpha_weak is not None:
         if not args.distill_logits:
             parser.error("--distill-alpha-weak requires --distill-logits")
