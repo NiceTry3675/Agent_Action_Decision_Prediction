@@ -2,7 +2,23 @@
 
 ## Current Public Baseline
 
-### Team Public champion: trio-KD student as ensemble main (`0.797181265`)
+### Team Public champion: weak4-AM main + routing 1.0 (`0.7976673203`)
+
+- Public Macro-F1 `0.7976673203` (`submissions/rfinal_amw4_7070m10.zip`,
+  2026-07-15), runtime `7:23`. The mainT pack with two changes vs the
+  previous champion: `model/` swapped to the weak4-scoped action-margin KD
+  seed7070 full refit (clean run, AMP skips 0, INT8 fidelity 511/512) and the
+  ensemble routing threshold restored `<1.25 -> <1.0` (the AM main's
+  compressed margins over-route at 1.25: 39.7% routed with a 19.4%-error
+  marginal band; @1.0 restores the ~34% operating point). `+0.0004860553`
+  over mainT-s42. Gap to Public 1st (`0.79863`): **`0.0009626797`**.
+- Evidence chain: recovered-checkpoint screen (raw `+0.00185`, Weak4
+  `+0.00844` vs matched control), rules re-gated positive on the AM surface,
+  leak-free band audit motivating @1.0; the sibling probe s909-AM@1.25 read
+  `0.7960` (`7:55`), isolating the over-routing cost. SHA `47e50cef…`,
+  1,002,966,933 B.
+
+### Previous team Public champion: trio-KD student as ensemble main (`0.797181265`)
 
 - Public Macro-F1 `0.797181265` (`submissions/rfinal_mainT_s42.zip`,
   2026-07-15), runtime `7:37`. The mgn125 pack below with only `model/` (the

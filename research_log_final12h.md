@@ -62,6 +62,109 @@ automatic rule inheritance across changed model surfaces is forbidden.
 
 ## Entries
 
+### 2026-07-15 ~07:20 — s7070-AM@1.0 Public 0.7976673203: NEW CHAMPION; gap to 1st 0.00096
+
+- `rfinal_amw4_7070m10.zip` scored **0.7976673203**, runtime `7:23` —
+  `+0.0004860553` over mainT-s42, `+0.00167` over the s909-AM@1.25 sibling.
+  **The routing-correction hypothesis paid**: −32s runtime matches the
+  39.7%→34.1% routing cut, and the pre-registered band-audit direction
+  (19.4%-error marginal band tilts negative) is consistent with the split
+  between the two AM reads. Seed draw (±0.0006) and threshold effect remain
+  mixed in the +0.00167, but both AM cards agree the axis is champion-grade
+  at @1.0.
+- Gap to 1st (`0.79863`): **`0.0009626797`** — sub-0.001 for the first time.
+- Next: `rfinal_amw4_42m10.zip` ready (s42-AM, fidelity 512/512, @1.0,
+  SHA `8eb6a931…`, smoke OK) — best-of-N at the winning configuration.
+  Slots after it: 2 (candidates: selective threshold on the best AM pack,
+  all-AM member trio via the validated INT4 encoder, reserve).
+
+### 2026-07-15 ~06:38 — Weak4-AM seed42 clean full refit COMPLETE; artifact pulled
+
+- Lane B rerun completed all 15,000 optimizer steps with **AMP skips 0** and
+  auto-collected successfully (`release_safe=true`). The original crashed run
+  was discarded for promotion; its epoch-2 checkpoint remains archived as
+  `kd_sieve_ca_amw4_t010_k3_refit_s42_ckpt_crash_20260715_0503`.
+- Clean run: `20260714_212744_gpu_transformer_session_current_v1_len384_replay-last1_kd_sieve_ca_amw4_t010_k3_refit_s42`, runtime `3667.87s`, final fp16
+  artifact `1090.64 MiB`. Action-margin calibration was deterministic and
+  matched the contract: Weak4 true-label scope, teacher top-3, target gradient
+  ratio `0.10`, fixed weight `0.143567735`; active rows `28,782/epoch` and
+  mean auxiliary loss `0.05691 -> 0.01138 -> 0.00651`.
+- Model pulled to
+  `experiments/incoming/models/kd_sieve_ca_amw4_t010_k3_refit_s42`; weights
+  SHA256 `890d05c3a546e0085df8c33270e5102c34ecae62de01a538fff750d0dbd2331d`.
+  This was a `--final-only` refit, so its ledger Macro-F1 `0` is a sentinel,
+  not an evaluation. Promotion evidence remains the matched fixed-session
+  recovery eval: raw `+0.0018513`, Weak4 Macro `+0.0084416` versus the seed42
+  control. Next operation is INT8 quantization and a main-only swap into the
+  current mainT pack; no Dacon submission has been made from this run.
+
+### 2026-07-15 ~06:45 — s909-AM Public 0.7960 (-0.00118): axis undecided; over-routing suspect confirmed by runtime
+
+- `rfinal_amw4_909.zip` scored **0.7960**, runtime `7:55` — below champion by
+  `-0.00118`, below mgn125 by `-0.0006`. Not a clean kill: the run mixes AM
+  recipe + seed909 + the untreated over-routing (39.7% at @1.25 on AM
+  margins; runtime +18s vs mainT matches the prediction). The [1.00,1.25)
+  band on the AM surface is only 19.4% error, so @1.25 exposes mostly-correct
+  rows to member interference — exactly what @1.0 removes.
+- Decision: proceed with **s7070-AM@1.0** (tests the routing correction;
+  artifact ~06:25) and the lane-B **s42-AM** rerun (~07:30, resolves the seed
+  axis). Kill criterion: if s7070-AM@1.0 also reads ≤ mgn125 (0.7966), the
+  AM-ensemble lane closes and s42-AM submission becomes optional. Slots
+  remaining 4.
+
+### 2026-07-15 ~06:05 — s909-AM axis pack ready; geometry-lock REJECTED at the exact-op gate; selective threshold survives
+
+- **`submissions/rfinal_amw4_909.zip` ready** (SHA `4c605173…`,
+  1,002,964,322 B): lane-B VM death promoted s909-AM (clean run, **AMP
+  skips 0**, INT8 fidelity 511/512, zero bias, λ 0.1239) to the axis card;
+  mainT pack with only `model/` swapped, script @1.25 byte-kept. Smoke OK.
+- **Geometry-lock gate (opinion.md card 2): negative.** Members (INT4
+  model_b/c) were forwarded on the 14,001 val rows (leak-inflated: val
+  macro 0.816/0.817) and the exact deployed op was replicated. lock
+  `-0.00348` macro and **`-0.0122` Weak4** vs the ens125 baseline —
+  the metric it was built to improve dropped hardest. Formally inconclusive
+  (leak favors member-heavy arms), but with zero exact-op positive evidence
+  and decision-shaped levers 0-for-4 tonight, **no slot for the lock**. The
+  opinion's `+0.0012` citation was a different operation (control-blend
+  graft on the screen manifest), not this ensemble lock.
+- **Selective threshold (weak4-internal 1.0 / else 1.25): alive.**
+  `-0.00014` ≈ neutral on a surface biased AGAINST member-reach reduction →
+  plausibly positive on the honest surface; keeps priority over global 1.0,
+  after the seed cards. Artifacts:
+  `experiments/artifacts/20260715_geometry_lock_gate.json`,
+  `experiments/logits/20260715_pack_model_{b,c}_val_logits.pt`.
+- Sequence: ① s909-AM@1.25 submit now → ② positive: s7070-AM@1.0 (~06:25
+  artifact) → ③ s42-AM lane-B rerun → ④ selective-threshold card → ⑤ reserve.
+
+### 2026-07-15 ~05:30 — s777 swap Public 0.7969: lower draw; champion holds
+
+- `rfinal_mainT_s777.zip` scored **0.7969** (`7:36`) — about `-0.0003` vs the
+  mainT-s42 champion `0.797181265`. Not promoted; slot spent as priced.
+- Draw-band read: two trioT main draws now exist (s42 `+0.00056`, s777
+  `-0.0003` relative) — consistent with ~±0.0006. Plain trioT rerolls are
+  deprioritized; all three lanes are on the weak4-AM axis (B s42 main card,
+  C s909, A s7070). Slots remaining ~5.
+
+### 2026-07-15 ~05:00 — s777 swap pack ready; "rfinal_a1main" is actually an a0-class main
+
+- **`submissions/rfinal_mainT_s777.zip` ready** (1,002,965,591 B, SHA
+  `d4d2b46b…`): trioT-s777 full refit (15,000 steps, AMP skips 9, artifact
+  1090.6 MB) INT8-quantized (fidelity **512/512**), swapped as `model/` into
+  the mainT pack; script/model_b/model_c byte-kept. Clean-extraction smoke
+  OK. Provenance verified (hf_meta seed 777, zero bias) — the earlier
+  dual-writer exposure affected only the unused `_ckpt` dir; the final
+  artifact was single-writer.
+- **`rfinal_a1main.zip` is mispacked**: its main is `seed 202, replay_mode
+  last1`, trained on old code (no `replay_meta_mode` key), weights distinct
+  from both the deployed s202 main and B-fast — profile matches **a0**
+  (slightly-old nested champion), not a1 (replay-all; a1 likely never had a
+  full refit). Structure/script are current champion (SHA `f286f21d…`),
+  clean-extraction smoke passed (pack SHA `1bee02be…`). Re-labeled mentally
+  as an a0-class reserve draw (slight negative tilt, last priority);
+  teammate asked to confirm which artifact was packed.
+- Slot sequence unchanged: s777 swap → lane-B seed42-AM swap → (positive
+  read) lane-C s909-AM swap → a0-class reserve only if slots remain.
+
 ### 2026-07-15 ~04:15 — Weak4-AM checkpoint recovery eval: POSITIVE (+0.00185 macro, +0.00844 Weak4)
 
 - Damage assessment of the fail-closed Weak4 action-margin screen: the
