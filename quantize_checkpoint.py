@@ -87,7 +87,11 @@ def cmd_verify(args):
     import sys
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from script import load_jsonl, serialize_transformer_sample
+    from script import (
+        load_jsonl,
+        serialize_transformer_sample,
+        tokenize_texts_with_terminal,
+    )
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
     device = torch.device(args.device)
@@ -122,13 +126,28 @@ def cmd_verify(args):
     serializer_name = hf_meta.get("serializer_name", "current_v1")
     texts = [serialize_transformer_sample(s, serializer_name) for s in samples]
     max_length = int(hf_meta.get("max_length", 192))
+    terminal_token = hf_meta.get("terminal_token", "")
 
     agree = 0
     max_logit_err = sum_logit_err = n_logits = 0.0
     with torch.inference_mode():
         for start in range(0, len(texts), args.batch_size):
-            encoded = tokenizer(texts[start:start + args.batch_size], padding=True,
-                                truncation=True, max_length=max_length, return_tensors="pt")
+            batch_texts = texts[start:start + args.batch_size]
+            encoded_rows = tokenize_texts_with_terminal(
+                tokenizer,
+                batch_texts,
+                max_length,
+                terminal_token,
+            )
+            keys = list(encoded_rows.keys())
+            encoded = tokenizer.pad(
+                [
+                    {key: encoded_rows[key][row] for key in keys}
+                    for row in range(len(batch_texts))
+                ],
+                padding=True,
+                return_tensors="pt",
+            )
             encoded = {k: v.to(device) for k, v in encoded.items()}
             la = model_a(**encoded).logits.float()
             lb = model_b(**encoded).logits.float()

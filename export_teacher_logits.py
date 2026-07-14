@@ -14,6 +14,7 @@ from script import (
     load_jsonl,
     safe_text,
     serialize_transformer_sample,
+    tokenize_texts_with_terminal,
 )
 
 
@@ -49,12 +50,17 @@ def dtype_for_save(name):
     raise ValueError(f"unsupported dtype: {name}")
 
 
-def tokenized_features(tokenizer, texts, max_length, chunk_size):
+def tokenized_features(tokenizer, texts, max_length, chunk_size, terminal_token=""):
     features = []
     total = (len(texts) + chunk_size - 1) // chunk_size if texts else 0
     for chunk_no, start in enumerate(range(0, len(texts), chunk_size), 1):
         chunk = texts[start:start + chunk_size]
-        encoded = tokenizer(chunk, padding=False, truncation=True, max_length=max_length)
+        encoded = tokenize_texts_with_terminal(
+            tokenizer,
+            chunk,
+            max_length,
+            terminal_token,
+        )
         keys = list(encoded.keys())
         features.extend({key: encoded[key][i] for key in keys} for i in range(len(chunk)))
         if total > 1 and (chunk_no == 1 or chunk_no == total or chunk_no % 10 == 0):
@@ -183,6 +189,11 @@ def infer_logits(args, samples):
         raise FileNotFoundError(f"missing hf_meta.json: {meta_path}")
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
     serializer = args.serializer or meta.get("serializer_name", "current_v1")
+    terminal_token = (
+        args.terminal_token
+        if args.terminal_token is not None
+        else safe_text(meta.get("terminal_token"))
+    )
     max_length = args.max_length or int(meta.get("max_length", 192))
     batch_size = args.batch_size or int(meta.get("batch_size", 16))
     model_class = args.model_class or meta.get("model_class", "auto")
@@ -209,7 +220,13 @@ def infer_logits(args, samples):
         export_meta_rebound = 0
 
     texts = [serialize_transformer_sample(sample, serializer) for sample in samples]
-    features, lengths = tokenized_features(tokenizer, texts, max_length, args.tokenize_batch_size)
+    features, lengths = tokenized_features(
+        tokenizer,
+        texts,
+        max_length,
+        args.tokenize_batch_size,
+        terminal_token,
+    )
     order = sorted(range(len(features)), key=lambda i: lengths[i])
     logits = torch.empty((len(features), len(ALL_CLASSES)), dtype=torch.float32)
     total_batches = (len(order) + batch_size - 1) // batch_size if order else 0
@@ -235,6 +252,7 @@ def infer_logits(args, samples):
         "base_model": base_model or meta.get("base_model"),
         "model_class": model_class,
         "serializer_name": serializer,
+        "terminal_token": terminal_token,
         "max_length": max_length,
         "batch_size": batch_size,
         "fp16_deltanet_rebound_layers": export_meta_rebound,
@@ -338,6 +356,11 @@ def parse_args():
     parser.add_argument("--dtype", choices=["fp16", "fp32"], default="fp16")
     parser.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
     parser.add_argument("--serializer", default="")
+    parser.add_argument(
+        "--terminal-token",
+        default=None,
+        help="single non-pad token appended after reserving one position; defaults to model metadata",
+    )
     parser.add_argument("--max-length", type=int, default=0)
     parser.add_argument("--batch-size", type=int, default=0)
     parser.add_argument("--tokenize-batch-size", type=int, default=4096)

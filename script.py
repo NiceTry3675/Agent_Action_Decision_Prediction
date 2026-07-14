@@ -39,6 +39,66 @@ def safe_text(value):
     return str(value)
 
 
+def tokenize_texts_with_terminal(tokenizer, texts, max_length, terminal_token=""):
+    """Tokenize text while reserving the final non-pad position for one token.
+
+    Decoder sequence classifiers pool the last non-pad hidden state.  Appending
+    the token *after* truncating content to ``max_length - 1`` guarantees that
+    the pooling position is stable even for an input that reaches the length
+    cap.  The empty-token path is the historical tokenizer call byte-for-byte.
+    """
+    terminal_token = safe_text(terminal_token)
+    if not terminal_token:
+        return tokenizer(
+            texts,
+            padding=False,
+            truncation=True,
+            max_length=max_length,
+        )
+    if max_length < 2:
+        raise ValueError("terminal-token encoding requires max_length >= 2")
+
+    terminal_encoded = tokenizer(
+        terminal_token,
+        add_special_tokens=False,
+        padding=False,
+        truncation=False,
+    )
+    terminal_ids = terminal_encoded.get("input_ids")
+    if not isinstance(terminal_ids, list) or len(terminal_ids) != 1:
+        raise ValueError(
+            f"terminal token must encode to exactly one id: {terminal_token!r} -> {terminal_ids!r}"
+        )
+    terminal_id = int(terminal_ids[0])
+    if terminal_id == getattr(tokenizer, "pad_token_id", None):
+        raise ValueError(
+            f"terminal token {terminal_token!r} resolves to pad_token_id={terminal_id}; "
+            "it would not become the last non-pad pooling position"
+        )
+
+    encoded = tokenizer(
+        texts,
+        padding=False,
+        truncation=True,
+        max_length=max_length - 1,
+    )
+    supported = {"input_ids", "attention_mask", "token_type_ids"}
+    unexpected = sorted(set(encoded.keys()) - supported)
+    if unexpected:
+        raise ValueError(
+            "terminal-token encoding does not support tokenizer outputs: "
+            + ", ".join(unexpected)
+        )
+    for row, input_ids in enumerate(encoded["input_ids"]):
+        input_ids.append(terminal_id)
+        if "attention_mask" in encoded:
+            encoded["attention_mask"][row].append(1)
+        if "token_type_ids" in encoded:
+            token_types = encoded["token_type_ids"][row]
+            token_types.append(token_types[-1] if token_types else 0)
+    return encoded
+
+
 def load_jsonl(path):
     samples = []
     with open(path, encoding="utf-8") as f:
@@ -2571,10 +2631,23 @@ def load_hf_model(hf_dir, device, shared_from=None):
     return model.to(device)
 
 
-def model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device):
+def model_logits_sorted(
+    model,
+    tokenizer,
+    texts,
+    max_length,
+    batch_size,
+    device,
+    terminal_token="",
+):
     """Tokenize once, infer in length-sorted batches (cuts padding waste ~30-40%
     on the T4/10-min budget), return logits in the original order [N, C]."""
-    encoded_all = tokenizer(texts, padding=False, truncation=True, max_length=max_length)
+    encoded_all = tokenize_texts_with_terminal(
+        tokenizer,
+        texts,
+        max_length,
+        terminal_token,
+    )
     keys = list(encoded_all.keys())
     feats = [{key: encoded_all[key][i] for key in keys} for i in range(len(texts))]
     order = sorted(range(len(feats)), key=lambda i: len(feats[i]["input_ids"]))
@@ -2869,7 +2942,15 @@ def merge_lora_inplace(model, lora_dir):
     return model
 
 
-def model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, device):
+def model_logits_compiled(
+    model,
+    tokenizer,
+    texts,
+    compile_meta,
+    model_dir,
+    device,
+    terminal_token="",
+):
     """torch.compile(mode=reduce-overhead) + bucket-padded fixed-size batches.
 
     Opt-in via hf_meta.json {"compile": {"buckets": [...], "batch_size": N}} —
@@ -2899,7 +2980,12 @@ def model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, devi
     buckets = sorted(int(b) for b in compile_meta["buckets"])
     batch_size = int(compile_meta.get("batch_size", 128))
     max_length = buckets[-1]
-    encoded_all = tokenizer(texts, padding=False, truncation=True, max_length=max_length)
+    encoded_all = tokenize_texts_with_terminal(
+        tokenizer,
+        texts,
+        max_length,
+        terminal_token,
+    )
     keys = list(encoded_all.keys())
     feats = [{key: encoded_all[key][i] for key in keys} for i in range(len(texts))]
     lengths = [len(feats[i]["input_ids"]) for i in range(len(feats))]
@@ -2946,7 +3032,8 @@ def encoder_probs(model_dir, spec, texts, device):
     model.eval()
     logits = model_logits_sorted(model, tokenizer, texts,
                                  int(spec.get("max_length", 192)),
-                                 int(spec.get("batch_size", 32)), device)
+                                 int(spec.get("batch_size", 32)), device,
+                                 safe_text(spec.get("terminal_token")))
     del model
     if device.type == "cuda":
         torch.cuda.empty_cache()
@@ -3070,6 +3157,7 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
 
     batch_size = int(meta.get("batch_size", 32))
     max_length = int(meta.get("max_length", 192))
+    terminal_token = safe_text(meta.get("terminal_token"))
     if cascade:
         # meta serializer_name must be the base leg's serializer, so `texts`
         # above already holds the base-leg serialization for all rows
@@ -3087,13 +3175,29 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
         base_scores = None
         if compile_meta:
             try:
-                base_scores = model_logits_compiled(model, tokenizer, texts, compile_meta, model_dir, device)
+                base_scores = model_logits_compiled(
+                    model,
+                    tokenizer,
+                    texts,
+                    compile_meta,
+                    model_dir,
+                    device,
+                    terminal_token,
+                )
             except Exception:
                 print("Compiled inference failed; falling back to eager sorted batching")
                 traceback.print_exc()
                 base_scores = None
         if base_scores is None:
-            base_scores = model_logits_sorted(model, tokenizer, texts, max_length, batch_size, device)
+            base_scores = model_logits_sorted(
+                model,
+                tokenizer,
+                texts,
+                max_length,
+                batch_size,
+                device,
+                terminal_token,
+            )
 
     class_bias = class_bias + batch_prior_calibration_bias(
         base_scores,
@@ -3141,6 +3245,7 @@ def run_hf_inference(model_dir, data_dir, output_path, device):
                 int(weak4_specialist["max_length"]),
                 int(weak4_specialist["batch_size"]),
                 device,
+                safe_text(weak4_specialist.get("terminal_token", terminal_token)),
             )
             pred_ids = weak4_family_locked_predictions(
                 main_logits,

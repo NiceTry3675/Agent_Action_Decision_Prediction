@@ -18,7 +18,13 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoConfig, AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 
-from script import ALL_CLASSES, load_jsonl, safe_text, serialize_transformer_sample
+from script import (
+    ALL_CLASSES,
+    load_jsonl,
+    safe_text,
+    serialize_transformer_sample,
+    tokenize_texts_with_terminal,
+)
 from train import (
     CLASS_TO_ID,
     append_results_csv,
@@ -512,6 +518,9 @@ def cache_path(args, source_path, sample_count, kind, cache_scope="train"):
         stamp = 0
     base_model = safe_slug(args.base_model)
     serializer = safe_slug(args.serializer)
+    terminal = ""
+    if getattr(args, "terminal_token", ""):
+        terminal = f"_terminal-{safe_slug(args.terminal_token)}"
     replay = ""
     if getattr(args, "replay_mode", "none") != "none":
         replay = (
@@ -523,7 +532,7 @@ def cache_path(args, source_path, sample_count, kind, cache_scope="train"):
             replay += f"-oof{args.fold_id}of{args.n_folds}"
     return (
         Path(args.cache_dir)
-        / f"{kind}_{base_model}_{serializer}{replay}_{source_path.stem}_n{sample_count}_m{stamp}_len{args.max_length}.pt"
+        / f"{kind}_{base_model}_{serializer}{terminal}{replay}_{source_path.stem}_n{sample_count}_m{stamp}_len{args.max_length}.pt"
     )
 
 
@@ -570,6 +579,8 @@ def tokenize_texts(tokenizer, texts, args, source_path, cache_scope="train"):
             meta.get("base_model") == args.base_model
             and meta.get("serializer_name") == args.serializer
             and int(meta.get("max_length", -1)) == args.max_length
+            and safe_text(meta.get("terminal_token"))
+            == safe_text(getattr(args, "terminal_token", ""))
             and len(payload.get("features", [])) == len(texts)
         ):
             print(f"loaded token cache: {path}")
@@ -581,7 +592,12 @@ def tokenize_texts(tokenizer, texts, args, source_path, cache_scope="train"):
     total_chunks = math.ceil(len(texts) / chunk_size) if texts else 0
     for chunk_no, chunk_start in enumerate(range(0, len(texts), chunk_size), 1):
         chunk_texts = texts[chunk_start:chunk_start + chunk_size]
-        encoded = tokenizer(chunk_texts, padding=False, truncation=True, max_length=args.max_length)
+        encoded = tokenize_texts_with_terminal(
+            tokenizer,
+            chunk_texts,
+            args.max_length,
+            safe_text(getattr(args, "terminal_token", "")),
+        )
         keys = list(encoded.keys())
         features.extend(
             {key: encoded[key][idx] for key in keys}
@@ -602,6 +618,7 @@ def tokenize_texts(tokenizer, texts, args, source_path, cache_scope="train"):
                     "base_model": args.base_model,
                     "serializer_name": args.serializer,
                     "max_length": args.max_length,
+                    "terminal_token": safe_text(getattr(args, "terminal_token", "")),
                     "tokenize_batch_size": args.tokenize_batch_size,
                     "sample_count": len(texts),
                     "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -1863,6 +1880,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
                 "train_command": " ".join(shlex.quote(part) for part in sys.argv),
                 "resume_from": str(args.resume_from),
                 "serializer_name": args.serializer,
+                "terminal_token": safe_text(getattr(args, "terminal_token", "")),
                 "train_label_filter": args.train_label_filter,
             }
             (hf_dir / "weak4_training_provenance.json").write_text(
@@ -1881,6 +1899,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "fold_id": args.fold_id if args.split == "session_oof" else None,
         "n_folds": args.n_folds if args.split == "session_oof" else None,
         "serializer_name": args.serializer,
+        "terminal_token": safe_text(getattr(args, "terminal_token", "")),
         "replay_mode": args.replay_mode,
         "replay_sample_weight": args.replay_sample_weight,
         "base_model": args.base_model,
@@ -2141,6 +2160,7 @@ def save_val_logits(
             "explorer4_metrics": explorer4_metrics_from_logits(logits, y_true, bias, full_metrics=metrics),
             "base_model": args.base_model,
             "serializer_name": args.serializer,
+            "terminal_token": safe_text(getattr(args, "terminal_token", "")),
             "max_length": args.max_length,
             "split": args.split,
             "fold_id": args.fold_id if args.split == "session_oof" else None,
@@ -2344,6 +2364,7 @@ def run(args):
                     "runtime": runtime,
                     "amp_optimizer_steps": getattr(args, "amp_step_stats", None),
                     "serializer_name": args.serializer,
+                    "terminal_token": safe_text(getattr(args, "terminal_token", "")),
                     "text_cache_path": str(text_cache_path),
                     "token_cache_path": str(token_cache_path),
                     "replay_size": final_replay_size,
@@ -2640,6 +2661,7 @@ def run(args):
                 "device": str(device),
                 "runtime": runtime,
                 "serializer_name": args.serializer,
+                "terminal_token": safe_text(getattr(args, "terminal_token", "")),
                 "text_cache_path": str(text_cache_path),
                 "token_cache_path": str(token_cache_path),
                 "val_logits_path": val_logits_path,
@@ -2674,6 +2696,14 @@ def parse_args():
     parser.add_argument("--data-dir", default="open/data")
     parser.add_argument("--base-model", default="distilbert-base-multilingual-cased")
     parser.add_argument("--serializer", choices=["current_v1", "chat_v1_contract", "weak_nav_v1", "weak_nav_paths_v1", "current_v2", "current_v5", "current_v6", "current_v6e", "current_v7", "current_v7r", "current_v7rl", "current_v7rm", "current_v7rd", "current_v7rb", "current_v7rc", "current_v7rw", "current_v7rg", "current_v7rcgw", "current_v8", "current_v8t", "current_v9o", "current_v9f", "current_v9h", "current_v10", "current_v11s", "state_v2", "recent_pairs_v1", "compact_events_v1", "hybrid_v1"], default="current_v1")
+    parser.add_argument(
+        "--terminal-token",
+        default="",
+        help=(
+            "reserve the final sequence position and append this exact single, non-pad "
+            "token after content truncation (for decoder last-token pooling)"
+        ),
+    )
     parser.add_argument("--split", choices=["random", "session", "session_oof"], default="session")
     parser.add_argument("--n-folds", type=int, default=3)
     parser.add_argument("--fold-id", type=int, default=0)

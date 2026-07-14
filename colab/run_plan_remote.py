@@ -42,13 +42,19 @@ def main():
         run_args = spec.get("args")
         if not isinstance(script, str) or not isinstance(run_args, list):
             raise ValueError(f"invalid arm {index}: expected script string and args list")
+        python = spec.get("python", sys.executable)
+        if not isinstance(python, str) or not python:
+            raise ValueError(f"invalid arm {index}: python must be a non-empty string")
         if args.drive_exchange:
             source = "/content/drive/MyDrive/AADP_exchange/"
             target = f"/content/drive/MyDrive/{args.drive_exchange}/"
             run_args = [str(value).replace(source, target) for value in run_args]
-        cmd = [sys.executable, "-u", script, *map(str, run_args)]
+        cmd = [python, "-u", script, *map(str, run_args)]
         started = time.time()
-        print(f"REMOTE PLAN arm={index}/{len(plan)} script={script} START", flush=True)
+        print(
+            f"REMOTE PLAN arm={index}/{len(plan)} python={python} script={script} START",
+            flush=True,
+        )
         result = subprocess.run(cmd)
         elapsed = time.time() - started
         print(

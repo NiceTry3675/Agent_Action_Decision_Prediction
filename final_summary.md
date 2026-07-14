@@ -19,8 +19,11 @@
 - Public improved `+0.00012` over the R1 pack, `+0.00120` over the no-rule
   ensemble, and `+0.0015783574` over the exact local champion `0.7938816426`.
   The new increment is far inside the repo's `0.002` interpretation band and
-  has no reported held-out/OOF delta, so it is promoted only as the highest
-  final-score instance, not as standalone directional recipe evidence.
+  had no reported held-out/OOF delta at submission time. A 2026-07-14 recovery
+  of the 70k champion-recipe diagnostic OOF now reproduces R1b on all folds
+  (`+0.000312/+0.000197/+0.000125`; 28 rescues/8 harms; pooled `+0.000212`).
+  That surface is level-2 KD/consensus-contaminated, so R1b remains promoted
+  only as the highest final-score instance, not standalone causal evidence.
 - Weak-boundary evidence now covers `web_search -> ask_user` and
   `apply_patch -> edit_file`. No new F1 values were shared for the required
   audit set (`list_directory`, `read_file`, `grep_search`, `glob_pattern`,
@@ -367,7 +370,7 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 | `kd_sieve_ca_s42`: `kdm8_sieve_s42` recipe + `--distill-alpha-weak 0.7` as the only variable (matched Weak4-true originals KD alpha 0.7, other matched 0.5, replay/unmatched KD-masked, T3) | n/a (full-refit-only) | n/a | n/a | `0.7938816426` | **Current locally reproducible champion; previous team champion.** +0.0021 vs `kdm8_sieve_s42` at matched seed42, above the 0.002 noise floor — conditional alpha adds on top of the sieve. Runtime 5:58/10:00; int8 argmax fidelity 100% (512/512). |
 | `kd_ens2_s202s909`: seed202 INT8 main + seed909 INT4 secondary; secondary runs where main-model `margin < 1.0` (about 25%), logits averaged, `430s` pre-secondary fallback guard | n/a (team-side seed refits) | team-reported gated ensemble `+0.00183` | n/a | `0.79426` | **Same-day intermediate team champion.** `+0.0003783574` vs the exact seed42 local champion and about `+0.00049` vs standalone seed202 `0.79377`; runtime 7:28. Public increments are inside the 0.002 band, so promote the instance without a broad causal claim. |
 | `kd_ens2_s202s909_r1`: preceding ensemble + `budget_tokens_remaining < 5000 AND pred == web_search -> ask_user` immediately after ensemble `pred_ids` finalization | n/a (team-side inference rule) | team-reported seed42 rule OOF `+0.00085`; folds `+0.00104/+0.00096/+0.00055`, precision `0.67` | n/a | `0.79534` | **Previous team Public champion.** `+0.00108` vs the no-R1 ensemble and `+0.0014583574` vs the exact seed42 local champion; runtime 7:27. All-positive seed42 OOF support; superseded by R1+R1b. |
-| `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | n/a; train rule audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Current team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. Promote the final-score instance only; no R1b OOF/runtime/package report yet. |
+| `kd_ens2_s202s909_r1b`: preceding R1 pack plus `budget_tokens_remaining < 5000 AND pred == apply_patch -> edit_file`; contains both R1 and R1b, whose source predictions are disjoint | n/a (team-side inference rule) | recovered champion-recipe diagnostic OOF `+0.000312/+0.000197/+0.000125`, pooled `+0.000212`; train audit: 37 rows, precision `0.757` | n/a | `0.79546` | **Current team Public champion.** `+0.00012` vs R1, `+0.00120` vs ens2, and `+0.0015783574` vs the exact local champion. Promote the final-score instance only; the recovered OOF is not the exact team ensemble surface, and runtime/package remain unreported. |
 
 Use OOF, not fixed-session validation, for future finalist promotion. For KD/
 stacking recipes specifically, use matched-seed Public submissions, not local

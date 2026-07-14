@@ -1717,3 +1717,262 @@ decide whether to refit, package, and spend a Public slot.
   reproduction. No `experiments/results.csv` rows were added for these three
   team submissions because their required exact `train_command` values cannot
   be recovered from package names.
+
+### 2026-07-14 - broad hard-rule search: R1c survives; R1d is secondary
+
+- Preserved the three 70k-row champion-recipe diagnostic OOF payloads from the
+  SIM policy-router work under `experiments/logits/20260713_champ_oof_f*_val_logits.pt`
+  and ran a fold-aware search over **540,540** candidates: 980 numeric,
+  metadata, history, and label-free lexical masks crossed with every directed
+  class pair and fixed/runner-up/top-3/confidence override forms. Fold 0 was
+  discovery, fold 1 validation, and fold 2 a sealed read; 133 candidates
+  survived folds 0/1 and 16 source-target-diverse candidates were locked.
+- First, the surface exactly reproduced R1 and supplied the missing local R1b
+  diagnostic. R1 had 45 changes, 30 rescues/10 harms, all-positive fold deltas
+  `+0.001043/+0.000962/+0.000549`, and pooled `+0.000854`. R1b had 37 changes,
+  28 rescues/8 harms, all-positive fold deltas
+  `+0.000312/+0.000197/+0.000125`, and pooled `+0.000212`. Their immutable-base
+  stack moved raw OOF `0.790696 -> 0.791761` (`+0.001066`). This newly
+  reproduces R1b locally; it does not retroactively make the teammate package
+  or its exact ensemble code local.
+- **R1c (best new card):** when `budget_tokens_remaining < 5000` and immutable
+  `base_pred == glob_pattern`, replace it with the highest final-ensemble logit
+  among `{read_file, grep_search, list_directory}`. Champion OOF had 15 changes,
+  9 rescues/**0 harms**, all three folds positive, and pooled `+0.000110`.
+  M7, M8, their clean blend, and two HCX fixed surfaces were also positive with
+  zero observed harms. The threshold is a real cliff: the same branch at
+  5,000-5,999 tokens is 0 rescues/10 harms, so the cut must remain strict.
+- **R1d (secondary):** when budget is below 5,000, immutable
+  `base_pred == grep_search`, and `read_file` appears in the last three
+  assistant action names, map to `read_file`. Champion OOF had 25 changes,
+  15 rescues/4 harms, all-positive fold deltas, and pooled `+0.000085`; M7,
+  M8, v6, their blend, and four HCX/KD fixed surfaces were pooled-positive.
+  It is more post-hoc and lower-confidence than R1c.
+- The four-rule immutable-base stack moves the diagnostic OOF to `0.791956`
+  (`+0.001260` over raw; `+0.000195` beyond R1+R1b) with every fold positive.
+  All masks must be computed from the original finalized ensemble prediction:
+  otherwise R1c may emit `grep_search` and accidentally cascade into R1d.
+- Parked low-budget `plan_task -> ask_user` because sealed fold 2 was negative;
+  parked unguarded `grep_search` rerouting because one HCX surface was negative;
+  rejected the apparently strong confidence-gated `read_file -> grep_search`
+  because it reversed on M7/M8/blend and both HCX surfaces. Other modification,
+  response, lexical, elapsed-time, test, and lint branches failed a held fold or
+  a cross-model surface.
+- **Decision:** use R1c as the next one-variable Public A/B on top of the current
+  R1+R1b champion. R1d is the next isolated card, or a preregistered R1c+R1d
+  consolidation if slots force stacking. Baseline remains `0.79546` until a
+  Public improvement. These effects are far below `0.002`; the closest OOF is
+  level-2 KD/consensus-contaminated, the model surfaces reuse the same labels,
+  and the refinements are adaptive. Treat this as candidate ranking, not causal
+  proof. Full counts, cross-surface checks, checksums, and implementation
+  semantics are in
+  `experiments/artifacts/20260714_budget_tail_rule_decision.json`; the raw
+  search is in `experiments/artifacts/20260714_broad_rule_search_raw.json`.
+  Independent SHA-, fold-, and stack-level assertions pass via
+  `.venv/bin/python -u experiments/artifacts/20260714_budget_tail_rule_verify.py`.
+
+### 2026-07-14 - rule follow-up: R1e survives; R1f garnish; R1g tentative
+
+- Expanded the first pass with 6,272 deduplicated budget/meta/history
+  conditions and 1,880 causal-trajectory conditions. Candidate forms included
+  fixed/rank-constrained/family-argmax/confidence overrides. Selection again
+  used champion fold 0 discovery, fold 1 validation, sealed fold 2, then
+  M7/M8/v6/blend OOF and HCX/KD fixed-surface checks. Known R1-R1d source
+  behavior was excluded or scored incrementally so its subsets could not be
+  counted as new rules.
+- **R1e, isolated-card candidate:**
+  `3500 <= budget_tokens_remaining < 5000 AND immutable base_pred == plan_task
+  -> ask_user`. Champion folds changed 4/3/1 rows, all rescues and no harms;
+  pooled delta was `+0.000221`. M7, M8, v6, the clean blend, and every fixed
+  surface with coverage were positive. The locally best `[3250,5000)` variant
+  is 9 rescues/0 harms and `+0.000249`, but its 250-token boundary is adaptive;
+  `[1000,5000)` narrowly wins the fold0/1 minimum-delta ranking but is nearly
+  neutral on sealed fold 2. Retain `[3500,5000)` as the conservative coarse
+  form unless an isolated Public card deliberately tests the refined cutoff.
+- **R1f, consolidation only:** below 5,000 tokens, if CI is failed, the last
+  assistant action is one of `{run_bash, run_tests, lint_or_typecheck}`, and
+  immutable `base_pred == edit_file`, map to `apply_patch`. It has exactly two
+  rescues and zero harms in each champion fold (6/0 pooled, `+0.000064`) and
+  rescue-only covered events across ten checked model surfaces. The next
+  5,000-5,999 band is 0 rescues/4 harms. The triple guard is nevertheless a
+  post-hoc precision intersection, with only about 2.5 expected hidden flips,
+  so it does not merit a standalone slot.
+- **R1g, tentative R1d extension:** below 5,000 tokens, if immutable
+  `base_pred == grep_search` and the first integer in the last action's
+  `result_summary` is at least 6, map to `read_file`. Standalone champion OOF
+  is 11 rescues/0 harms over 14 rows (`+0.000085`), but after R1d only five rows
+  remain (4 rescues/0 harms, `+0.000031`) and champion fold 1 has no novel
+  support. Cross-model increments are non-negative, so keep it only as a
+  tentative OR-extension in a consolidated card, not independent evidence.
+- The conservative R1-R1g immutable-base stack moves the diagnostic OOF from
+  `0.790696` to `0.792270` (`+0.001574`); R1e/f/g add `+0.000314` beyond
+  R1-R1d and produce 141 total changes. R1d and R1g share source/destination
+  and must be deployed as one OR mask; every other mask also remains based on
+  the original finalized prediction to prevent cascades.
+- No independent R1h survived. The closest read-file continuation chose the
+  wrong destination on HCX seed777; broader edit/CI/history rules collapsed
+  into the R1f phenomenon; execution, lint, and response/end-intent rules
+  failed a sealed fold or cross-model surface.
+- **Decision:** R1e is the only new isolated Public A/B candidate from this
+  pass. R1f is garnish and R1g is tentative garnish. Baseline remains Public
+  `0.79546`. Multiple testing is substantial, the clean model surfaces reuse
+  the same labels, and every effect is far below `0.002`. Full variants,
+  cross-surface metrics, rejection evidence, and stack semantics are in
+  `experiments/artifacts/20260714_budget_tail_rule_followup_decision.json`;
+  exact champion assertions are in
+  `experiments/artifacts/20260714_budget_tail_rule_verify.py`.
+
+### 2026-07-14 - rule-space exhaustion: sequence H is the strongest new family
+
+- Completed the remaining deployable, row-local rule audit after R1-R1g. The
+  new lanes covered 1,065 label-free predicates, 2,320 randomized depth-2/3
+  trees, 75,538 source leaves and 1,435,222 source/destination evaluations;
+  110,670 targeted exec/coordination/edit intersections; 9,769 fold-gated
+  lookup/replay candidates; and 207 concrete sequence/state schemas. Together
+  with the earlier 540,540-candidate broad pass, this exceeds two million
+  evaluated rule behaviors. Every candidate remained incremental over
+  immutable-base R1-R1g, with fold rotations or fold0 discovery/fold1
+  confirmation/fold2 sealed reads followed by M7/M8/v6/blend and HCX42/777
+  surface checks.
+- **Final R1h candidate (sequence H, conservative):** for a `sess_sim_` row
+  with `workspace.git_dirty == false`, last assistant action in
+  `{read_file, grep_search}`, and immutable `base_pred == apply_patch`, map to
+  `edit_file`. The two last-action branches were independently locked before
+  the sealed read. Champion OOF has 43 changes, **43 rescues/0 harms**, fold
+  supports `13/16/14`, and `+0.000452`. All observed changes on M7 (38), M8
+  (13), v6 (35), blend (13), HCX42 (10), and HCX777 (7) are also rescues with
+  zero harms. A 10,000-replicate complete-session bootstrap gives a 95% interval
+  `[+0.000324,+0.000592]` and `P(delta>0)=1.0` on this label universe.
+- The smallest preregistered H form, last action `read_file` only, is 29/29
+  rescues (`+0.000304`). An independently synthesized condition,
+  `git_dirty == false AND turn_index > 7`, adds three novel events beyond the
+  read-or-grep form; their zero-harm OR has 46/46 rescues and `+0.000483`.
+  Every observed event for the turn condition is SIM even though its search
+  definition lacked a source guard, so any deployment must fail closed with
+  the `sess_sim_` guard. The still wider `last_action != plan_task` H form is
+  51/51 rescues and `+0.000536` across all checked surfaces, but it was formed
+  only after the sealed categorical table was inspected. Keep it as an
+  adaptive consolidation variant, not the isolated first card.
+- **R1i (adaptive exec candidate):** immutable `base_pred == run_bash`,
+  `600 < elapsed_session_sec <= 1200`, an `edit_file` action in the last five,
+  and probability margin `<=0.15` maps to the higher logit of
+  `{run_tests, lint_or_typecheck}`. Champion OOF is 32 changes, 21 rescues/11
+  harms, `+0.000301`; every supported fold on all checked surfaces is positive,
+  and its session bootstrap 95% interval is approximately
+  `[+0.000075,+0.000553]`. The exact margin/window was a sealed-read follow-up
+  over 840 variants, so this remains below R1h despite its positive diagnostics.
+- A separate sequence-exec branch is also positive but secondary: on SIM rows
+  with CI passed and last actions `(read_file, edit_file, edit_file)`, immutable
+  `run_tests` maps to constrained argmax `{run_bash, lint_or_typecheck}`. It is
+  17 rescues/2 harms over 19 champion changes (`+0.000358`) and pooled-positive
+  across surfaces, but its destination was refined post hoc and the HCX42
+  sealed slice is 0 rescues/2 harms. A tiny presealed sequence garnish,
+  SIM turn 9-11 with `(glob_pattern, glob_pattern, ask_user)`, maps immutable
+  `read_file -> grep_search`: 5/5 rescues, `+0.000040`, and no observed cross-
+  surface harm.
+- The best zero-harm-H plus adaptive sequence-exec/garnish diagnostic stack is
+  `0.793150` versus R1-R1g `0.792270` (`+0.000880`, 68 rescues/2 harms). It is
+  an adaptive ceiling, not a Public estimate. Exact definitions, cliffs,
+  overlaps, cross surfaces, search counts, and assertions are in
+  `experiments/artifacts/20260714_sequence_state_rule_decision.json` and
+  `experiments/artifacts/20260714_deep_rule_synthesis_decision.json`; both
+  verifier scripts pass.
+
+### 2026-07-14 - soft-prior and calibration completion audit
+
+- Tested 201 causal, deployable prior configurations over SIM weak-navigation
+  predictions, with label tables fitted outside the queried session fold and
+  known hard-rule rows excluded. The strongest fixed diagnostic adds a small
+  row-normalized log prior from `(last_ci_status, turn bucket)` with weight
+  `0.1` and smoothing `10`. Incremental over R1-R1g, it changes 425 champion
+  rows (205 rescues/148 harms/72 wrong-to-wrong) for `+0.000498`; all champion
+  folds are positive and all seven model surfaces are pooled-positive. Its
+  paired session-bootstrap 95% interval is `[+0.000198,+0.000800]`.
+- Selection-aware evidence is weaker: nested outer folds chose three different
+  prior recipes and produced only `+0.000254`, with bootstrap interval
+  `[-0.000089,+0.000595]`. Therefore call this **P1**, a separate soft-prior
+  Public A/B candidate, not R1i/R1j hard-rule evidence. It requires fitting the
+  table on all train rows and applying it before immutable-base hard rules;
+  hard-rule masks win on overlap.
+- Recovered the previously team-reported `read_file` logit bias `-0.14` from
+  Slack and reproduced strict leave-one-fold-out selection on the champion
+  diagnostic surface: raw `+0.000633`, every fold positive, and `+0.000611`
+  after recomputing R1-R1g masks. It is nevertheless **rejected as a universal
+  setting**: the same fixed bias is negative on M7, M8, v6, blend, HCX42, and
+  HCX777. Bias scale is model-specific; it must be retuned on the exact
+  seed202+seed909 ensemble OOF rather than copied.
+- Duplicate/replay/state exhaustion found only 10 exact-categorical duplicate
+  rows and 20 normalized-state duplicate rows. No direct causal replay or AU
+  sequence survivor remained; almost every useful sealed concrete-state leaf
+  was a subset of sequence H. Exec/coordination/edit intersection search had no
+  strict survivor outside the cards above. File-navigation, modification,
+  testing, coordination, response/end, budget/meta, prompt lexical, args/result,
+  rank/margin, Markov/phase, and duplicate/state-table families are now closed
+  at the practical hard-rule level. The targeted intersection counts and
+  nearest reversals are preserved in
+  `experiments/artifacts/20260714_exec_coord_intersections_decision.json`.
+- The only material untested surface is exact seed202/seed909 disagreement and
+  margin behavior: the component OOF logits, seed909 weights, exact ensemble
+  code, and package are not local, and Slack/file searches found no attachment.
+  The local `open/data/test.jsonl` is only five train-overlapping smoke rows and
+  has zero feature coverage for the new cards, so it supplies no hidden-test
+  coverage evidence.
+- **Decision:** R1h conservative is now the highest-priority isolated Public
+  card on top of the current R1+R1b champion, ahead of R1c/R1e. The 46-event H
+  OR is the conservative consolidation after that; the 51-event negative-
+  category H form, R1i, sequence-exec, and P1 are separate adaptive cards.
+  Keep every mask tied to the finalized ensemble's immutable base prediction
+  and never cascade rule outputs. Public baseline remains `0.79546` until an
+  actual submission improves it. Detailed prior, transfer, calibration, and
+  bootstrap results are in `experiments/artifacts/20260714_causal_prior_*.json`,
+  `experiments/artifacts/20260714_read_file_bias_audit.json`, and
+  `experiments/artifacts/20260714_rule_cluster_bootstrap.json`.
+
+### 2026-07-14 - exact seed202/seed909 surface forensic closure
+
+- Closed the final artifact-recovery gap with a local, Slack, Drive, and Colab
+  read-only audit. Local inspection covered 22 submission zips, 55 incoming
+  model directories, and all 171 PT plus 8 NPZ logit files. Seed metadata was
+  42/43/777/unset only: there were zero seed202 or seed909 artifacts. The scan
+  also covered Git history/stashes/unreachable objects, `/home/tomto`, temp
+  directories, Windows Downloads/Desktop/Documents/OneDrive, Codex
+  attachments, Chrome downloads, local Slack state, and Colab histories.
+- Slack establishes a provenance mismatch rather than merely a missing copy.
+  The honest 70k OOF ensemble reported on 07-13 was **seed42+seed202**
+  (`0.79070/0.79007 -> 0.79292`); the deployed zip was instead full-refit
+  **s202-int8+s909-int4**, gated by raw margin `<1.0`, with logit averaging and
+  a 430-second guard. R1b was said to be rechecked on two s202 folds, but no
+  seed909 OOF is reported anywhere. Therefore an honest exact s202+s909 OOF
+  surface appears never to have existed, not just to be absent locally.
+- Exact-keyword searches across accessible public/private Slack returned no
+  s202/s909 weights, OOF logits, package, or `train_features_v1.npz`
+  attachment. The only downloadable handoff was
+  `champ_oof_3fold_logits.zip`, which is seed42. The referenced experiment
+  Canvas `F0BGV801DD3` and Wonju-Jinsan DM detail are not visible to this
+  account. Google Drive connector searches also found no exact artifact.
+- The configured rclone Drive was checked separately because it exposes the
+  actual AADP exchange folders. Recursive scans of `AADP_exchange` lanes A-D,
+  `Agent_Action_Decision_Prediction`, and `AADP_notebooks` found ordinary
+  seed42 anchors/models/runs but no seed202/909 or ens2 artifact. Active A100
+  lanes A/B were inspected without interruption or mutation.
+- **Closure:** the exact historical ensemble cannot be reconstructed without
+  the team-side zip/models or both aligned component OOF payloads. Freshly
+  training the same numeric seeds would not reproduce the same instances,
+  quantization error, or operation order and is not forensic recovery. This
+  closes the search objective with an external-instance uncertainty, not a
+  remaining deployable rule family. Keep the model-specific `read_file -0.14`
+  bias rejected; sequence H remains the strongest new hard-rule card. Full
+  scope, counts, Slack links, and minimum missing materials are in
+  `experiments/artifacts/20260714_seed202_seed909_surface_forensics.json`.
+
+### 2026-07-14 - terminal-student isolated screen
+
+- `kd_m8_terminal_student_screen_s42` completed on lane A with the original M8
+  teacher frozen and only HCX student terminal pooling enabled. Against the
+  same-A100 `kd_v1_len384_a100_b_control`, raw Macro-F1 was `0.783361` versus
+  `0.785381` (`-0.002020`); bias/2stage were also lower by `-0.003111` and
+  `-0.003163`.
+- Weak4 raw mean was `0.608800` versus `0.611625` (`-0.002825`). **Decision:**
+  reject student-only terminal pooling under this recipe; do not promote it to
+  the sieve×consensus full refit or Public. The terminal-teacher lane remains
+  in progress as the independent second ablation.

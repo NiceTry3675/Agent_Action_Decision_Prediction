@@ -301,13 +301,20 @@ def cmd_verify(args):
     serializer_name = hf_meta.get("serializer_name", "current_v1")
     texts = [serialize_transformer_sample(s, serializer_name) for s in samples]
     max_length = int(hf_meta.get("max_length", 192))
+    terminal_token = hf_meta.get("terminal_token", "")
 
     def infer(model):
         disable_decoder_cache(model)
         model.to(device).eval()
         started = time.perf_counter()
         logits = model_logits_sorted(
-            model, tokenizer, texts, max_length, args.batch_size, device
+            model,
+            tokenizer,
+            texts,
+            max_length,
+            args.batch_size,
+            device,
+            terminal_token,
         )
         return logits, time.perf_counter() - started
 
