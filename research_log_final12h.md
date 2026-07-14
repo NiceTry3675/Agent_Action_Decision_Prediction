@@ -59,7 +59,27 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
 
 ## Entries
 
-### 2026-07-15 ~02:10 — mgn125: NEW CHAMPION by 1.2e-5; widening axis closed
+### 2026-07-15 ~01:10 — s202v sieve refit Public 0.7919; lane closed, teammate seed plan cancelled
+
+- `kd_s202v_s42.zip` scored **0.7919**, runtime `6:09`. One variable vs
+  `kd_sieve_ca_s42` (`0.7938816426`): the consensus payload voter swap
+  (v6 -> deployed s202 on the 46,666 fold-1/2-covered rows). Delta about
+  `-0.0020`.
+- Read: at the edge of the noise band, so not causal evidence the swap hurts —
+  but there is no trace of the `+0.002`-class sieve gain this lane was priced
+  on. The payload moved only 4,039/70,000 rows' correct-counts, and aligning
+  sieve weights to the deployed main model's own errors bought nothing on this
+  instance.
+- **Decision: close the s202v-voter lane.** Cancel the teammate's s202v
+  seed202 pre-training instruction (no positive seed42 read to justify 3x seed
+  cost with ~9 hours left); redirect that lane to a0/a1 follow-ups. Champion
+  unchanged: `rfinal_mgn125` `0.7966244725`, gap to 1st `0.0019955275`.
+- Trio-KD refit on lane C remains the live gap-scale card: teacher export
+  succeeded (`rows=70000 routed=21589 main_agreement=0.9868` — the teacher
+  disagrees with the s202 main on ~924 rows, the dark knowledge being
+  distilled), training healthy at step 2500/15000, ETA ~02:00 KST.
+
+### 2026-07-15 ~00:45 (clock corrected; logged as 02:10) — mgn125: NEW CHAMPION by 1.2e-5; widening axis closed
 
 - `rfinal_mgn125.zip` Public **`0.7966244725`**, runtime `7:46` (projection
   7:57). `+0.0000118616` over `rfinal_r1i_seqx` — noise-level, but retained by
@@ -70,7 +90,7 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
   1.5 widening.** The s202-voter sieve refit (`kd_sieve_ca_s202v_refit_s42`)
   is training on lane C as the remaining gap-scale card.
 
-### 2026-07-15 ~01:40 — c0a8 swap probe: exact tie; margin-1.25 probe submitted
+### 2026-07-15 ~00:15 (clock corrected; logged as 01:40) — c0a8 swap probe: exact tie; margin-1.25 probe submitted
 
 - `rfinal_c0a8_swap.zip` Public **`0.7966126109` — identical to the champion
   to 10 decimals**, runtime `7:17`. The member swap flipped zero hidden-test
@@ -90,7 +110,7 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
   payload `20260715_m7_m8_s202v_oof_consensus.pt` was reconstruction-verified
   here before handoff (4,039/70,000 counts changed; c=3 48,607 -> 49,325).
 
-### 2026-07-15 ~00:50 — terminal-teacher screen REJECTED; c0a8 member-swap probe ready
+### 2026-07-14 ~23:25 (clock corrected; logged as 07-15 00:50) — terminal-teacher screen REJECTED; c0a8 member-swap probe ready
 
 - `kd_terminal_teacher_m8_screen_s42` (run `20260714_142018`, staged-base fix,
   full 3-arm plan, rc=0): raw/bias/2stage `0.782026/0.786332/0.787495` vs
