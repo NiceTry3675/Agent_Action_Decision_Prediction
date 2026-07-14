@@ -27,6 +27,11 @@ full 10 submission slots.
 - Submission zip root: exactly `script.py`, `requirements.txt`, `model/`.
   Zips live in `submissions/` (gitignored); filenames ≤ 30 chars, no `submit`
   prefix (e.g. `m3_len448_s42.zip`) — `package_submission.py` enforces both.
+- Received historical ensemble archives may additionally contain `model_b/`
+  and `model_c/` required by their embedded scripts. Preserve those handoff
+  artifacts byte-for-byte; do not rebuild them with the single-model packager.
+  Their hashes and validation status live in
+  `experiments/manifests/20260714_team_champion_assets.json`.
 - `requirements.txt` is the eval-server install list (torch preinstalled there);
   training deps live in `.venv` only.
 - Label names and class order must not change unless all artifacts are

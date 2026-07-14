@@ -45,10 +45,15 @@
   timing variance. The unmodified eager `rfinal` (`7:28`) remains the current
   champion reference. A separate chain/leak probe also tied exactly,
   confirming no usable train-test session overlap.
-- Artifact boundary: the exact ens2 R1+R1b predecessor archive and two s202
-  OOF folds were handed off in Slack, but the final trio archive, seed7070
-  component, exact ten-rule patch scripts, and training commands are not in
-  this repo. `kd_sieve_ca_s42.zip` remains the exact local fallback.
+- Artifact boundary: the exact received rfinal and ens2 R1+R1b archives are now
+  preserved under `submissions/`; surviving s202 OOF folds 1/2 are under
+  `experiments/logits/`. Hashes, internal member identities, and validation
+  results are indexed in
+  `experiments/manifests/20260714_team_champion_assets.json`. The binary files
+  are gitignored. Seed202 fold 0, aligned seed909/seed7070 OOF, and exact
+  training commands remain unavailable, so no exact trio OOF or training
+  reproduction is claimed. `kd_sieve_ca_s42.zip` remains the independently
+  locally trained fallback.
 
 ### Previous team Public champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
 
@@ -79,12 +84,13 @@
   audit set (`list_directory`, `read_file`, `grep_search`, `glob_pattern`,
   `web_search`, `lint_or_typecheck`, or `run_tests` vs `run_bash`), so none
   are inferred.
-- Artifact status: the exact R1b archive is now available as a Slack
-  attachment and contains the submitted script, seed202 INT8 and seed909 INT4
-  models, and their metadata. Two s202 OOF folds were also handed off; s909
-  has no OOF. None has been absorbed into this repo, the exact training
-  commands remain unreported, and the local generic cascade/rule engine is
-  still not an exact reproduction.
+- Artifact status: the exact R1b archive is local at
+  `submissions/kd_ens2_s202s909_r1b.zip` and contains the submitted script,
+  seed202 INT8 and seed909 INT4 models, and their metadata. The received s202
+  folds 1/2 are local at `experiments/logits/s202_f{1,2}.pt`; their IDs and
+  labels align with the 70k training set and the folds are disjoint. Seed202
+  fold 0 and all seed909 OOF remain missing, and exact training commands remain
+  unreported.
 
 ### Earlier team champion: gated 2-seed ensemble + budget R1 (`0.79534`)
 
@@ -287,25 +293,29 @@ non-KD HCX pack and both Qwen3-0.6B packs remain valid fallbacks
 
 ### Team Public champion: gated seed202+seed909+seed7070 trio + rfinal (`0.7963584846`)
 
-- Team-side `kd_ens3_trio_rfinal`: seed202 INT8 main, seed909 INT4 and
+- `submissions/kd_ens3_trio_rfinal.zip`: seed202 INT8 main, seed909 INT4 and
   seed7070 INT4 auxiliaries, low-margin routing at seed202 raw-logit margin
   `<1.0`, row-wise centered-logit averaging, and the ten immutable-base rule
   behaviors summarized above. Reported runtime is `7:28/10:00`; reported
   archive size is about `959 MiB`.
-- The exact final trio archive/config is not local. Do not infer the third
-  checkpoint or its command from other team-side seed artifacts.
+- The exact received archive/config is local and preserved byte-for-byte; its
+  embedded script and three model members are authoritative. The handoff still
+  does not include the training commands or aligned seed909/seed7070 OOF, so do
+  not infer either from the seed202 metadata.
 
 ### Previous team champion: gated 2-seed ensemble + budget R1 + R1b (`0.79546`)
 
-- Team-side `kd_ens2_s202s909_r1b` uses the ensemble configuration below and
+- `submissions/kd_ens2_s202s909_r1b.zip` uses the ensemble configuration below and
   includes both low-budget overrides after ensemble `pred_ids` finalization:
   R1 maps `web_search -> ask_user`; R1b maps `apply_patch -> edit_file`.
   Their source predictions are disjoint, so rule order cannot create a
   collision. R1b's train audit is 37 rows at precision `0.757`.
-- Package size, runtime, and smoke status were not reported for R1b.
-- The exact implementation and both deployed seed artifacts are not local;
-  no training command should be inferred by substituting seed values into the
-  seed42 command.
+- The received archive is 871,402,977 bytes; ZIP CRC and embedded-script
+  compilation pass. A full offline smoke was not rerun during this intake, and
+  server runtime remains unreported.
+- The exact implementation and both deployed model artifacts are local inside
+  the archive. Their training commands are not, so no command should be
+  inferred by substituting seed values into the seed42 command.
 
 ### Previous team champion: gated seed202+seed909 ensemble + R1 (`0.79534`)
 
@@ -442,13 +452,15 @@ fixed/OOF screens (see KD-fold-leak finding above).
 
 ## Package And Smoke
 
-- Current team champion: team-side `kd_ens3_trio_rfinal`
-  (`0.7963584846`), reported about 959 MiB / `7:28`. Exact final archive and
-  scripts are not local; the score-identical speed variant is not selected.
-- Previous team champion: `kd_ens2_s202s909_r1b` (`0.79546`). Its exact
-  831 MB Slack attachment (reported 871 MB stored / 723 MB deflated) and two
-  s202 OOF folds were handed off team-side, but have not been absorbed into
-  this repo.
+- Current team champion: `submissions/kd_ens3_trio_rfinal.zip`
+  (`0.7963584846`), exactly 1,005,620,217 bytes / reported `7:28`. The received
+  archive is local and byte-preserved; ZIP CRC and embedded-script compilation
+  pass. The score-identical speed variant is not selected.
+- Previous team champion: `submissions/kd_ens2_s202s909_r1b.zip` (`0.79546`),
+  exactly 871,402,977 bytes. Its two surviving s202 OOF folds are local at
+  `experiments/logits/s202_f{1,2}.pt`. Intake hashes and checks are in
+  `experiments/manifests/20260714_team_champion_assets.json`; full offline
+  smokes were not rerun during intake.
 - Earlier team champion: team-side `kd_ens2_s202s909_r1.zip`
   (`0.79534`), reported 723 MB / `7:27`; build, offline smoke, and flip
   verification were reported complete.

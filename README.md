@@ -6,10 +6,11 @@ action among 14 classes. The metric is Macro-F1. This is a code-submission
 competition — you submit a zip containing inference code plus trained model, and
 the server runs it offline.
 
-Current result: **Public Macro-F1 0.780** (as of 2026-07-05), from a
-Qwen3-0.6B decoder classifier with `current_v1`, replay augmentation, OOF-tuned
-class bias, and OOF-tuned rule boosts. `final_summary.md` is the source of truth
-for the submitted package.
+Current result: **Public Macro-F1 0.7963584846** (as of 2026-07-14), from the
+received `kd_ens3_trio_rfinal` three-seed gated ensemble and immutable-base rule
+stack. The exact archive is under `submissions/`; the independently trained
+local fallback is `kd_sieve_ca_s42.zip` at `0.7938816426`. `final_summary.md`
+is the source of truth for package status and scores.
 
 ## Competition constraints
 
@@ -110,6 +111,7 @@ evaluate_*.py              One-off evaluations on saved logits
 package_submission.py      Build contract-compliant zips and run smoke validation
 colab/                     Cloud training lane (COLAB.md, cloud_sync.py, vm_agent.py, runner notebook)
 experiments/results.csv    Experiment index (cloud rows merged only via cloud_sync.py pull)
+experiments/manifests/      Tracked indices for gitignored binary handoff assets
 archive/                   Archived prose logs retained for historical lookup
 open/                      Competition handouts: data, spec, baseline
 ```

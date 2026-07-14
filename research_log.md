@@ -2041,8 +2041,9 @@ decide whether to refit, package, and spend a Public slot.
   `aaacb3aa780e44e3c36382400824a8bc81a08aa2ce93a6fe7f5ea2bd882fd311`) with
   seed202 INT8, seed909 INT4, the final script and metadata, plus surviving
   s202 folds 1/2. Seed909 OOF still never existed, so the forensic conclusion
-  about the absence of an exact s202+s909 OOF surface remains valid. The files
-  have not been absorbed into this repo.
+  about the absence of an exact s202+s909 OOF surface remains valid. These files
+  and the later rfinal archive were absorbed into the local asset tree in the
+  intake recorded below.
 - Speed-path experiments are closed. SDPA, member preload, and threaded
   overlap were all within server variance; the combined speed build tied the
   score exactly but ran `7:37`. Keep the unmodified eager rfinal. TTA produced
@@ -2060,3 +2061,24 @@ decide whether to refit, package, and spend a Public slot.
   shared promotion gate is all-positive outer folds, mean at least `+0.001`,
   SIM-positive, budget/family audits, rescue:harm at least 1.5, zero-init
   bit-exactness, preserved R1/R1b, and one variable per Public submission.
+
+### 2026-07-14 - teammate champion assets absorbed
+
+- Preserved the exact received archives byte-for-byte at
+  `submissions/kd_ens3_trio_rfinal.zip` (SHA256
+  `df3392ea80f5cd03b94f0d69671293585b53a30c7281a4fa62b2ed1d597b402b`)
+  and `submissions/kd_ens2_s202s909_r1b.zip` (SHA256
+  `aaacb3aa780e44e3c36382400824a8bc81a08aa2ce93a6fe7f5ea2bd882fd311`).
+  Both ZIP CRC scans and embedded-script compilation passed. They were not
+  rebuilt because their scripts require the received `model_b`/`model_c`
+  roots; no full offline inference smoke was rerun during this intake.
+- Stored the surviving seed202 OOF payloads at
+  `experiments/logits/s202_f1.pt` and `experiments/logits/s202_f2.pt`. They are
+  session-OOF folds 1/2 with 23,332 and 23,334 rows, respectively; logits are
+  finite `[N,14]` float32, indices are unique and disjoint, and IDs/labels align
+  exactly with `open/data`. Raw Macro-F1 is `0.7833894134` / `0.7962254586`.
+- This closes the local file-availability gap, not the reproduction gap.
+  Seed202 fold 0 (23,334 rows), seed909/seed7070 aligned OOF, and exact training
+  commands were not received. The exact deployed trio therefore still has no
+  reconstructible OOF surface. Binary assets remain gitignored; the tracked
+  index is `experiments/manifests/20260714_team_champion_assets.json`.
