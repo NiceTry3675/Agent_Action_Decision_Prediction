@@ -1,0 +1,37 @@
+{
+  "status": "ready",
+  "lane": "b",
+  "required_gpu": "A100",
+  "plan": "colab/action_margin_kd_lane_b_refit_plan.json",
+  "experiment_suffix": "kd_sieve_ca_am_t010_k3_refit_s42",
+  "purpose": "Speculatively overlap the champion refit with the lane-A paired action-margin screen, saving about one hour on the promotion critical path.",
+  "gate": "The artifact remains discard-only unless lane A arm kd_am_t010_k3_screen_s42 beats its in-plan current-code control on raw Macro-F1 without material required-class collapse.",
+  "single_quality_variable": "Add the already-tested original-M8 teacher top-3 action-margin auxiliary to the exact sieve x conditional-alpha champion refit.",
+  "fixed_hypothesis": {
+    "teacher": "original M8 train70k logits",
+    "topk": 3,
+    "temperature": 3.0,
+    "target_first_batch_logit_gradient_ratio": 0.1,
+    "seed": 42,
+    "hidden_gram": false,
+    "terminal_teacher": false
+  },
+  "unchanged_recipe": [
+    "HCX 0.5B current_v1 length 384",
+    "M8 KL alpha 0.5 and Weak4 alpha 0.7",
+    "M7/M8/v6 OOF hard-backbone consensus sieve 0,0.25,0.75,1",
+    "replay-last1 cap 10000 weight 0.5",
+    "three epochs, seed 42, full-data final-only refit"
+  ],
+  "operational_safety": {
+    "amp_init_scale": 64,
+    "amp_growth_interval": 1000000,
+    "require_zero_amp_skips": true,
+    "save_fp16_to_drive": true,
+    "epoch_checkpoint_to_drive": true,
+    "submission": "forbidden without a separate explicit user instruction"
+  },
+  "excluded_lane_b_alternative": "Do not run matched replay B0/B1/B2: three screens cost about 2h33m before refit, while 7284/10000 exact-common predecessor rows become hard-only duplicates and the prior composite was raw -0.003358.",
+  "fallback_after_completion": "If lane A rejects action-margin, retain no local pull/package and use the warm lane next for the separately verified s202-consensus-voter refit only if time remains.",
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_b_refit_plan.json"
+}
