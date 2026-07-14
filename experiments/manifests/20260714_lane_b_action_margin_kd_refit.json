@@ -1,5 +1,5 @@
 {
-  "status": "in_flight",
+  "status": "completed_held_pending_lane_a",
   "lane": "b",
   "required_gpu": "A100",
   "plan": "colab/action_margin_kd_lane_b_refit_plan.json",
@@ -32,7 +32,7 @@
     "submission": "forbidden without a separate explicit user instruction"
   },
   "excluded_lane_b_alternative": "Do not run matched replay B0/B1/B2: three screens cost about 2h33m before refit, while 7284/10000 exact-common predecessor rows become hard-only duplicates and the prior composite was raw -0.003358.",
-  "fallback_after_completion": "If lane A rejects action-margin, retain no local pull/package and use the warm lane next for the separately verified s202-consensus-voter refit only if time remains.",
+  "fallback_after_completion": "If lane A rejects action-margin, retain the pulled artifact for audit only, do not package or promote it, and reuse the still-assigned warm lane only under a later explicit plan.",
   "launch_command": ".venv/bin/python colab/aadp_colab.py launch b colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_b_refit_plan.json",
   "launch_record": {
     "bundle": "code_20260714_144517_dc6ddc52_dirty.tar.gz",
@@ -53,5 +53,37 @@
       "action_margin_target_gradient_ratio": 0.1,
       "action_margin_achieved_gradient_ratio": 0.1
     }
+  },
+  "completion_record": {
+    "completed_utc": "20260714_154919",
+    "auto_collect": {
+      "ok": true,
+      "run": "20260714_154934_20260714_154919_gpu_transformer_session_current_v1_len384_re"
+    },
+    "remote_plan_rc": 0,
+    "remote_elapsed_sec": 3657.7,
+    "train_runtime_sec": 3618.137621532,
+    "optimizer_steps": 15000,
+    "amp_skipped_steps": 0,
+    "action_margin_calibrated_weight": 0.25304160168622575,
+    "action_margin_epoch_mean_losses": [
+      0.12510869205147027,
+      0.021502567749889567,
+      0.01050488473069854
+    ],
+    "artifact_size_mb": 1090.6351947784424,
+    "local_model": "experiments/incoming/models/kd_sieve_ca_am_t010_k3_refit_s42",
+    "model_safetensors_sha256": "706e5aeca3385d7b94aa151f22790d69a2096a3099088086efaba3d84dd1200a",
+    "hf_meta_sha256": "65962fc69f0b72885d96ffd5212b05d3667f408594150e212430a29d1f329c0b",
+    "performance_metrics": "none: final-only refit; promotion remains gated by the paired lane-A screen",
+    "session_retention": {
+      "release_safe": true,
+      "released": false,
+      "drive_mount_preserved": true,
+      "local_keepalive_alive": true,
+      "user_directive": "do not release lane B"
+    },
+    "packaged": false,
+    "submitted": false
   }
 }
