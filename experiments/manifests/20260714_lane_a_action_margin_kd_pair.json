@@ -1,0 +1,40 @@
+{
+  "status": "ready",
+  "lane": "a",
+  "required_gpu": "A100",
+  "plan": "colab/action_margin_kd_lane_a_pair_plan.json",
+  "hypothesis": "Teacher-relative action margins carry useful class-boundary information that ordinary probability KL and the rejected sample-Gram loss do not transfer.",
+  "paired_design": {
+    "arm_1": "kd_am_pair_control_s42",
+    "arm_2": "kd_am_t010_k3_screen_s42",
+    "shared": [
+      "same lane-A A100 runtime",
+      "same HCX 0.5B base and current_v1 length 384 serializer",
+      "same fixed session split and seed 42",
+      "same replay-last1 10000 rows and sample weights",
+      "same M8 teacher logits, ordinary alpha=0.5 KL, optimizer, and row order"
+    ],
+    "single_quality_variable": "Arm 2 adds teacher top-3 true-vs-hard-negative SmoothL1 margin KD."
+  },
+  "loss_contract": {
+    "teacher_negative_selection": "For each covered row, exclude the true class and take the teacher's top 3 remaining action scores.",
+    "margin": "(true logit - selected negative logit) / T for student and detached teacher, with T=3 inherited from ordinary KD.",
+    "loss": "Mean SmoothL1 over the three action margins and covered rows.",
+    "coverage": "Binary ordinary KD coverage only; nonzero conditional-alpha scales are not reused as weights and replay/unmatched rows are excluded.",
+    "ordinary_kd": "The existing alpha=0.5, T=3 KL term is unchanged."
+  },
+  "weight_calibration": {
+    "method": "On the first teacher-covered batch only, compute base and unweighted margin gradients with respect to the student logits, then freeze weight = 0.10 * ||g_base|| / ||g_margin||.",
+    "target_logit_gradient_ratio": 0.1,
+    "search": "None; the ratio, top-k, split, and seed are pre-registered.",
+    "resume": "The calibrated weight and calibration metadata are persisted in checkpoint_state.json and must match on epoch resume."
+  },
+  "why_not_hidden_gram": "The earlier centered sample-Gram objective retained a dominating self-similarity diagonal and produced a weak biased gradient. This card uses only 14-way action boundaries and does not load the hidden cache.",
+  "default_compatibility": "All new flags default to zero/off; the paired control takes the pre-existing forward, RNG, and loss path.",
+  "tests": [
+    ".venv/bin/python -m unittest tests.test_action_margin_kd -v",
+    ".venv/bin/python -m unittest tests.test_relational_kd -v"
+  ],
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch a colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_a_pair_plan.json",
+  "decision_rule": "Compare arm 2 directly with arm 1 on raw, bias, and 2-stage Macro-F1 plus list_directory/read_file/grep_search/glob_pattern/web_search/lint_or_typecheck/run_tests/run_bash. Do not promote from the historical 20260709 control alone; require no material weak-class collapse before any refit."
+}

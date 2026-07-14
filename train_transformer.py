@@ -1917,6 +1917,99 @@ def centered_cosine_gram_loss(student_hidden, teacher_hidden, mask=None, eps=1e-
     return (1.0 - alignment).clamp(min=0.0, max=2.0)
 
 
+def action_margin_kd_loss(
+    student_logits,
+    teacher_logits,
+    labels,
+    mask,
+    *,
+    topk=3,
+    temperature=3.0,
+):
+    """Match teacher true-vs-hard-negative action margins on covered rows.
+
+    Hard negatives are selected once from the detached teacher scores. Replay
+    and unmatched rows are excluded by the ordinary KD coverage mask, so this
+    auxiliary cannot introduce a second teacher surface.
+    """
+    if student_logits.ndim != 2 or teacher_logits.ndim != 2:
+        raise ValueError("action-margin student and teacher logits must be rank 2")
+    if tuple(student_logits.shape) != tuple(teacher_logits.shape):
+        raise ValueError(
+            "action-margin student/teacher shape mismatch: "
+            f"student={tuple(student_logits.shape)} teacher={tuple(teacher_logits.shape)}"
+        )
+    if labels.ndim != 1 or labels.shape[0] != student_logits.shape[0]:
+        raise ValueError("action-margin labels must match the logit batch")
+    if not 1 <= int(topk) < student_logits.shape[1]:
+        raise ValueError(
+            f"action-margin topk must be in [1, {student_logits.shape[1] - 1}]"
+        )
+    if not math.isfinite(float(temperature)) or float(temperature) <= 0.0:
+        raise ValueError("action-margin temperature must be finite and > 0")
+
+    coverage = torch.as_tensor(mask, device=student_logits.device).view(-1) > 0
+    if coverage.shape[0] != student_logits.shape[0]:
+        raise ValueError("action-margin mask must match the logit batch")
+    if not bool(coverage.any()):
+        return student_logits.sum() * 0.0
+
+    student = student_logits[coverage].float() / float(temperature)
+    teacher = (
+        teacher_logits.to(student_logits.device, non_blocking=True)[coverage].float()
+        / float(temperature)
+    ).detach()
+    targets = labels.to(student_logits.device)[coverage]
+    true_mask = F.one_hot(targets, num_classes=student.shape[1]).bool()
+    hard_negative = teacher.masked_fill(true_mask, -torch.inf).topk(
+        int(topk), dim=1
+    ).indices
+    student_true = student.gather(1, targets[:, None])
+    teacher_true = teacher.gather(1, targets[:, None])
+    student_margin = student_true - student.gather(1, hard_negative)
+    teacher_margin = teacher_true - teacher.gather(1, hard_negative)
+    return F.smooth_l1_loss(
+        student_margin,
+        teacher_margin,
+        reduction="none",
+    ).mean()
+
+
+def calibrate_action_margin_weight(
+    base_loss,
+    action_margin_loss,
+    student_logits,
+    target_grad_ratio,
+):
+    """Choose one fixed auxiliary weight from logit-gradient norms."""
+    target = float(target_grad_ratio)
+    if not math.isfinite(target) or target <= 0.0:
+        raise ValueError("action-margin target gradient ratio must be finite and > 0")
+    base_grad = torch.autograd.grad(
+        base_loss, student_logits, retain_graph=True, create_graph=False
+    )[0]
+    margin_grad = torch.autograd.grad(
+        action_margin_loss, student_logits, retain_graph=True, create_graph=False
+    )[0]
+    base_norm = torch.linalg.vector_norm(base_grad.detach().float())
+    margin_norm = torch.linalg.vector_norm(margin_grad.detach().float())
+    base_value = float(base_norm.cpu())
+    margin_value = float(margin_norm.cpu())
+    if not math.isfinite(base_value) or base_value <= 0.0:
+        raise ValueError(f"action-margin base gradient norm is invalid: {base_value}")
+    if not math.isfinite(margin_value) or margin_value <= 0.0:
+        raise ValueError(f"action-margin auxiliary gradient norm is invalid: {margin_value}")
+    weight = target * base_value / margin_value
+    if not math.isfinite(weight) or weight <= 0.0:
+        raise ValueError(f"action-margin calibrated weight is invalid: {weight}")
+    return weight, {
+        "base_logit_grad_norm": base_value,
+        "unweighted_margin_logit_grad_norm": margin_value,
+        "calibrated_weight": weight,
+        "achieved_grad_ratio": weight * margin_value / base_value,
+    }
+
+
 def _pool_recomputed_head_logits(head_logits, reference_logits, encoded):
     if tuple(head_logits.shape) == tuple(reference_logits.shape):
         return head_logits
@@ -2184,6 +2277,40 @@ def train_model(
         "growth_interval": int(args.amp_growth_interval),
     }
     rng = random.Random(args.seed)
+    action_margin_requested = bool(
+        getattr(args, "action_margin_kd_weight", 0.0) > 0.0
+        or getattr(args, "action_margin_kd_target_grad_ratio", 0.0) > 0.0
+    )
+    if action_margin_requested and teacher is None:
+        raise ValueError("action-margin KD requires aligned ordinary teacher targets")
+    action_margin_weight = (
+        float(args.action_margin_kd_weight)
+        if getattr(args, "action_margin_kd_weight", 0.0) > 0.0
+        else None
+    )
+    action_margin_meta = None
+    if action_margin_requested:
+        action_margin_meta = {
+            "enabled": True,
+            "loss": "teacher_topk_true_vs_negative_smooth_l1",
+            "topk": int(args.action_margin_kd_topk),
+            "temperature": float(args.distill_temp),
+            "coverage": "ordinary_logit_kd_mask_gt_zero",
+            "target_grad_ratio": (
+                float(args.action_margin_kd_target_grad_ratio)
+                if args.action_margin_kd_target_grad_ratio > 0.0
+                else None
+            ),
+            "fixed_weight_input": (
+                float(args.action_margin_kd_weight)
+                if args.action_margin_kd_weight > 0.0
+                else None
+            ),
+            "calibrated_weight": action_margin_weight,
+            "calibration": None,
+            "epochs": [],
+        }
+        args.action_margin_kd_meta = action_margin_meta
 
     def optimizer_step():
         amp_step_stats["attempted"] += 1
@@ -2250,8 +2377,45 @@ def train_model(
     if args.resume_from:
         state_path = Path(args.resume_from) / "checkpoint_state.json"
         last_done = 0
+        checkpoint_state = {}
         if state_path.exists():
-            last_done = int(json.loads(state_path.read_text(encoding="utf-8")).get("last_completed_epoch", 0))
+            checkpoint_state = json.loads(state_path.read_text(encoding="utf-8"))
+            last_done = int(checkpoint_state.get("last_completed_epoch", 0))
+        if (
+            action_margin_requested
+            and args.action_margin_kd_target_grad_ratio > 0.0
+            and last_done > 0
+        ):
+            saved = checkpoint_state.get("action_margin_kd")
+            if not isinstance(saved, dict):
+                raise ValueError(
+                    "action-margin epoch resume is missing calibrated checkpoint state"
+                )
+            expected = {
+                "topk": int(args.action_margin_kd_topk),
+                "temperature": float(args.distill_temp),
+                "target_grad_ratio": float(args.action_margin_kd_target_grad_ratio),
+            }
+            for key, value in expected.items():
+                if saved.get(key) != value:
+                    raise ValueError(
+                        f"action-margin resume {key} mismatch: "
+                        f"checkpoint={saved.get(key)!r} current={value!r}"
+                    )
+            restored_weight = float(saved.get("calibrated_weight", 0.0))
+            if not math.isfinite(restored_weight) or restored_weight <= 0.0:
+                raise ValueError(
+                    "action-margin epoch resume has no valid calibrated weight"
+                )
+            action_margin_weight = restored_weight
+            action_margin_meta.update(copy.deepcopy(saved))
+            action_margin_meta.setdefault("epochs", [])
+            args.action_margin_kd_meta = action_margin_meta
+            print(
+                "action-margin KD restored: "
+                f"weight={action_margin_weight:.8f} "
+                f"target_ratio={args.action_margin_kd_target_grad_ratio:.6f}"
+            )
         start_epoch = last_done + 1
         steps_per_opt_epoch = math.ceil(batches_per_epoch / accum)
         for _ in range(steps_per_opt_epoch * last_done):
@@ -2271,6 +2435,9 @@ def train_model(
         total_relational = 0.0
         relational_batches = 0
         relational_rows = 0
+        total_action_margin = 0.0
+        action_margin_batches = 0
+        action_margin_rows = 0
         seen = 0
         step = 0
         for step, batch_idx in enumerate(
@@ -2364,6 +2531,48 @@ def train_model(
                     loss_values = 0.5 * (loss_values + per_row_loss(logits2, labels, batch_idx)) + args.rdrop_alpha * rdrop_kl
                     total_kl += float(rdrop_kl.detach().mean().cpu()) * len(batch_idx)
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
+                if action_margin_requested:
+                    margin_student_logits = logits if kd_logits is None else kd_logits
+                    margin_mask = teacher[1][batch_idx].to(device, non_blocking=True) > 0
+                    margin_rows = int(margin_mask.sum())
+                    margin_loss = action_margin_kd_loss(
+                        margin_student_logits,
+                        teacher[0][batch_idx],
+                        labels,
+                        margin_mask,
+                        topk=args.action_margin_kd_topk,
+                        temperature=args.distill_temp,
+                    )
+                    if margin_rows > 0 and action_margin_weight is None:
+                        action_margin_weight, calibration = calibrate_action_margin_weight(
+                            loss,
+                            margin_loss,
+                            margin_student_logits,
+                            args.action_margin_kd_target_grad_ratio,
+                        )
+                        calibration.update(
+                            {
+                                "epoch": epoch,
+                                "step": step,
+                                "matched_rows": margin_rows,
+                            }
+                        )
+                        action_margin_meta["calibrated_weight"] = action_margin_weight
+                        action_margin_meta["calibration"] = calibration
+                        print(
+                            "action-margin KD calibrated: "
+                            f"weight={action_margin_weight:.8f} "
+                            f"target={args.action_margin_kd_target_grad_ratio:.6f} "
+                            f"achieved={calibration['achieved_grad_ratio']:.6f} "
+                            f"base_grad={calibration['base_logit_grad_norm']:.8f} "
+                            f"aux_grad={calibration['unweighted_margin_logit_grad_norm']:.8f}"
+                        )
+                    if action_margin_weight is not None:
+                        loss = loss + action_margin_weight * margin_loss
+                    if margin_rows > 0:
+                        total_action_margin += float(margin_loss.detach().cpu())
+                        action_margin_batches += 1
+                        action_margin_rows += margin_rows
                 if relational is not None:
                     relation_mask = relational["mask"][batch_idx].to(
                         device, non_blocking=True
@@ -2394,9 +2603,16 @@ def train_model(
                     if relational is not None
                     else ""
                 )
+                action_margin_note = (
+                    f" am_kd={total_action_margin / max(1, action_margin_batches):.5f}"
+                    f" am_rows={action_margin_rows}"
+                    f" am_weight={float(action_margin_weight or 0.0):.8f}"
+                    if action_margin_requested
+                    else ""
+                )
                 print(
                     f"    step={step:04d} loss={total_loss / max(1, seen):.5f}"
-                    f"{kl_note}{relational_note}"
+                    f"{kl_note}{relational_note}{action_margin_note}"
                 )
         if step % accum != 0:
             optimizer_step()
@@ -2409,9 +2625,26 @@ def train_model(
             if relational is not None
             else ""
         )
+        action_margin_note = (
+            f" am_kd={total_action_margin / max(1, action_margin_batches):.5f}"
+            f" am_batches={action_margin_batches} am_rows={action_margin_rows}"
+            f" am_weight={float(action_margin_weight or 0.0):.8f}"
+            if action_margin_requested
+            else ""
+        )
+        if action_margin_requested:
+            action_margin_meta["epochs"].append(
+                {
+                    "epoch": epoch,
+                    "mean_unweighted_loss": total_action_margin
+                    / max(1, action_margin_batches),
+                    "matched_batches": action_margin_batches,
+                    "matched_rows": action_margin_rows,
+                }
+            )
         print(
             f"  epoch={epoch:02d} train_loss={total_loss / max(1, seen):.5f}"
-            f"{kl_note}{relational_note}"
+            f"{kl_note}{relational_note}{action_margin_note}"
         )
         if args.epoch_checkpoint_dir:
             try:
@@ -2421,10 +2654,17 @@ def train_model(
                     args.epoch_checkpoint_dir,
                     epoch,
                     snapshot_epoch=bool(args.snapshot_epoch_checkpoints),
+                    training_state={
+                        "action_margin_kd": copy.deepcopy(action_margin_meta)
+                    }
+                    if action_margin_requested
+                    else None,
                 )
             except Exception as exc:
                 # checkpoint is insurance only — a Drive-mount hiccup must not kill the run
                 print(f"  epoch checkpoint FAILED (continuing): {exc}")
+    if action_margin_requested and action_margin_weight is None:
+        raise ValueError("action-margin KD never found a teacher-covered training batch")
     amp_step_stats["final_scale"] = float(scaler.get_scale()) if scaler.is_enabled() else 1.0
     args.amp_step_stats = dict(amp_step_stats)
     print(
@@ -2442,7 +2682,14 @@ def train_model(
     return model
 
 
-def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch, snapshot_epoch=False):
+def save_epoch_checkpoint(
+    model,
+    tokenizer,
+    ckpt_dir,
+    epoch,
+    snapshot_epoch=False,
+    training_state=None,
+):
     """Crash insurance for preemptible runtimes: overwrite ckpt_dir with an
     fp16 copy of the last completed epoch (point it at a Drive path)."""
     import copy
@@ -2459,8 +2706,13 @@ def save_epoch_checkpoint(model, tokenizer, ckpt_dir, epoch, snapshot_epoch=Fals
         del snapshot
         if epoch == 1:
             tokenizer.save_pretrained(ckpt_dir)
+    checkpoint_state = {"last_completed_epoch": epoch}
+    if training_state:
+        checkpoint_state.update(training_state)
     (ckpt_dir / "checkpoint_state.json").write_text(
-        json.dumps({"last_completed_epoch": epoch}), encoding="utf-8")
+        json.dumps(checkpoint_state, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     if snapshot_epoch:
         snapshot_dir = ckpt_dir.with_name(f"{ckpt_dir.name}_ep{epoch}")
         if snapshot_dir.exists():
@@ -2592,6 +2844,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "sim_early_turn_loss": getattr(args, "sim_early_turn_loss_meta", None),
         "consensus_reliability": getattr(args, "consensus_reliability_meta", None),
         "relational_kd": getattr(args, "relational_kd_meta", None),
+        "action_margin_kd": getattr(args, "action_margin_kd_meta", None),
         "trained_with_cuda": torch.cuda.is_available(),
         "final_refit": bool(args.final_model),
         "saved_fp16": bool(args.save_fp16),
@@ -3050,6 +3303,7 @@ def run(args):
                         args, "consensus_reliability_meta", None
                     ),
                     "relational_kd": getattr(args, "relational_kd_meta", None),
+                    "action_margin_kd": getattr(args, "action_margin_kd_meta", None),
                 },
                 f,
                 ensure_ascii=False,
@@ -3361,6 +3615,7 @@ def run(args):
                     args, "consensus_reliability_meta", None
                 ),
                 "relational_kd": getattr(args, "relational_kd_meta", None),
+                "action_margin_kd": getattr(args, "action_margin_kd_meta", None),
             },
             f,
             ensure_ascii=False,
@@ -3429,6 +3684,30 @@ def parse_args():
         ),
     )
     parser.add_argument("--distill-temp", type=float, default=2.0)
+    parser.add_argument(
+        "--action-margin-kd-weight",
+        type=float,
+        default=0.0,
+        help=(
+            "fixed weight for teacher top-k true-vs-negative margin KD; 0 disables "
+            "unless --action-margin-kd-target-grad-ratio is active"
+        ),
+    )
+    parser.add_argument(
+        "--action-margin-kd-target-grad-ratio",
+        type=float,
+        default=0.0,
+        help=(
+            "calibrate one fixed action-margin weight on the first covered batch "
+            "to this auxiliary/base logit-gradient norm ratio"
+        ),
+    )
+    parser.add_argument(
+        "--action-margin-kd-topk",
+        type=int,
+        default=3,
+        help="number of detached-teacher hard negatives used by action-margin KD",
+    )
     parser.add_argument(
         "--relational-teacher-hidden",
         default="",
@@ -3605,6 +3884,37 @@ def parse_args():
         )
     if args.explorer4_loss_weight < 0:
         parser.error("--explorer4-loss-weight must be >= 0")
+    if not math.isfinite(args.action_margin_kd_weight) or args.action_margin_kd_weight < 0.0:
+        parser.error("--action-margin-kd-weight must be finite and >= 0")
+    if (
+        not math.isfinite(args.action_margin_kd_target_grad_ratio)
+        or args.action_margin_kd_target_grad_ratio < 0.0
+    ):
+        parser.error("--action-margin-kd-target-grad-ratio must be finite and >= 0")
+    if args.action_margin_kd_weight > 0.0 and args.action_margin_kd_target_grad_ratio > 0.0:
+        parser.error(
+            "--action-margin-kd-weight and --action-margin-kd-target-grad-ratio "
+            "are mutually exclusive"
+        )
+    if not 1 <= args.action_margin_kd_topk < len(ALL_CLASSES):
+        parser.error(
+            f"--action-margin-kd-topk must be in [1, {len(ALL_CLASSES) - 1}]"
+        )
+    action_margin_requested = (
+        args.action_margin_kd_weight > 0.0
+        or args.action_margin_kd_target_grad_ratio > 0.0
+    )
+    if action_margin_requested:
+        if not args.distill_logits:
+            parser.error("action-margin KD requires --distill-logits")
+        if not math.isfinite(args.distill_temp) or args.distill_temp <= 0.0:
+            parser.error("action-margin KD requires --distill-temp > 0")
+        if args.relational_teacher_hidden or args.relational_kd_weight > 0.0:
+            parser.error("action-margin KD cannot be combined with hidden-Gram relational KD")
+        if args.rdrop_alpha > 0.0:
+            parser.error("action-margin KD does not support --rdrop-alpha")
+        if args.train_label_filter != "none":
+            parser.error("action-margin KD does not support --train-label-filter")
     if not math.isfinite(args.relational_kd_weight) or args.relational_kd_weight < 0.0:
         parser.error("--relational-kd-weight must be finite and >= 0")
     relational_requested = bool(args.relational_teacher_hidden) or args.relational_kd_weight > 0.0
