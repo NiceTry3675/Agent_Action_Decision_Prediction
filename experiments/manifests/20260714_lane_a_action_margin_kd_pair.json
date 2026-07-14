@@ -1,8 +1,17 @@
 {
-  "status": "ready",
+  "status": "in_flight",
   "lane": "a",
   "required_gpu": "A100",
   "plan": "colab/action_margin_kd_lane_a_pair_plan.json",
+  "in_flight": {
+    "bundle": "code_20260714_143044_070338ac_dirty.tar.gz",
+    "git_commit": "070338acc773ecea6808882825196a698c9bf1ca",
+    "launched_utc": "2026-07-14T14:33:59Z",
+    "remote_pid": 6502,
+    "remote_log": "run_20260714_143359.log",
+    "verified": "Drive heartbeat run.alive=true on the existing lane-A A100; GPU utilization 85%, memory 11584 MiB; local CLI keep-alive remains active.",
+    "release_policy": "Do not interrupt. After both arms finish, require successful auto-collect and release_safe=true before aadp_colab.py down a."
+  },
   "hypothesis": "Teacher-relative action margins carry useful class-boundary information that ordinary probability KL and the rejected sample-Gram loss do not transfer.",
   "paired_design": {
     "arm_1": "kd_am_pair_control_s42",
