@@ -54,6 +54,9 @@ RELATIONAL_HIDDEN_USAGE_SCOPE = "full_data_refit_teacher_train_rows"
 RELATIONAL_HIDDEN_POOLING = "last_nonpadding_classifier_input"
 RELATIONAL_MIN_REFERENCE_ARGMAX_AGREEMENT = 0.995
 REPLAY_ORIGINAL_ID_RE = re.compile(r"^(?P<session>.+)-step_(?P<step>\d+)$")
+REPLAY_SAMPLE_ID_RE = re.compile(
+    r"^(?P<source>.+)::replay_(?P<history_index>\d+)_(?P<label>.+)$"
+)
 
 
 def safe_slug(value):
@@ -391,10 +394,206 @@ def replay_examples_for_sample(
     return replay_samples
 
 
+def _ordered_text_sha256(values):
+    payload = json.dumps(
+        list(values), ensure_ascii=False, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def attach_replay_kd_predecessors(
+    samples,
+    y,
+    train_idx,
+    replay_examples,
+    args,
+):
+    """Attach exact predecessor IDs to an already selected legacy replay cap.
+
+    This deliberately runs *after* ``balanced_cap_replay``.  It never filters,
+    reorders, or rematerializes a replay row, and it does not touch
+    ``session_meta``.  The only mutations are private training-only predecessor
+    keys which every serializer ignores.  Missing or non-exact links remain in
+    the cap and are later kept hard-label-only.
+    """
+
+    source = safe_text(getattr(args, "replay_kd_source", "none")) or "none"
+    if source == "none":
+        args.replay_kd_audit = None
+        return replay_examples
+    if source != "predecessor":
+        raise ValueError(f"unknown replay KD source: {source}")
+    if getattr(args, "replay_meta_mode", "current") != "current":
+        raise ValueError(
+            "trusted predecessor replay KD requires legacy current replay metadata"
+        )
+    if getattr(args, "serializer", "current_v1") != "current_v1":
+        raise ValueError(
+            "trusted predecessor replay KD is registered only for serializer current_v1"
+        )
+
+    selected_ids_before = [
+        safe_text(replay_sample.get("id")) for _, replay_sample in replay_examples
+    ]
+    selected_texts_before = [
+        serialize_transformer_sample(replay_sample, args.serializer)
+        for _, replay_sample in replay_examples
+    ]
+    replay_id_sha256 = _ordered_text_sha256(selected_ids_before)
+    replay_text_sha256 = _ordered_text_sha256(selected_texts_before)
+
+    predecessor_index, index_audit = build_replay_predecessor_index(
+        samples, y, train_idx
+    )
+    source_by_id = {}
+    for sample_idx in train_idx:
+        sample_id = safe_text(samples[sample_idx].get("id"))
+        if sample_id in source_by_id:
+            raise ValueError(f"duplicate replay source id in training split: {sample_id}")
+        source_by_id[sample_id] = samples[sample_idx]
+
+    audit = Counter()
+    audit.update(index_audit)
+    audit["selected_replay_rows"] = len(replay_examples)
+    for label_id, replay_sample in replay_examples:
+        replay_id = safe_text(replay_sample.get("id"))
+        replay_match = REPLAY_SAMPLE_ID_RE.fullmatch(replay_id)
+        if replay_match is None:
+            audit["unmatched_replay_id"] += 1
+            continue
+        source_id = replay_match.group("source")
+        source_sample = source_by_id.get(source_id)
+        if source_sample is None:
+            audit["unmatched_source_id"] += 1
+            continue
+        # Legacy current-mode replay must retain the source row metadata.  An
+        # equality check (rather than identity) also covers an empty metadata
+        # dict without weakening the serialized-input invariant below.
+        if replay_sample.get("session_meta") != (source_sample.get("session_meta") or {}):
+            raise AssertionError(
+                "trusted replay KD observed non-legacy replay session_meta"
+            )
+
+        source_match = REPLAY_ORIGINAL_ID_RE.fullmatch(source_id)
+        if source_match is None:
+            audit["unmatched_source_shape"] += 1
+            continue
+        history = source_sample.get("history") or []
+        if len(history) % 2 or any(
+            event.get("role") != ("user" if idx % 2 == 0 else "assistant_action")
+            for idx, event in enumerate(history)
+        ):
+            audit["unmatched_history_shape"] += 1
+            continue
+        history_index = int(replay_match.group("history_index"))
+        if history_index < 0 or history_index + 1 >= len(history):
+            audit["unmatched_history_index"] += 1
+            continue
+        user_event = history[history_index]
+        target_event = history[history_index + 1]
+        label = replay_match.group("label")
+        if (
+            user_event.get("role") != "user"
+            or target_event.get("role") != "assistant_action"
+            or safe_text(user_event.get("content"))
+            != safe_text(replay_sample.get("current_prompt"))
+        ):
+            audit["unmatched_replay_surface"] += 1
+            continue
+        if (
+            safe_text(target_event.get("name")) != label
+            or CLASS_TO_ID.get(label) != int(label_id)
+        ):
+            audit["unmatched_replay_label"] += 1
+            continue
+
+        source_step = int(source_match.group("step"))
+        history_turns = len(history) // 2
+        if source_step <= history_turns:
+            audit["unmatched_history_step_range"] += 1
+            continue
+        predecessor_step = source_step - history_turns + (history_index // 2)
+        predecessor = predecessor_index.get(
+            (source_match.group("session"), predecessor_step)
+        )
+        if predecessor is None:
+            audit["unmatched_predecessor_missing"] += 1
+            continue
+        if predecessor["current_prompt"] != safe_text(user_event.get("content")):
+            audit["unmatched_predecessor_prompt"] += 1
+            continue
+        if predecessor["label_id"] != int(label_id):
+            audit["unmatched_predecessor_label"] += 1
+            continue
+
+        replay_sample["_replay_predecessor_id"] = predecessor["sample_id"]
+        replay_sample["_replay_predecessor_step"] = predecessor_step
+        audit["exact_predecessors"] += 1
+
+    selected_ids_after = [
+        safe_text(replay_sample.get("id")) for _, replay_sample in replay_examples
+    ]
+    selected_texts_after = [
+        serialize_transformer_sample(replay_sample, args.serializer)
+        for _, replay_sample in replay_examples
+    ]
+    if selected_ids_after != selected_ids_before:
+        raise AssertionError("trusted replay KD changed selected replay IDs or order")
+    if selected_texts_after != selected_texts_before:
+        raise AssertionError("trusted replay KD changed serialized replay text")
+
+    exact = int(audit["exact_predecessors"])
+    unmatched = len(replay_examples) - exact
+    if exact <= 0:
+        raise ValueError("trusted replay KD found zero exact predecessors")
+    expected_exact = int(getattr(args, "replay_kd_expected_predecessors", -1))
+    expected_unmatched = int(getattr(args, "replay_kd_expected_unmatched", -1))
+    expected_id_sha = safe_text(
+        getattr(args, "replay_kd_expected_replay_id_sha256", "")
+    ).lower()
+    if expected_exact >= 0 and exact != expected_exact:
+        raise AssertionError(
+            "trusted replay KD predecessor-count mismatch: "
+            f"expected={expected_exact} actual={exact}"
+        )
+    if expected_unmatched >= 0 and unmatched != expected_unmatched:
+        raise AssertionError(
+            "trusted replay KD unmatched-count mismatch: "
+            f"expected={expected_unmatched} actual={unmatched}"
+        )
+    if expected_id_sha and replay_id_sha256 != expected_id_sha:
+        raise AssertionError(
+            "trusted replay KD selected replay ID digest mismatch: "
+            f"expected={expected_id_sha} actual={replay_id_sha256}"
+        )
+
+    args.replay_kd_audit = {
+        "source": source,
+        "attach_stage": "after_legacy_balanced_cap",
+        "selected_replay_rows": len(replay_examples),
+        "exact_predecessors": exact,
+        "unmatched_predecessors": unmatched,
+        "selected_replay_id_sha256": replay_id_sha256,
+        "serialized_replay_text_sha256_before": replay_text_sha256,
+        "serialized_replay_text_sha256_after": _ordered_text_sha256(
+            selected_texts_after
+        ),
+        "input_and_order_invariant": True,
+        **{name: int(count) for name, count in sorted(audit.items())},
+    }
+    print(
+        "trusted replay KD links: "
+        f"exact={exact}/{len(replay_examples)} unmatched={unmatched} "
+        f"id_sha256={replay_id_sha256} text_sha256={replay_text_sha256}"
+    )
+    return replay_examples
+
+
 def add_replay_examples(samples, y, train_idx, args):
     sample_weights = [1.0] * len(samples)
     if args.replay_mode == "none":
         args.replay_predecessor_audit = None
+        args.replay_kd_audit = None
         return samples, y, train_idx, sample_weights, 0
     if args.split not in ("session", "session_oof"):
         raise ValueError("Replay augmentation is only enabled for session-aware splits to avoid session leakage.")
@@ -419,6 +618,9 @@ def add_replay_examples(samples, y, train_idx, args):
         )
     pre_cap_count = len(replay_examples)
     replay_examples = balanced_cap_replay(replay_examples, args.max_replay_samples, args.seed + 101)
+    replay_examples = attach_replay_kd_predecessors(
+        samples, y, train_idx, replay_examples, args
+    )
     audit["matched_before_cap"] = pre_cap_count
     audit["selected_after_cap"] = len(replay_examples)
 
@@ -1755,6 +1957,227 @@ def apply_consensus_conditioned_weak_alpha(
     return (teacher_logits, updated_mask), updated_consensus
 
 
+def apply_trusted_replay_kd(
+    teacher,
+    consensus,
+    samples,
+    y,
+    train_idx,
+    args,
+):
+    """Give trusted replay rows their exact predecessor's M8 KD target.
+
+    Trust is determined exclusively by the predecessor original row's aligned
+    OOF ``correct_count``.  Replay rows do not inherit consensus backbone/KD
+    gradient scales, and their own aligned count remains ``-1``.  Thus this
+    changes only the hard/KD mixture for the preselected legacy replay rows.
+    """
+
+    source = safe_text(getattr(args, "replay_kd_source", "none")) or "none"
+    if source == "none":
+        return teacher, consensus
+    if source != "predecessor":
+        raise ValueError(f"unknown replay KD source: {source}")
+    if teacher is None:
+        raise ValueError("trusted predecessor replay KD requires teacher targets")
+    if consensus is None:
+        raise ValueError("trusted predecessor replay KD requires consensus reliability")
+    if not isinstance(teacher, (tuple, list)) or len(teacher) != 2:
+        raise ValueError("teacher targets must be a (logits, mask) pair")
+    if not isinstance(consensus, dict):
+        raise ValueError("consensus reliability must be a dict")
+
+    teacher_logits, teacher_mask = teacher
+    correct_counts = consensus.get("correct_counts")
+    gradient_scales = consensus.get("gradient_scales")
+    kd_gradient_scales = consensus.get("kd_gradient_scales")
+    meta = consensus.get("meta")
+    row_count = len(samples)
+    lengths = {
+        "labels": len(y),
+        "teacher_logits": int(teacher_logits.shape[0]),
+        "teacher_mask": int(teacher_mask.shape[0]),
+        "correct_counts": int(correct_counts.shape[0]),
+        "gradient_scales": int(gradient_scales.shape[0]),
+    }
+    if any(length != row_count for length in lengths.values()):
+        raise ValueError(
+            "trusted replay KD row length mismatch: "
+            f"samples={row_count} "
+            + " ".join(f"{name}={length}" for name, length in lengths.items())
+        )
+    if not isinstance(meta, dict):
+        raise ValueError("trusted replay KD requires consensus metadata")
+    model_count = int(meta.get("model_count", -1))
+    min_consensus = int(getattr(args, "replay_kd_min_consensus", 2))
+    if model_count < 1 or not 1 <= min_consensus <= model_count:
+        raise ValueError(
+            "trusted replay KD min consensus must lie in "
+            f"[1, {model_count}], got {min_consensus}"
+        )
+    base_alpha = float(args.distill_alpha)
+    weak_alpha_value = getattr(args, "distill_alpha_weak", None)
+    if not math.isfinite(base_alpha) or not 0.0 < base_alpha <= 1.0:
+        raise ValueError("trusted replay KD requires --distill-alpha in (0, 1]")
+    if weak_alpha_value is None:
+        raise ValueError("trusted replay KD requires --distill-alpha-weak")
+    weak_alpha = float(weak_alpha_value)
+    if not math.isfinite(weak_alpha) or not 0.0 < weak_alpha <= 1.0:
+        raise ValueError(
+            "trusted replay KD requires --distill-alpha-weak in (0, 1]"
+        )
+    weak_scale = weak_alpha / base_alpha
+
+    train_set = set(int(idx) for idx in train_idx)
+    if any(idx < 0 or idx >= row_count for idx in train_set):
+        raise ValueError("trusted replay KD received an out-of-range train index")
+    original_rows = [
+        idx for idx, sample in enumerate(samples) if not sample.get("_is_replay", False)
+    ]
+    replay_rows = [
+        idx for idx, sample in enumerate(samples) if sample.get("_is_replay", False)
+    ]
+    if not replay_rows:
+        raise ValueError("trusted replay KD requires replay rows")
+    if any(idx not in train_set for idx in replay_rows):
+        raise ValueError("trusted replay KD found a replay row outside the training split")
+    replay_index = torch.tensor(replay_rows, dtype=torch.long)
+    if bool((teacher_mask[replay_index] != 0).any()):
+        raise ValueError(
+            "trusted replay KD requires every replay row to start hard-label-only"
+        )
+    if bool((correct_counts[replay_index] != -1).any()):
+        raise ValueError(
+            "trusted replay KD requires replay consensus counts to remain unaligned (-1)"
+        )
+    if not torch.equal(
+        gradient_scales[replay_index], torch.ones_like(gradient_scales[replay_index])
+    ):
+        raise ValueError("trusted replay KD requires replay hard-backbone scale 1.0")
+    if kd_gradient_scales is not None and not torch.equal(
+        kd_gradient_scales[replay_index],
+        torch.ones_like(kd_gradient_scales[replay_index]),
+    ):
+        raise ValueError("trusted replay KD requires replay KD-backbone scale 1.0")
+
+    original_by_id = {}
+    for idx in original_rows:
+        sample_id = safe_text(samples[idx].get("id"))
+        if sample_id in original_by_id:
+            raise ValueError(f"duplicate original sample id: {sample_id}")
+        original_by_id[sample_id] = idx
+
+    updated_logits = teacher_logits.clone()
+    updated_mask = teacher_mask.clone()
+    original_logits_before = teacher_logits[original_rows].clone()
+    original_mask_before = teacher_mask[original_rows].clone()
+    count_histogram = Counter()
+    active_ids = []
+    active = 0
+    active_weak4 = 0
+    linked = 0
+    teacher_top1_correct = 0
+    below_threshold = 0
+    for replay_idx in replay_rows:
+        predecessor_id = safe_text(
+            samples[replay_idx].get("_replay_predecessor_id")
+        )
+        if not predecessor_id:
+            continue
+        linked += 1
+        predecessor_idx = original_by_id.get(predecessor_id)
+        if predecessor_idx is None or predecessor_idx not in train_set:
+            raise ValueError(
+                "trusted replay KD predecessor is not an original training row: "
+                f"replay={samples[replay_idx].get('id')} predecessor={predecessor_id}"
+            )
+        if int(y[predecessor_idx]) != int(y[replay_idx]):
+            raise ValueError(
+                "trusted replay KD predecessor label mismatch: "
+                f"replay={samples[replay_idx].get('id')} predecessor={predecessor_id}"
+            )
+        count = int(correct_counts[predecessor_idx])
+        if count < 0 or count > model_count:
+            raise ValueError(
+                f"trusted replay KD predecessor has invalid correct_count={count}"
+            )
+        count_histogram[count] += 1
+        if count < min_consensus:
+            below_threshold += 1
+            continue
+        if float(teacher_mask[predecessor_idx]) <= 0.0:
+            raise ValueError(
+                "trusted replay KD active predecessor has no M8 teacher target: "
+                f"{predecessor_id}"
+            )
+
+        updated_logits[replay_idx] = teacher_logits[predecessor_idx]
+        is_weak4 = int(y[replay_idx]) in WEAK4_CLASS_ID_SET
+        updated_mask[replay_idx] = weak_scale if is_weak4 else 1.0
+        active += 1
+        active_weak4 += int(is_weak4)
+        active_ids.append(safe_text(samples[replay_idx].get("id")))
+        teacher_top1_correct += int(
+            int(torch.argmax(teacher_logits[predecessor_idx]).item())
+            == int(y[replay_idx])
+        )
+
+    if active <= 0:
+        raise ValueError("trusted replay KD activated zero replay rows")
+    if linked != int(
+        (getattr(args, "replay_kd_audit", {}) or {}).get(
+            "exact_predecessors", linked
+        )
+    ):
+        raise AssertionError(
+            "trusted replay KD linked-count drift between replay construction and targets"
+        )
+    if not torch.equal(updated_logits[original_rows], original_logits_before):
+        raise AssertionError("trusted replay KD changed original teacher logits")
+    if not torch.equal(updated_mask[original_rows], original_mask_before):
+        raise AssertionError("trusted replay KD changed original teacher mask")
+
+    expected_active = int(getattr(args, "replay_kd_expected_active", -1))
+    if expected_active >= 0 and active != expected_active:
+        raise AssertionError(
+            "trusted replay KD active-count mismatch: "
+            f"expected={expected_active} actual={active}"
+        )
+    audit = copy.deepcopy(getattr(args, "replay_kd_audit", None) or {})
+    audit.update(
+        {
+            "min_consensus": min_consensus,
+            "consensus_model_count": model_count,
+            "linked_predecessors": linked,
+            "active_replay_kd_rows": active,
+            "active_weak4_rows": active_weak4,
+            "active_nonweak_rows": active - active_weak4,
+            "below_consensus_threshold": below_threshold,
+            "linked_correct_count_histogram": {
+                str(count): int(count_histogram.get(count, 0))
+                for count in range(model_count + 1)
+            },
+            "base_alpha": base_alpha,
+            "weak4_alpha": weak_alpha,
+            "active_teacher_top1_correct": teacher_top1_correct,
+            "active_teacher_top1_accuracy": teacher_top1_correct / active,
+            "active_replay_id_sha256": _ordered_text_sha256(active_ids),
+            "replay_hard_backbone_scale": 1.0,
+            "replay_consensus_counts_unchanged": True,
+            "original_teacher_tensors_unchanged": True,
+        }
+    )
+    args.replay_kd_audit = audit
+    print(
+        "trusted replay KD targets: "
+        f"active={active}/{len(replay_rows)} linked={linked} "
+        f"below_threshold={below_threshold} weak4={active_weak4} "
+        f"teacher_top1={teacher_top1_correct}/{active} "
+        f"counts={dict(sorted(count_histogram.items()))}"
+    )
+    return (updated_logits, updated_mask), consensus
+
+
 def build_training_signals(samples, y, train_idx, args):
     """Build ID-aligned teacher/consensus/relational tensors once."""
     teacher = build_teacher_targets(samples, args)
@@ -1762,6 +2185,9 @@ def build_training_signals(samples, y, train_idx, args):
     teacher = apply_consensus_distill_alpha(teacher, consensus, args)
     teacher, consensus = apply_consensus_conditioned_weak_alpha(
         teacher, consensus, y, train_idx, args
+    )
+    teacher, consensus = apply_trusted_replay_kd(
+        teacher, consensus, samples, y, train_idx, args
     )
     relational = build_relational_teacher_targets(samples, y, args, teacher=teacher)
     return teacher, consensus, relational
@@ -1973,6 +2399,20 @@ def action_margin_kd_loss(
         teacher_margin,
         reduction="none",
     ).mean()
+
+
+def action_margin_kd_coverage_mask(teacher_mask, labels, label_scope="all"):
+    """Build the action-margin row mask without changing ordinary KD coverage."""
+    labels = torch.as_tensor(labels)
+    coverage = torch.as_tensor(teacher_mask, device=labels.device).view(-1) > 0
+    if labels.ndim != 1 or labels.shape[0] != coverage.shape[0]:
+        raise ValueError("action-margin labels must match the teacher mask")
+    if label_scope == "all":
+        return coverage
+    if label_scope == "weak4":
+        weak4_ids = torch.tensor(WEAK4_CLASS_IDS, device=labels.device)
+        return coverage & torch.isin(labels, weak4_ids)
+    raise ValueError(f"unknown action-margin label scope: {label_scope}")
 
 
 def calibrate_action_margin_weight(
@@ -2296,6 +2736,7 @@ def train_model(
             "topk": int(args.action_margin_kd_topk),
             "temperature": float(args.distill_temp),
             "coverage": "ordinary_logit_kd_mask_gt_zero",
+            "label_scope": str(args.action_margin_kd_label_scope),
             "target_grad_ratio": (
                 float(args.action_margin_kd_target_grad_ratio)
                 if args.action_margin_kd_target_grad_ratio > 0.0
@@ -2395,6 +2836,7 @@ def train_model(
                 "topk": int(args.action_margin_kd_topk),
                 "temperature": float(args.distill_temp),
                 "target_grad_ratio": float(args.action_margin_kd_target_grad_ratio),
+                "label_scope": str(args.action_margin_kd_label_scope),
             }
             for key, value in expected.items():
                 if saved.get(key) != value:
@@ -2533,7 +2975,11 @@ def train_model(
                 loss = (loss_values * weights_for_samples).sum() / torch.clamp(weights_for_samples.sum(), min=1.0)
                 if action_margin_requested:
                     margin_student_logits = logits if kd_logits is None else kd_logits
-                    margin_mask = teacher[1][batch_idx].to(device, non_blocking=True) > 0
+                    margin_mask = action_margin_kd_coverage_mask(
+                        teacher[1][batch_idx].to(device, non_blocking=True),
+                        labels,
+                        args.action_margin_kd_label_scope,
+                    )
                     margin_rows = int(margin_mask.sum())
                     margin_loss = action_margin_kd_loss(
                         margin_student_logits,
@@ -2822,6 +3268,7 @@ def save_hf_artifact(model, tokenizer, output_dir, class_bias, args, metrics):
         "replay_meta_mode": getattr(args, "replay_meta_mode", "current"),
         "replay_sample_weight": args.replay_sample_weight,
         "replay_predecessor_audit": getattr(args, "replay_predecessor_audit", None),
+        "replay_kd": getattr(args, "replay_kd_audit", None),
         "base_model": args.base_model,
         "model_class": getattr(args, "model_class", "auto"),
         "lora_r": int(getattr(args, "lora_r", 0) or 0),
@@ -3295,6 +3742,7 @@ def run(args):
                     "replay_predecessor_audit": getattr(
                         args, "replay_predecessor_audit", None
                     ),
+                    "replay_kd": getattr(args, "replay_kd_audit", None),
                     "artifact_size_mb": artifact_size,
                     "rule_boosts_path": args.rule_boosts_path,
                     "explorer4_loss_weight": args.explorer4_loss_weight,
@@ -3608,6 +4056,7 @@ def run(args):
                 "replay_predecessor_audit": getattr(
                     args, "replay_predecessor_audit", None
                 ),
+                "replay_kd": getattr(args, "replay_kd_audit", None),
                 "train_label_filter": args.train_label_filter,
                 "explorer4_loss_weight": args.explorer4_loss_weight,
                 "explorer4_loss_balance": args.explorer4_loss_balance,
@@ -3707,6 +4156,15 @@ def parse_args():
         type=int,
         default=3,
         help="number of detached-teacher hard negatives used by action-margin KD",
+    )
+    parser.add_argument(
+        "--action-margin-kd-label-scope",
+        choices=("all", "weak4"),
+        default="all",
+        help=(
+            "true-label scope for action-margin KD only; ordinary logit KD remains "
+            "unchanged on every teacher-covered row"
+        ),
     )
     parser.add_argument(
         "--relational-teacher-hidden",
@@ -3855,6 +4313,48 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--replay-kd-source",
+        choices=["none", "predecessor"],
+        default="none",
+        help=(
+            "after the unchanged legacy replay cap, optionally inherit the exact "
+            "predecessor original row's teacher target on trusted consensus rows; "
+            "does not change replay metadata, text, IDs, or order"
+        ),
+    )
+    parser.add_argument(
+        "--replay-kd-min-consensus",
+        type=int,
+        default=2,
+        help=(
+            "minimum predecessor OOF correct_count for --replay-kd-source "
+            "predecessor (checked against artifact model_count)"
+        ),
+    )
+    parser.add_argument(
+        "--replay-kd-expected-predecessors",
+        type=int,
+        default=-1,
+        help="fail unless this many selected replay rows have exact predecessors; -1 disables",
+    )
+    parser.add_argument(
+        "--replay-kd-expected-unmatched",
+        type=int,
+        default=-1,
+        help="fail unless this many selected replay rows remain unmatched; -1 disables",
+    )
+    parser.add_argument(
+        "--replay-kd-expected-active",
+        type=int,
+        default=-1,
+        help="fail unless this many replay rows pass the consensus threshold; -1 disables",
+    )
+    parser.add_argument(
+        "--replay-kd-expected-replay-id-sha256",
+        default="",
+        help="optional fail-closed SHA256 of the ordered selected replay ID list",
+    )
+    parser.add_argument(
         "--sim-early-turn-loss-scale",
         type=float,
         default=1.0,
@@ -3877,6 +4377,66 @@ def parse_args():
         parser.error("--sim-early-turn-loss-scale must be finite and in (0, 1]")
     if args.replay_meta_mode == "predecessor" and args.replay_mode == "none":
         parser.error("--replay-meta-mode predecessor requires --replay-mode last1 or last2")
+    replay_kd_requested = args.replay_kd_source != "none"
+    if replay_kd_requested:
+        if args.replay_mode == "none":
+            parser.error("--replay-kd-source predecessor requires replay augmentation")
+        if args.replay_meta_mode != "current":
+            parser.error(
+                "--replay-kd-source predecessor requires --replay-meta-mode current"
+            )
+        if args.serializer != "current_v1":
+            parser.error(
+                "--replay-kd-source predecessor is registered only for --serializer current_v1"
+            )
+        if not args.distill_logits:
+            parser.error("--replay-kd-source predecessor requires --distill-logits")
+        if not args.consensus_reliability:
+            parser.error(
+                "--replay-kd-source predecessor requires --consensus-reliability"
+            )
+        if not math.isfinite(args.distill_alpha) or not 0.0 < args.distill_alpha <= 1.0:
+            parser.error(
+                "--replay-kd-source predecessor requires --distill-alpha in (0, 1]"
+            )
+        if args.distill_alpha_weak is None:
+            parser.error(
+                "--replay-kd-source predecessor requires --distill-alpha-weak"
+            )
+        if args.replay_kd_min_consensus < 1:
+            parser.error("--replay-kd-min-consensus must be >= 1")
+        if args.relational_teacher_hidden or args.relational_kd_weight > 0.0:
+            parser.error(
+                "trusted replay KD cannot be combined with hidden-Gram relational KD"
+            )
+        if args.action_margin_kd_weight > 0.0 or args.action_margin_kd_target_grad_ratio > 0.0:
+            parser.error(
+                "trusted replay KD cannot be combined with action-margin KD in this card"
+            )
+    for name in (
+        "replay_kd_expected_predecessors",
+        "replay_kd_expected_unmatched",
+        "replay_kd_expected_active",
+    ):
+        if int(getattr(args, name)) < -1:
+            parser.error(f"--{name.replace('_', '-')} must be -1 or nonnegative")
+    expected_replay_sha = safe_text(args.replay_kd_expected_replay_id_sha256).lower()
+    if expected_replay_sha and not re.fullmatch(r"[0-9a-f]{64}", expected_replay_sha):
+        parser.error(
+            "--replay-kd-expected-replay-id-sha256 must be 64 lowercase/uppercase hex characters"
+        )
+    if not replay_kd_requested and (
+        any(
+            int(getattr(args, name)) >= 0
+            for name in (
+                "replay_kd_expected_predecessors",
+                "replay_kd_expected_unmatched",
+                "replay_kd_expected_active",
+            )
+        )
+        or expected_replay_sha
+    ):
+        parser.error("replay KD expected-value assertions require --replay-kd-source")
     if args.rdrop_alpha > 0 and not args.dropout:
         parser.error(
             "--rdrop-alpha > 0 requires --dropout > 0: decoder configs default all dropout "

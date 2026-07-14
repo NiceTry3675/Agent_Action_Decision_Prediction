@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 
 from train_transformer import (
+    action_margin_kd_coverage_mask,
     action_margin_kd_loss,
     calibrate_action_margin_weight,
     parse_args,
@@ -17,6 +18,37 @@ from train_transformer import (
 
 
 class ActionMarginLossTests(unittest.TestCase):
+    def test_weak4_scope_excludes_nonweak_and_uncovered_rows(self):
+        labels = torch.tensor([0, 3, 4, 10, 1])
+        teacher_mask = torch.tensor([1.0, 0.0, 1.0, 1.0, 0.5])
+        all_mask = action_margin_kd_coverage_mask(teacher_mask, labels, "all")
+        weak4_mask = action_margin_kd_coverage_mask(
+            teacher_mask, labels, "weak4"
+        )
+        torch.testing.assert_close(
+            all_mask, torch.tensor([True, False, True, True, True])
+        )
+        torch.testing.assert_close(
+            weak4_mask, torch.tensor([True, False, False, False, True])
+        )
+
+    def test_weak4_scope_has_zero_nonweak_gradient(self):
+        torch.manual_seed(11)
+        student = torch.randn(4, 14, requires_grad=True)
+        teacher = torch.randn(4, 14)
+        labels = torch.tensor([0, 4, 3, 10])
+        mask = action_margin_kd_coverage_mask(
+            torch.ones(4), labels, "weak4"
+        )
+        loss = action_margin_kd_loss(
+            student, teacher, labels, mask, topk=3, temperature=3.0
+        )
+        loss.backward()
+        self.assertGreater(float(student.grad[[0, 2]].abs().sum()), 0.0)
+        torch.testing.assert_close(
+            student.grad[[1, 3]], torch.zeros_like(student.grad[[1, 3]])
+        )
+
     def test_identical_teacher_and_student_margins_are_zero(self):
         torch.manual_seed(3)
         logits = torch.randn(5, 14, requires_grad=True)
@@ -107,6 +139,18 @@ class ActionMarginContractTests(unittest.TestCase):
         self.assertEqual(args.action_margin_kd_weight, 0.0)
         self.assertEqual(args.action_margin_kd_target_grad_ratio, 0.0)
         self.assertEqual(args.action_margin_kd_topk, 3)
+        self.assertEqual(args.action_margin_kd_label_scope, "all")
+
+    def test_parser_accepts_weak4_scope(self):
+        args = self._parse(
+            "--distill-logits",
+            "teacher.pt",
+            "--action-margin-kd-target-grad-ratio",
+            "0.1",
+            "--action-margin-kd-label-scope",
+            "weak4",
+        )
+        self.assertEqual(args.action_margin_kd_label_scope, "weak4")
 
     def test_active_mode_requires_teacher_and_rejects_two_weight_modes(self):
         with self.assertRaises(SystemExit):
@@ -141,6 +185,7 @@ class ActionMarginContractTests(unittest.TestCase):
                 "topk": 3,
                 "temperature": 3.0,
                 "target_grad_ratio": 0.1,
+                "label_scope": "weak4",
                 "calibrated_weight": 0.42,
             }
         }

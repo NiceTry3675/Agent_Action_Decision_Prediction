@@ -1,0 +1,64 @@
+[
+  {
+    "script": "colab/stage_hcx05b_base.py",
+    "args": [
+      "--asset-dir", "/content/drive/MyDrive/AADP_exchange_b/assets/hcx05b_base"
+    ]
+  },
+  {
+    "script": "train_transformer.py",
+    "env": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "args": [
+      "--base-model", "naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B",
+      "--lr", "2e-5",
+      "--weight-decay", "0.01",
+      "--warmup-ratio", "0.06",
+      "--grad-clip", "1.0",
+      "--device", "cuda",
+      "--split", "session",
+      "--serializer", "current_v1",
+      "--max-length", "384",
+      "--epochs", "3",
+      "--batch-size", "16",
+      "--grad-accum-steps", "1",
+      "--eval-batch-size", "64",
+      "--gradient-checkpointing",
+      "--class-weight-power", "0.5",
+      "--label-smoothing", "0.02",
+      "--loss", "focal",
+      "--focal-gamma", "2.0",
+      "--replay-mode", "last1",
+      "--max-replay-samples", "10000",
+      "--replay-sample-weight", "0.5",
+      "--replay-meta-mode", "current",
+      "--replay-kd-source", "predecessor",
+      "--replay-kd-min-consensus", "2",
+      "--replay-kd-expected-predecessors", "9575",
+      "--replay-kd-expected-unmatched", "425",
+      "--replay-kd-expected-active", "7112",
+      "--replay-kd-expected-replay-id-sha256", "69892e03a2f9b185fe70f5ba1589ac4fadd6af62b63f6e3ec6822c6d25b05f04",
+      "--distill-logits", "/content/drive/MyDrive/AADP_exchange_b/teacher/m8_qwen35_refit_train70k_fp16.pt",
+      "--distill-alpha", "0.5",
+      "--distill-alpha-weak", "0.7",
+      "--distill-temp", "3.0",
+      "--consensus-reliability", "/content/drive/MyDrive/AADP_exchange_b/anchors/20260710_m7_m8_v6_oof_consensus.pt",
+      "--consensus-backbone-weights", "0,0.25,0.75,1",
+      "--tokenize-batch-size", "1024",
+      "--amp-init-scale", "64",
+      "--amp-growth-interval", "1000000",
+      "--require-zero-amp-skips",
+      "--seed", "202",
+      "--no-research-log",
+      "--save-fp16",
+      "--epoch-checkpoint-dir", "/content/drive/MyDrive/AADP_exchange_b/models/kd_sieve_ca_bfast_s202_ckpt",
+      "--output-dir", "/content/drive/MyDrive/AADP_exchange_b/models/kd_sieve_ca_bfast_s202",
+      "--experiment-suffix", "kd_sieve_ca_bfast_s202",
+      "--notes", "Reconstructed deployed-main seed202 full refit with one quality variable: after the byte-identical legacy current-metadata replay cap, exact predecessor rows inherit original-M8 KD only when the original M7/M8/v6 OOF consensus correct_count is at least 2. Replay IDs, text, order, labels, weights, metadata, and hard-backbone scale stay unchanged; expected seed202 audit is 10000 selected, 9575 exact, 425 unmatched, 7112 active. No s202v voter, predecessor metadata, action-margin, trio teacher, or deployment rule changes. Zero AMP skips required.",
+      "--final-model",
+      "--final-only"
+    ]
+  }
+]

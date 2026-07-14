@@ -1,0 +1,51 @@
+[
+  {
+    "script": "colab/stage_hcx05b_base.py",
+    "args": []
+  },
+  {
+    "script": "train_transformer.py",
+    "env": {
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1"
+    },
+    "args": [
+      "--base-model", "naver-hyperclovax/HyperCLOVAX-SEED-Text-Instruct-0.5B",
+      "--lr", "2e-5",
+      "--device", "cuda",
+      "--split", "session",
+      "--serializer", "current_v1",
+      "--max-length", "384",
+      "--epochs", "3",
+      "--batch-size", "16",
+      "--grad-accum-steps", "1",
+      "--eval-batch-size", "64",
+      "--gradient-checkpointing",
+      "--class-weight-power", "0.5",
+      "--label-smoothing", "0.02",
+      "--loss", "focal",
+      "--focal-gamma", "2.0",
+      "--replay-mode", "last1",
+      "--max-replay-samples", "10000",
+      "--replay-sample-weight", "0.5",
+      "--distill-logits", "/content/drive/MyDrive/AADP_exchange/teacher/m8_qwen35_refit_train70k_fp16.pt",
+      "--distill-alpha", "0.5",
+      "--distill-temp", "3.0",
+      "--action-margin-kd-target-grad-ratio", "0.10",
+      "--action-margin-kd-topk", "3",
+      "--action-margin-kd-label-scope", "weak4",
+      "--tune-bias",
+      "--keep-threshold", "0.0",
+      "--tokenize-batch-size", "1024",
+      "--require-zero-amp-skips",
+      "--seed", "42",
+      "--no-research-log",
+      "--save-val-model",
+      "--save-fp16",
+      "--epoch-checkpoint-dir", "/content/drive/MyDrive/AADP_exchange/models/kd_am_weak4_t010_k3_screen_s42_ckpt",
+      "--output-dir", "/content/drive/MyDrive/AADP_exchange/models/kd_am_weak4_t010_k3_screen_s42",
+      "--experiment-suffix", "kd_am_weak4_t010_k3_screen_s42",
+      "--notes", "Lane A one-arm follow-up to the paired all-class action-margin screen: keep the exact M8-KD fixed-session control recipe and teacher top-3 SmoothL1 margins, but apply the auxiliary only when the original row's true label is Weak4. Ordinary KL remains active on every previously covered row, replay/unmatched rows remain margin-masked, top-3 negatives remain 14-class, and the first eligible batch deterministically recalibrates the same 0.10 logit-gradient ratio. Existing 20260714_152551 control is reused; expected active margin rows are exactly 23038 per epoch."
+    ]
+  }
+]

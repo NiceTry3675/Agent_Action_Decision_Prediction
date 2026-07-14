@@ -59,6 +59,53 @@ script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
 
 ## Entries
 
+### 2026-07-15 ~02:15 — trio-KD refit done; solo + main-swap packs built and smoked
+
+- Lane C run `run_20260714_155225` completed: teacher export (rows=70000,
+  routed=21589, main_agreement=0.9868) + full refit (15,000 steps, 3,627s,
+  AMP skips 9, artifact 1090.6 MB). INT8 fidelity **512/512 argmax (100%)**,
+  weight mean_rel 0.97%.
+- Two packs ready under the no-gate endgame policy (slots 9, packaging-first):
+  - `submissions/kd_trioT_s42.zip` (512 MB, SHA `57968ba2…`) — solo
+    single-model pack, packager smoke OK. Read baseline: champion single
+    `0.7938816426`; also gates teammate seed202 usage and gen-2 KD.
+  - `submissions/rfinal_mainT_s42.zip` (1,002,963,703 B, headroom 70.8 MB,
+    SHA `847e04e0…`) — exact mgn125 champion pack with only `model/` (main)
+    swapped s202-INT8 -> trioT-s42-INT8; model_b/model_c/script byte-kept.
+    Clean-extraction offline smoke OK (5 rows, all rules executed, ID
+    order/labels valid). Note: vs the deployed champion this changes seed
+    (202->42) and teacher (M8->trio) together — a Public instance probe, not
+    a causal read. Caveat: the trio teacher was distilled FROM
+    model_b/model_c, so the routed-row ensemble gain may shrink (higher
+    student-member correlation).
+- Meta check: trioT trained at HEAD carries `replay_meta_mode: current`
+  (default; lane-B controls reproduced champion numbers at HEAD, so behavior
+  is unchanged) and zero class bias.
+
+### 2026-07-15 ~01:45 — xlm-r-large member-survival gate: FAIL; cross-family member axis closed
+
+- Question (user-prompted): for the Wave-2 diversity-member card, isn't
+  xlm-r-large better than mbert? Answer: yes on the old evidence
+  (07-07 blend probe vs non-KD HCX: xlm-r-large `+0.0073` > xlm-r-base
+  `+0.0041`; mbert's qv600 pairing evidence was anchored on xlm-r mains, not
+  HCX) — but the KD-absorption risk (m7 precedent: `+0.0088` -> `-0.0027`
+  after KD) had to be re-measured on the deployed surface first.
+- Free gate, no GPU/slot: p2 xlm-r-large len384 3-fold OOF logits (07-04)
+  give honest OOF for every s202 fold-1/2 row (23,332/23,334 rows, 0 dropped;
+  routed fraction 0.3187/0.3189 matches deployment). Deployed pipeline
+  replicated (margin<1.25 routing, ask-boost, all rules); blends tested on
+  routed rows only: centered-mean, z-mean, softmax w50, softmax w70-HCX.
+- **All variants negative on both folds.** Pooled: centered `-0.0044`,
+  z `-0.0045`, prob-w50 `-0.0052`, prob-w70 `-0.0013`; harm > rescue in every
+  cell (e.g. fold2 centered 255 rescue / 361 harm). xlmr raw OOF macro
+  0.734/0.747 vs s202 0.783/0.796 — the KD students absorbed/surpassed what
+  xlm-r added to the pre-KD HCX; the m7 pattern generalizes across
+  architecture families.
+- **Decision: no cross-family member card — neither mbert nor xlm-r-large.**
+  Wave-2 negative-branch fallback is KD seed production / free variance, not
+  member diversity. Artifacts:
+  `experiments/artifacts/20260715_xlmr_member_survival_gate.{py,json}`.
+
 ### 2026-07-15 ~01:10 — s202v sieve refit Public 0.7919; lane closed, teammate seed plan cancelled
 
 - `kd_s202v_s42.zip` scored **0.7919**, runtime `6:09`. One variable vs

@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "experiment": "kd_sieve_ca_bfast_s202",
+  "lane": "b",
+  "decision": "direct_full_refit_public_card",
+  "hypothesis": "Trusted exact-predecessor replay rows should retain the legacy current-metadata augmentation while restoring the champion hard/KD mixture instead of diluting KD with hard-only replay duplicates.",
+  "reconstruction_boundary": {
+    "status": "reconstructed_seed202_recipe_not_bit_identical_historical_resume",
+    "evidence": [
+      "deployed seed202 hf_meta",
+      "canonical kd_sieve_ca_s42 train command",
+      "byte-identical deployed seed202 INT8 main",
+      "original consensus SHA256 040d4772e667fd5322038c50ac796aadc8e82344f094e702a9a8ba385a179864"
+    ]
+  },
+  "single_quality_variable": "trusted predecessor M8 KD inheritance on preselected legacy replay rows",
+  "fixed_contract": {
+    "seed": 202,
+    "serializer": "current_v1",
+    "max_length": 384,
+    "replay_mode": "last1",
+    "replay_cap": 10000,
+    "replay_sample_weight": 0.5,
+    "replay_metadata": "current",
+    "teacher": "original M8 train70k",
+    "distill_alpha": 0.5,
+    "distill_alpha_weak4": 0.7,
+    "distill_temperature": 3.0,
+    "consensus": "original M7/M8/v6",
+    "consensus_backbone_weights": [0.0, 0.25, 0.75, 1.0],
+    "replay_backbone_scale": 1.0
+  },
+  "fail_closed_expected": {
+    "ordered_replay_id_sha256": "69892e03a2f9b185fe70f5ba1589ac4fadd6af62b63f6e3ec6822c6d25b05f04",
+    "selected_replay_rows": 10000,
+    "exact_predecessors": 9575,
+    "unmatched_predecessors": 425,
+    "trusted_consensus_at_least_2": 7112,
+    "linked_correct_count_histogram": {
+      "0": 1931,
+      "1": 532,
+      "2": 754,
+      "3": 6358
+    },
+    "active_weak4": 1686,
+    "active_nonweak": 5426,
+    "active_teacher_top1_correct": 6989,
+    "active_teacher_top1_accuracy": 0.9827052868391451
+  },
+  "forbidden_combinations": [
+    "s202v consensus voter",
+    "predecessor session metadata",
+    "replay hard-backbone sieve",
+    "action-margin KD",
+    "trio teacher",
+    "bias or rule retuning"
+  ],
+  "deployment_if_promoted": "Quantize INT8 and replace only model/ in rfinal_mgn125; preserve model_b, model_c, margin 1.25, centered averaging, ask boost, and all rules."
+}

@@ -1,0 +1,46 @@
+{
+  "status": "prepared",
+  "lane": "a",
+  "required_gpu": "A100",
+  "plan": "colab/action_margin_weak4_lane_a_plan.json",
+  "hypothesis": "The all-class action-margin objective contains useful Weak4 boundary information, but its non-Weak4 gradients cause the observed ask_user/plan_task loss. Restricting only the auxiliary to true-label Weak4 rows should retain the exploration gain without changing ordinary KD elsewhere.",
+  "matched_control": {
+    "experiment_id": "20260714_152551_gpu_transformer_session_current_v1_len384_replay-last1_kd_am_pair_control_s42",
+    "raw_macro_f1": 0.7834507087653948,
+    "raw_weak4_macro_f1": 0.6039056444342794
+  },
+  "evidence": {
+    "all_class_action_margin_raw_delta": -0.0006792995202861,
+    "all_class_action_margin_weak4_delta": 0.0046927150938036,
+    "non_weak4_macro_contribution": -0.0020200757522401,
+    "fixed_control_top1_weak_centered_blend_delta": 0.001203731,
+    "fixed_control_top1_weak_centered_blend_pseudo_session_signs": [
+      0.000274,
+      0.002191,
+      0.001131
+    ]
+  },
+  "single_quality_variable": "Set action-margin true-label scope from all teacher-covered original rows to Weak4 teacher-covered original rows.",
+  "invariants": {
+    "ordinary_kd": "Unchanged alpha=0.5, T=3 on every previously teacher-covered original row.",
+    "margin_candidates": "Detached M8 teacher top-3 negatives over all 13 non-true classes, unchanged.",
+    "margin_strength": "Deterministically recalibrate to the same target logit-gradient ratio 0.10 after applying the Weak4 scope.",
+    "replay": "Legacy last1 cap=10000 weight=0.5; replay remains excluded from action-margin KD.",
+    "expected_active_margin_rows_per_epoch": 23038,
+    "seed_split_serializer": "seed42 fixed session split, current_v1 length384, identical to the paired control.",
+    "amp_skips": 0
+  },
+  "decision_gate": {
+    "raw_macro_delta_min": 0.0007,
+    "raw_weak4_delta_min": 0.0025,
+    "ask_user_plan_task": "No recurrence of the all-class collapse.",
+    "required_classes": "No material collapse in web_search, lint_or_typecheck, run_tests, or run_bash."
+  },
+  "promotion": "If the one-arm screen passes, apply the same scope to the reconstructed seed202 sieve x conditional-alpha recipe. Do not combine it with B-fast in the first refit.",
+  "tests": [
+    ".venv/bin/python -m unittest tests.test_action_margin_kd -v",
+    ".venv/bin/python -m unittest tests.test_trusted_replay_kd tests.test_consensus_kd_sieve -v"
+  ],
+  "launch_command": ".venv/bin/python colab/aadp_colab.py launch a colab/run_plan_remote.py -- --plan colab/action_margin_weak4_lane_a_plan.json",
+  "release_policy": "Never release lane A after completion; preserve the session, Drive mount, daemon, and keep-alive until the user explicitly says otherwise."
+}
