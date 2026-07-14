@@ -52,12 +52,147 @@ Dacon retains the team's highest score, so lower-scoring probes cost only slots.
 Full sieve×condalpha refit with the single validated variable (~1.5 h A100)
 → package int8 (explicit `--hf-dir`; never the stale default `model/`) →
 offline smoke → Public. R1i + seq-exec can be re-appended to any new pack's
-script (implementation in `rfinal_r1i_seqx.zip` / this repo's diagnostic
-`experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.py`).
+script only after revalidation on that model's own OOF surface (implementation
+in `rfinal_r1i_seqx.zip` / this repo's diagnostic
+`experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.py`). The
+all-class action-margin screen later flipped R1i from positive to negative, so
+automatic rule inheritance across changed model surfaces is forbidden.
 
 ---
 
 ## Entries
+
+### 2026-07-15 ~04:15 — Weak4-AM checkpoint recovery eval: POSITIVE (+0.00185 macro, +0.00844 Weak4)
+
+- Damage assessment of the fail-closed Weak4 action-margin screen: the
+  epoch-3 checkpoint is **intact** (219 tensors, zero non-finite;
+  `checkpoint_state.json` epoch 3 complete, calibrated weight `0.2619077`,
+  23,038 active rows/epoch — matches the manifest). Timeline correction: the
+  trainer never stalled; the "GPU 0%" that led to the parent-kill was the
+  idle lane C heartbeat read through the env-var fallback. The only loss was
+  the unexecuted validation step.
+- Recovery eval (local GPU, exact screen protocol: seed42 fixed session
+  split, `current_v1`, len384, `train_transformer.evaluate` path; 14,001 val
+  rows, 115s): **raw macro `0.7853020` vs control `0.7834507` =
+  `+0.0018513`; Weak4 macro `0.6123472` vs `0.6039056` = `+0.0084416`.**
+  Per-class: read_file 0.623, grep 0.643, list_dir 0.523, glob 0.660.
+- Reading: the Weak4-only scope kept (and enlarged) the Weak4 gain that the
+  rejected all-class variant showed (`+0.0084` vs `+0.0047`) while flipping
+  the aggregate from negative to positive — the same-seed paired comparison
+  isolates the single scope variable. **This is the only positive
+  training-recipe screen of the endgame window.**
+- Status: diagnostic (8 AMP skips tripped a plan bug, not weight damage — the
+  eval itself is the damage check). Promotion path: full refit with the
+  champion recipe + weak4-scoped AM + stabilized AMP flags
+  (`--amp-init-scale 64 --amp-growth-interval 1000000`), then main-swap into
+  the mainT pack. Artifact:
+  `experiments/artifacts/20260715_weak4_am_ckpt_recovery_eval.json`.
+
+### 2026-07-15 ~03:55 — ops backfill: s777 sole-writer on lane A; s909 held; lane C stale
+
+- seed777 (trioT main draw) launched 03:12 KST intending lane C but executed
+  on lane A via the `AADP_EXCHANGE` vs `AADP_EXCHANGE_DIR` env-var fallback
+  documented in the incident entry below. After the orphan SIGKILL at
+  03:37 the tracked trainer (PID 63117) is the **single writer**; ETA ~04:45
+  (the 03:12–03:37 dual-trainer contention cost ~10-15 min). The final
+  artifact dir is written once at completion by the survivor; only the
+  `_ckpt` dir had overlapping writers and it is not used for packaging.
+  Packaging gate: hf_meta seed==777 + INT8 quantize-verify fidelity.
+- **User directive: seed909 is on hold** (plan exists locally and on the lane
+  A VM; not launched anywhere). Priority shifted to Weak4 checkpoint damage
+  assessment/recovery. Lane C VM heartbeat went stale (500s+, idle since
+  seed42 completed) — treat as reclaimed; no revive unless a training need
+  reappears.
+- Monitoring of s777 moved to passive rclone reads of the lane A heartbeat;
+  no further cmd-queue writes toward lane A from this session.
+
+### 2026-07-15 ~03:05 — a1 replay-all screen: 2-fold REJECTED; trajectory axis closed (backfill)
+
+- Team-side final verdict (single-model OOF, replay `all` vs champion
+  `last1`, seed42, same folds, replay mode the only variable):
+  fold0 A1 `0.78782` vs regenerated A0 control `0.78704` = `+0.00078`;
+  fold1 A1 `0.79202` vs original `champ_oof_f1` `0.79363` = `-0.00161`;
+  two-fold mean `-0.00042`. Standing rule (any negative fold rejects) →
+  **a1-refit rejected; trajectory-densification axis closed.**
+- The earlier preliminary `+0.00208` on fold0 was retracted: its control file
+  had been deleted in a disk cleanup, and the clean regeneration moved the
+  baseline `0.78574 -> 0.78704`, shrinking the gain to noise level.
+- Consistent with the lane-B replay-predecessor rejection: densifying replay
+  trajectories does not beat champion `last1` under the current recipe.
+- Team-side reserve: `rfinal_a1main.zip` (1005.7 MB, structure-verified,
+  unsubmitted) is a main-swap draw with a slight negative tilt
+  (`-0.00042` OOF mean); hold unless slots remain after neutral draws.
+
+### 2026-07-15 ~03:30 — B-fast Public 0.79614: lower instance; no mainT/trioT was applied
+
+- `kd_sieve_ca_bfast_s202` completed the reconstructed seed202 direct full
+  refit in `3,621.3s` with zero AMP skips. Its fail-closed replay audit
+  passed: 10,000 legacy current-metadata replay rows, 9,575 exact predecessor
+  links, and 7,112 consensus-`c>=2` replay rows receiving predecessor KD;
+  serialized replay text/order stayed invariant and active teacher top-1
+  accuracy was `0.982705`.
+- **Teacher/composition clarification:** B-fast used the original M8 train70k
+  logits, not mainT/trioT. The submitted pack contains B-fast seed202 INT8 as
+  the sole `model/` main. `model_b`, `model_c`, and `script.py` are
+  byte-identical to both mgn125 and mainT packs, but the mainT-s42 weights are
+  absent because `model/` was replaced rather than stacked.
+- `submissions/rfinal_bfast_s202.zip` (1,005,616,302 B, SHA256
+  `9d3b47b9...b816d`) scored **`0.79614`**, runtime **`7:51`**. That is about
+  `-0.001041` versus the `0.797181265` mainT champion and `-0.000484` versus
+  mgn125, using the user-reported rounded score.
+- **Decision: do not promote.** The champion remains `rfinal_mainT_s42`.
+  The delta is still inside the `0.002` interpretation band, so this is a
+  lower full-refit instance, not strong causal evidence that trusted replay
+  KD is harmful. Exact run/package audit lives in
+  `experiments/manifests/20260715_lane_b_bfast_trusted_replay_kd_refit.json`.
+
+### 2026-07-15 ~03:20 — Weak4 follow-up invalid; A/C command-plane incident reconstructed
+
+- The true-label-Weak4 action-margin follow-up reached epoch 3 and wrote a
+  checkpoint (`scope=weak4`, calibrated weight `0.261907703`, 23,038 active
+  rows per epoch), but it is **not a completed screen**. The plan parent was
+  killed while the trainer child continued orphaned; final audit then found
+  8 skipped AMP optimizer steps out of 12,375 and failed closed before
+  validation, final model save, results row, or auto-collect.
+- The immediate plan bug was requiring zero AMP skips without the stabilized
+  `--amp-init-scale 64 --amp-growth-interval 1000000` settings. Therefore no
+  positive/negative quality verdict is allowed. The epoch-3 checkpoint may be
+  evaluated as a diagnostic, but promotion still requires a clean run.
+- Control-plane correction: some intended lane-C manual commands used
+  `AADP_EXCHANGE=AADP_exchange_c`; `cloud_sync.py` recognizes
+  `AADP_EXCHANGE_DIR`, so those calls fell back to `AADP_exchange` and acted
+  on lane A. A later exhaustive `/proc/*/environ` scan found only the proper
+  A daemon (`PID 1150`, `AADP_exchange`) and the separate idle C daemon
+  (`PID 1573`, `AADP_exchange_c`); no duplicate exchange-C daemon was found
+  or killed. The actual `AADP_exchange_c/cmd/done` directory had no new
+  command after `15:52Z`, confirming that the later s909 refusal was written
+  to the default A queue rather than claimed from the C queue.
+- The same scan found two identical seed777 trainers (`PID 60035` and `63117`)
+  writing the same checkpoint/output destinations. After explicit user
+  authorization, the first orphan was identity-checked and SIGKILLed at
+  `18:37:20Z`; tracked trainer `63117` remained alive and A GPU memory returned
+  from ~23.4 GiB to ~11.7 GiB. Because the two writers overlapped earlier, the
+  final seed777 artifact remains collision-exposed and must pass
+  provenance/integrity verification before use. Full incident state is
+  retained in the Weak4 manifest.
+
+### 2026-07-15 ~02:25 — all-class action-margin KD rejected; rules cannot recover it
+
+- Against the same-code seed42 control, teacher-top3 action-margin KD changed
+  raw/bias/2-stage Macro-F1 by
+  **`-0.000679/-0.001175/-0.000744`**. Raw Weak4 mean improved
+  **`+0.004693`**, but the aggregate loss came from non-Weak4 behavior,
+  especially the `ask_user`/`plan_task` boundary.
+- Post-hoc rescue failed: ten rules still left `-0.000431`; adding R1i and
+  sequence-exec widened the gap to `-0.001287`; tuned bias plus all rules was
+  `-0.001861`. R1i itself flipped from `+0.000452` on the control to
+  `-0.000267` on the action-margin surface, and no new ask/plan rule was
+  positive on all three subfolds.
+- **Decision:** reject the all-class auxiliary and do not force it back with
+  rules. The Weak4-only scope remains a logically separate hypothesis because
+  its motivating class slice improved; its first attempted run above is void,
+  not a negative result. Detailed paired metrics and rule audit are stored in
+  `experiments/manifests/20260714_lane_a_action_margin_kd_pair.json`.
 
 ### 2026-07-15 ~02:50 — mainT swap 0.797181265: NEW CHAMPION (+0.00056); gap to 1st now 0.00144
 

@@ -55,5 +55,37 @@
     "trio teacher",
     "bias or rule retuning"
   ],
-  "deployment_if_promoted": "Quantize INT8 and replace only model/ in rfinal_mgn125; preserve model_b, model_c, margin 1.25, centered averaging, ask boost, and all rules."
+  "deployment_if_promoted": "Quantize INT8 and replace only model/ in rfinal_mgn125; preserve model_b, model_c, margin 1.25, centered averaging, ask boost, and all rules.",
+  "completion": {
+    "experiment_id": "20260714_173643_gpu_transformer_session_current_v1_len384_replay-last1_kd_sieve_ca_bfast_s202",
+    "runtime_seconds": 3621.308,
+    "amp_skipped_steps": 0,
+    "selected_replay_rows": 10000,
+    "exact_predecessors": 9575,
+    "active_replay_kd_rows": 7112,
+    "input_and_order_invariant": true,
+    "active_teacher_top1_accuracy": 0.9827052868391451,
+    "teacher_contract": "Original M8 train70k logits. mainT/trioT was not used in training and was explicitly forbidden by the card."
+  },
+  "submission": {
+    "package": "submissions/rfinal_bfast_s202.zip",
+    "bytes": 1005616302,
+    "sha256": "9d3b47b9b14b9182e90f9fc84aa4d8f9a5d3d17cf269511eb712c766d14b816d",
+    "main_model_sha256": "8f8128215278376806ad37edd519d5b5160d20f1a939c07bb650756262b92384",
+    "reference_main_model_sha256": {
+      "rfinal_mainT_s42": "27d36ad91a3108027b47cb136383aee54f47e1656d0a663246ba2c2593202c10",
+      "rfinal_mgn125": "71ba89525023fd9b8582b4f458302c05700ac4c228940dce696388d21d6fac46"
+    },
+    "script_sha256": "f286f21d8e11002930205a6c6deb3d86dacd434f81b5a81a42ba0a5bacfac518",
+    "model_b_sha256": "95f3762a8dc094747f09d40f97f0fb343f857dd4bb8464e9e14819fbebf62dd5",
+    "model_c_sha256": "46183f02ae00b446f4cac8233258fd9e03314d987bc0193409290758e44f235f",
+    "composition": "B-fast seed202 INT8 is the sole model/ main. model_b, model_c, and script.py are byte-identical to both rfinal_mgn125 and rfinal_mainT_s42; the mainT-s42 weights are absent because model/ was replaced, not stacked."
+  },
+  "public_result": {
+    "macro_f1_user_reported": 0.79614,
+    "runtime": "7:51",
+    "approx_delta_vs_rfinal_mainT_s42": -0.001041265,
+    "approx_delta_vs_rfinal_mgn125": -0.0004844725,
+    "decision": "Not promoted. The delta versus the current champion is inside the 0.002 interpretation band, so this is a lower instance read rather than strong causal evidence against trusted replay KD."
+  }
 }

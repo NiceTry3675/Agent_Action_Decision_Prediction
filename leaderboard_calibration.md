@@ -14,57 +14,48 @@ Experiment details live in `experiments/results.csv`.
 
 ## Current Baseline
 
-- Team Public champion: `rfinal_mgn125.zip`, exact Public `0.7966244725`
-  (2026-07-15), runtime `7:46` — the `rfinal_r1i_seqx` pack with only the
-  ensemble routing margin widened `<1.0 -> <1.25`. The increment over
-  `rfinal_r1i_seqx` (`0.7966126109`, runtime `7:29`) is `+0.0000118616` —
-  noise-level, retained because Dacon keeps the maximum. Gap to Public 1st
-  (`0.79862`) is `0.0019955275`. The predecessor is the exact
-  received `kd_ens3_trio_rfinal` archive with only `script.py` replaced: R1i
-  (exec margin rule) and sequence-exec appended after the twig block on
-  immutable-base masks, both transfer-validated on the seed202 OOF folds
-  (`+0.000405/+0.000373`; see
-  `experiments/artifacts/20260714_s202_transfer_p1_r1i_seqexec.json`).
-  Public `+0.00024` vs rfinal — inside the noise band, promoted as the
-  highest-score instance per the endgame doctrine.
-- Previous team champion: `kd_ens3_trio_rfinal`, exact Public `0.7963584846`
-  (2026-07-14), runtime `7:28`, about 959 MiB. It combines seed202 INT8 with
-  low-margin seed909/seed7070 INT4 auxiliaries via centered-logit averaging,
-  then applies ten immutable-base rule behaviors without cascading outputs.
-- Current standings: 1st is `0.79862`; the team is at displayed `0.7966`,
-  leaving a gap of about `0.00202`. Because the final round permits no
-  additional model submissions (user-confirmed), the active target is a
-  Public-stage breakthrough that clears this gap; post-qualification
-  model iteration cannot be part of the plan.
+- Team Public champion: `rfinal_mainT_s42.zip`, exact Public `0.797181265`
+  (2026-07-15), runtime `7:37`. It is the mgn125 trio pack with only `model/`
+  swapped from the deployed seed202 M8-teacher main to the seed42 trio-teacher
+  student. The same weights scored `0.79368` solo, so the
+  `+0.0005567925` ensemble-pack gain over mgn125 is treated as a favorable
+  main-instance draw, not causal evidence for trio self-distillation. Gap to
+  Public 1st (`0.79863`) is `0.001448735`.
+- Previous champion `rfinal_mgn125.zip` scored `0.7966244725` in `7:46`; it
+  differs from `rfinal_r1i_seqx` only by widening the main routing margin
+  `<1.0 -> <1.25`. `rfinal_r1i_seqx` scored `0.7966126109` in `7:29` and adds
+  R1i plus sequence-exec to the received trio archive. The original rfinal
+  anchor is `0.7963584846` in `7:28`.
+- Current standings: 1st is `0.79863`; the team is at `0.797181265`, leaving
+  `0.001448735`. Sub-0.002 main swaps remain instance probes, while recipe
+  claims require OOF or controlled evidence.
 - Dacon automatically selects the team's highest submission score. A later
-  lower-scoring submission does not replace `0.7963584846`, lower the rank, or
+  lower-scoring submission does not replace `0.797181265`, lower the rank, or
   incur a score penalty; it costs only one of the 10 daily slots and elapsed
   time. `rfinal` is therefore a reproducible benchmark artifact, not a package
   that must be held back for the last submission.
-- Public is `+0.0008984846` over the R1+R1b predecessor, `+0.0020984846` over
-  the no-rule ens2 pack, and `+0.0024768420` over the exact seed42 local
-  champion. The complete rule line clears the `0.002` interpretation band
-  versus ens2, but this is a consolidated multi-rule/third-member pack rather
-  than a one-variable causal estimate.
+- The retained champion is `+0.002921265` over the no-rule ens2 pack
+  (`0.79426`) and `+0.0032996224` over the exact seed42 local champion. These
+  are consolidated/instance differences, not one-variable causal estimates.
 - The rule stack was positive on all five reported diagnostic folds
   (`+0.00154` to `+0.00289`) with zero collisions. These are three seed42 plus
   two seed202 folds, not an exact trio OOF surface; seed909 and seed7070 have
   no reported OOF. Preserve the distinction between strong consolidation
   evidence and exact ensemble calibration.
-- A speed-path submission tied exactly at `0.7963584846` but ran in `7:37`, so
-  unmodified eager rfinal remains the current champion reference. A chain/leak
-  probe also tied exactly, closing train-test session overlap as a usable lever.
+- A speed-path submission tied the old rfinal at `0.7963584846` but ran in
+  `7:37`; a chain/leak probe also tied exactly, closing train-test session
+  overlap as a usable lever.
 - Current independently trained local champion remains `kd_sieve_ca_s42.zip`,
   exact Public `0.7938816426`, runtime `5:58/10:00`. The exact received rfinal
   archive, including seed7070 and the ten-rule implementation, is now local at
   `submissions/kd_ens3_trio_rfinal.zip`; its exact training commands and aligned
   seed909/seed7070 OOF are still unavailable, so no training reproduction is
   claimed.
-- Strategic interpretation: sub-`0.002` candidates remain useful only as
-  consolidation pieces. A credible 1st-place lane must introduce an orthogonal
-  effect with plausible scale above `+0.0022615154`, or combine independently
-  validated levers. Lower-scoring experimental submissions do not disturb the
-  retained rfinal score.
+- Strategic interpretation: sub-`0.002` candidates remain useful as
+  consolidation pieces or predeclared main-instance probes. A credible
+  recipe-level 1st-place lane must introduce an orthogonal effect near the
+  remaining `+0.001448735`, or combine independently validated levers.
+  Lower-scoring experimental submissions do not disturb the retained score.
 
 ## Notes
 
@@ -151,3 +142,4 @@ score lands.
 | 2026-07-15 | `kd_s202v_s42.zip` / `...kd_sieve_ca_s202v_refit_s42`: exact `kd_sieve_ca_s42` champion recipe with only the consensus-reliability payload swapped — v6 voter -> deployed s202 on the 46,666 fold-1/2-covered rows (fold 0 keeps v6); 4,039 rows changed correct-count, `c=3` histogram 48,607 -> 49,325; reconstruction check passed on all 70k | n/a (full-refit-only; single A100 run, 15,000 steps, INT8 fidelity 511/512) | **0.7919** | approximately `-0.0020` vs exact single-model champion `0.7938816426` | **Not promoted; s202v sieve lane closed.** Runtime `6:09/10:00`. The delta sits at the edge of the `0.002` noise band, so it is not causal evidence the s202-voter sieve hurts — but the instance is worse and shows none of the hoped `+0.002`-class sieve gain. With about 9 hours left this kills the follow-on plan (teammate s202v seed production -> trio reassembly): no positive read to justify 3x seed cost. Team champion unchanged at `0.7966244725`. |
 | 2026-07-15 | `kd_trioT_s42.zip` / `...kd_sieve_ca_trioT_refit_s42`: exact `kd_sieve_ca_s42` champion recipe with only the KD teacher swapped — M8 train70k logits -> deployment-faithful trio-ensemble teacher (s202 raw everywhere, mean-centered 3-member average on margin<1.25 routed rows; rules/ask-boost excluded; teacher-vs-s202 argmax agreement 0.9868) | n/a (full-refit-only; 15,000 steps, INT8 fidelity 512/512) | **0.79368** | `-0.0002` vs exact single-model champion `0.7938816426` | **Neutral — exact-tie class; ensemble self-distillation adds nothing at seed42.** Runtime `5:57/10:00`. The trio teacher's extra dark knowledge (~1.3% argmax disagreement vs s202) did not transfer as Macro-F1; the student is Public-equivalent to the M8-teacher student. Gen-2 KD is dead (nothing gained to re-distill); teammate seed202-trioT demotes from "gap-scale card" to an optional best-of-N main-swap variance draw. Swap-pack probe (`rfinal_mainT_s42`) reads separately. |
 | 2026-07-15 | `rfinal_mainT_s42.zip`: exact mgn125 champion pack with only `model/` (ensemble main) swapped s202-M8-INT8 -> trioT-s42-INT8; model_b/model_c/script byte-kept | solo read of the same weights: `0.79368` (neutral vs single champion) | **0.797181265** | `+0.0005567925` vs mgn125 `0.7966244725` | **NEW TEAM PUBLIC CHAMPION.** Runtime `7:37/10:00`. Sub-0.002 — an instance win, not recipe evidence: the neutral solo read shows the gain is a favorable main-draw inside the ensemble, so main-swap draws move ~±0.0006 at champion scale and each remaining main instance (teammate seed202-trioT, a1-refit) is a legitimate 1-slot draw at this level. Gap to 1st (`0.79863`, updated 07-15): `0.001448735`. |
+| 2026-07-15 | `rfinal_bfast_s202.zip` / `...kd_sieve_ca_bfast_s202`: reconstructed seed202 sieve x conditional-alpha refit using the **original M8 teacher** plus trusted predecessor KD on 7,112 consensus-`c>=2` legacy replay rows; mainT/trioT explicitly absent; submitted pack replaces only `model/` while preserving model_b/model_c/script | n/a (direct full refit; replay invariants passed, zero AMP skips, INT8 fidelity 511/512) | **0.79614** (user-reported rounded) | approximately `-0.001041` vs mainT champion; `-0.000484` vs mgn125 | **Not promoted.** Runtime `7:51/10:00`. Inside the 0.002 interpretation band: a lower seed202 main instance, not strong causal evidence against trusted replay KD. `model_b`, `model_c`, and script hashes match mainT/mgn125, but the mainT weights are not stacked because B-fast occupies `model/`. Champion remains `rfinal_mainT_s42`. |

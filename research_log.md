@@ -2127,7 +2127,7 @@ decide whether to refit, package, and spend a Public slot.
   reconstructible OOF surface. Binary assets remain gitignored; the tracked
   index is `experiments/manifests/20260714_team_champion_assets.json`.
 
-### 2026-07-14 - relational KD and predecessor-replay screens rejected
+### 2026-07-14 - relational KD and predecessor-replay screens (VOID/confounded diagnostics)
 
 - Both seed42 matched-A100 screens completed, auto-collected, were pulled by
   explicit run name, and their idle VMs were released before local analysis.
@@ -2135,16 +2135,21 @@ decide whether to refit, package, and spend a Public slot.
   `-0.001289/-0.002749/-0.002718` versus the matched control. Exact-predecessor
   replay scored `0.782022/0.784410/0.785709`, deltas
   `-0.003358/-0.005466/-0.004885`.
-- Both implementation contracts passed. Relational KD aligned all 70,000
-  original rows, masked 10,000 replay rows, and used a fidelity-gated hidden
-  payload. Predecessor replay reproduced its expected audit exactly: 46,775
-  matches, 2,078 fail-closed drops, and 10,000 selected after the unchanged
-  balanced cap. The negative scores therefore measure the intended levers,
-  not a cache/alignment failure.
+- **2026-07-15 correction:** these scores do not isolate the intended levers.
+  The relational hidden-Gram objective included the self-similarity diagonal;
+  unrelated `16x1024` representations already aligned at about `0.9864`, and
+  its gradient was roughly 1/50 of the off-diagonal form. The replay treatment
+  removed missing predecessors before the balanced cap, changing the sampled
+  replay population as well as metadata (only 3,217/10,000 fixed-screen IDs
+  overlapped the legacy cap; 2,616/10,000 on full 70k). Thus A is a
+  flawed-objective diagnostic and B a confounded composite negative. Neither
+  result rejects action-margin relational KD or predecessor metadata in
+  isolation; see `research_log_final12h.md` for the corrected follow-ups.
 - Priority-class review rejects both directions: isolated `read_file` or
   `glob_pattern` gains did not compensate for consistent `grep_search`,
   `web_search`, and `lint_or_typecheck` losses; predecessor replay also hurt
-  `run_bash` and `run_tests`. **Decision:** do not launch either conditional
-  champion refit, do not pull the 1.1 GB screen models, and do not spend a
-  Public slot. The rfinal Public baseline remains unchanged. Full deltas are
+  `run_bash` and `run_tests`. **Historical operational decision:** do not
+  launch either then-conditional champion refit, pull the 1.1 GB screen
+  models, or spend a Public slot on those exact flawed/confounded cards. This
+  is not a closure of their corrected successor hypotheses. Full deltas are
   in `experiments/artifacts/20260714_breakthrough_lane_ab_screen_decision.json`.

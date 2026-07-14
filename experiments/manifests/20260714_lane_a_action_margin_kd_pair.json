@@ -1,5 +1,5 @@
 {
-  "status": "in_flight",
+  "status": "completed_rejected",
   "lane": "a",
   "required_gpu": "A100",
   "plan": "colab/action_margin_kd_lane_a_pair_plan.json",
@@ -45,5 +45,38 @@
     ".venv/bin/python -m unittest tests.test_relational_kd -v"
   ],
   "launch_command": ".venv/bin/python colab/aadp_colab.py launch a colab/run_plan_remote.py -- --plan colab/action_margin_kd_lane_a_pair_plan.json",
-  "decision_rule": "Compare arm 2 directly with arm 1 on raw, bias, and 2-stage Macro-F1 plus list_directory/read_file/grep_search/glob_pattern/web_search/lint_or_typecheck/run_tests/run_bash. Do not promote from the historical 20260709 control alone; require no material weak-class collapse before any refit."
+  "decision_rule": "Compare arm 2 directly with arm 1 on raw, bias, and 2-stage Macro-F1 plus list_directory/read_file/grep_search/glob_pattern/web_search/lint_or_typecheck/run_tests/run_bash. Do not promote from the historical 20260709 control alone; require no material weak-class collapse before any refit.",
+  "outcome": {
+    "control": {
+      "experiment_id": "20260714_152551_gpu_transformer_session_current_v1_len384_replay-last1_kd_am_pair_control_s42",
+      "raw_macro_f1": 0.7834507087653948,
+      "bias_macro_f1": 0.7870738725938894,
+      "two_stage_macro_f1": 0.7880188565859669,
+      "raw_weak4_macro_f1": 0.6039056444342794
+    },
+    "treatment": {
+      "experiment_id": "20260714_161705_gpu_transformer_session_current_v1_len384_replay-last1_kd_am_t010_k3_screen_s42",
+      "raw_macro_f1": 0.7827714092451087,
+      "bias_macro_f1": 0.7858990479243542,
+      "two_stage_macro_f1": 0.7872744927885093,
+      "raw_weak4_macro_f1": 0.6085983595280835,
+      "calibrated_weight": 0.3409867850437218,
+      "achieved_first_batch_grad_ratio": 0.1
+    },
+    "deltas": {
+      "raw_macro_f1": -0.0006792995202861,
+      "bias_macro_f1": -0.0011748246695352,
+      "two_stage_macro_f1": -0.0007443637974576,
+      "raw_weak4_macro_f1": 0.0046927150938036
+    },
+    "rule_recovery_audit_user_reported": {
+      "ten_rule_delta_vs_control": -0.000431,
+      "ten_rule_plus_r1i_plus_sequence_exec_delta_vs_control": -0.001287,
+      "tuned_bias_plus_all_rules_delta_vs_control": -0.001861,
+      "r1i_increment_on_control": 0.000452,
+      "r1i_increment_on_treatment": -0.000267,
+      "ask_user_plan_task_rule_all_three_subfolds_positive": false
+    },
+    "decision": "Reject the all-class action-margin auxiliary and do not rescue it with post-hoc rules. The Weak4-only auxiliary remains a separate hypothesis because the raw Weak4 mean improved while non-Weak4 classes, especially ask_user/plan_task, carried the aggregate loss."
+  }
 }
