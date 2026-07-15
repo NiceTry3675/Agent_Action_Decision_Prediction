@@ -62,6 +62,48 @@ automatic rule inheritance across changed model surfaces is forbidden.
 
 ## Entries
 
+### 2026-07-15 ~10:00 — CLOSE-OUT: leaderboard shut at 0.7976673203; final slot = champion@0.75 coin-flip (queued)
+
+- Final-hour sequence after the s7070-AM champion: `rfinal_amw4_42m10`
+  (seed42@1.0) read **0.7960642287** — killing the "seed42 always wins"
+  heuristic (same-config seed spread 0.0016 peak-to-peak). The hybrid trio
+  `rfinal_amhyb_m10` (model_c old-7070 -> AM-s42 via the parity-verified
+  int4 encoder) read an **exact 10-decimal tie** `0.7976673203` at `7:15` —
+  second exact tie of the day; member identity in the centered low-margin
+  average is prediction-inert across training-objective families. The
+  **member axis is closed for good.**
+- Rejected in the final hour, all on leak-free band evidence: selective
+  threshold w4-1.0/else-1.25 (its target band non-w4 error is only 16.9% —
+  members there are net interference), sub-1.0 grid generally, and the
+  member-drop/fp16-hybrid precision card (both halves separately refuted by
+  Public anchors: mlp6 −0.00006, ens2 +0.0005).
+- **s777-AM race lost to the clock by ~3 minutes**: launched 08:50 on warm
+  lane A (after an 07:40->08:50 wall-clock accounting error on my side),
+  trained clean (AMP skips 0, epoch ckpts 09:11/09:32, final artifact
+  09:54), but the irreducible int8+zip+upload pipeline (~6 min) could not
+  fit before 10:00. Model archived at
+  `experiments/incoming/models/kd_sieve_ca_amw4_t010_k3_refit_s777` — an
+  unread @1.0 main instance, usable if any post-deadline evaluation ever
+  matters.
+- **Final slot (10/10)**: `rfinal_amw4_7070m075.zip` — champion pack with
+  routing `<0.75` (one line). Rationale: with no experiments after it,
+  interpretability is worthless and Dacon-max makes zero-mean variance
+  EV-positive; the [0.75,1.0) band (33.4% err) sits below the
+  weakly-identified 41.5% break-even anchor, so direction is a genuine coin
+  flip. Submitted 09:57; scoring queued behind ~70 entries — result to be
+  recorded when it lands.
+- **Finals context (user-provided)**: 본선 = presentation 40 / score 50 /
+  inference speed 10, with speed expected to bind to the top-score solution.
+  The 7:15 exact-tie pack is the fastest holder of the top score; if the
+  0.75 gamble lands ≥ champion it would take that role at ~7:0x.
+- Day summary: 0.7966244725 -> **0.7976673203** (+0.0010428478) across 10
+  slots; gap to 1st shrank 0.0020 -> **0.00096**. The decisive chain:
+  weak4-AM checkpoint recovery eval (+0.00185 screen) -> routing-band audit
+  (@1.25 over-routes AM mains) -> s7070@1.0. Ops lessons for the record:
+  `AADP_EXCHANGE` vs `AADP_EXCHANGE_DIR` env-var fallback caused every
+  cross-lane incident tonight; wall-clock arithmetic errors (twice) nearly
+  cost the final two cards — timestamps beat mental clocks.
+
 ### 2026-07-15 ~07:20 — s7070-AM@1.0 Public 0.7976673203: NEW CHAMPION; gap to 1st 0.00096
 
 - `rfinal_amw4_7070m10.zip` scored **0.7976673203**, runtime `7:23` —

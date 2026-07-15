@@ -17,6 +17,14 @@
   leak-free band audit motivating @1.0; the sibling probe s909-AM@1.25 read
   `0.7960` (`7:55`), isolating the over-routing cost. SHA `47e50cef…`,
   1,002,966,933 B.
+- **Prediction-identical faster twin**: `rfinal_amhyb_m10.zip` (model_c
+  swapped to weak4-AM-s42 INT4) tied the champion to 10 decimals at
+  runtime **`7:15`** — the fastest holder of the top score, relevant to the
+  finals inference-speed criterion (본선 = 발표 40 / 점수 50 / 추론속도 10).
+- Leaderboard closed 2026-07-15 10:00 KST with the team at `0.7976673203`,
+  gap to 1st (`0.79863`) `0.0009626797`. One submission still in the scoring
+  queue at close: `rfinal_amw4_7070m075.zip` (routing `<0.75` coin-flip on
+  the champion pack) — record its Public when the queue drains.
 
 ### Previous team Public champion: trio-KD student as ensemble main (`0.797181265`)
 

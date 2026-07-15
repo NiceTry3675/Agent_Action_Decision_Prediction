@@ -12,23 +12,21 @@ Experiment details live in `experiments/results.csv`.
 | XLM-R 5ep no-replay handoff | `0.738900` tuned | n/a | expected `0.726-0.728` | expected negative vs fixed | Canonical fixed-session baseline before replay. |
 | XLM-R replay + OOF rules + sparse SVC w4 | `0.751733` | `0.741881` | `0.743` | `+0.001119` vs OOF, `-0.008733` vs fixed | Historical encoder baseline; OOF calibrated well, fixed was optimistic. |
 
-## Current Baseline
+## Current Baseline (final; leaderboard closed 2026-07-15 10:00 KST)
 
-- Team Public champion: `rfinal_mainT_s42.zip`, exact Public `0.797181265`
-  (2026-07-15), runtime `7:37`. It is the mgn125 trio pack with only `model/`
-  swapped from the deployed seed202 M8-teacher main to the seed42 trio-teacher
-  student. The same weights scored `0.79368` solo, so the
-  `+0.0005567925` ensemble-pack gain over mgn125 is treated as a favorable
-  main-instance draw, not causal evidence for trio self-distillation. Gap to
-  Public 1st (`0.79863`) is `0.001448735`.
-- Previous champion `rfinal_mgn125.zip` scored `0.7966244725` in `7:46`; it
-  differs from `rfinal_r1i_seqx` only by widening the main routing margin
-  `<1.0 -> <1.25`. `rfinal_r1i_seqx` scored `0.7966126109` in `7:29` and adds
-  R1i plus sequence-exec to the received trio archive. The original rfinal
-  anchor is `0.7963584846` in `7:28`.
-- Current standings: 1st is `0.79863`; the team is at `0.797181265`, leaving
-  `0.001448735`. Sub-0.002 main swaps remain instance probes, while recipe
-  claims require OOF or controlled evidence.
+- **Team Public champion: `0.7976673203`**, held by two prediction-identical
+  packs: `rfinal_amw4_7070m10.zip` (runtime `7:23`) and the exact-tie
+  `rfinal_amhyb_m10.zip` (runtime **`7:15`** — the faster twin, relevant to
+  the finals speed criterion). Recipe: weak4-scoped action-margin KD seed7070
+  full refit as ensemble main, routing restored to `<1.0`, ten rules + R1i +
+  seq-exec unchanged.
+- Lineage on the final day: mgn125 `0.7966244725` (`7:46`) -> mainT-s42
+  `0.797181265` (`7:37`, trio-teacher KD main draw) -> amw4-s7070@1.0
+  `0.7976673203` (`7:23`). One read pending: the final-slot
+  `rfinal_amw4_7070m075.zip` coin-flip (queued at close).
+- Final standings pre-queue: 1st `0.79863`; team gap **`0.0009626797`**.
+  Sub-0.002 main swaps remain instance probes, while recipe claims require
+  OOF or controlled evidence.
 - Dacon automatically selects the team's highest submission score. A later
   lower-scoring submission does not replace `0.797181265`, lower the rank, or
   incur a score penalty; it costs only one of the 10 daily slots and elapsed
@@ -145,4 +143,7 @@ score lands.
 | 2026-07-15 | `rfinal_mainT_s777.zip`: mainT pack with `model/` swapped trioT-s42 -> trioT-s777 (same recipe, seed-only reroll; INT8 fidelity 512/512; script/members byte-kept) | n/a (full-refit-only draw) | **0.7969** (user-reported rounded) | about `-0.0003` vs mainT champion `0.797181265` | **Not promoted — lower draw, champion unchanged.** Runtime `7:36/10:00`. Second trioT main draw: s42 drew `+0.00056`, s777 `-0.0003` relative to s42 — consistent with the ±0.0006 draw band; the trioT seed axis now has two reads and no reason to prefer more plain rerolls over the weak4-AM lane. |
 | 2026-07-15 | `rfinal_amw4_909.zip`: mainT pack with `model/` swapped to weak4-AM seed909 (clean run, AMP skips 0, INT8 fidelity 511/512); script @1.25 and members byte-kept. Axis card for weak4-scoped action-margin KD (promoted from s42 after the lane-B VM death) | recovered-ckpt screen (seed42 val-model): raw `+0.00185`, Weak4 `+0.00844`; rules re-gated on the AM surface (10-rule `+0.00287`, R1i `+0.00028`) | **0.7960** | `-0.00118` vs champion `0.797181265`; `-0.0006` vs mgn125 | **Not promoted; axis undecided.** Runtime `7:55` (+18s vs mainT) — confirms the predicted over-routing: the AM main routes 39.7% at margin<1.25 (vs 31.9% on s202), pushing ~0.8pp of mostly-correct rows (19.4% band error) into member interference. This read cannot separate "AM hurts in ensemble" from "@1.25 over-routes AM mains"; the s7070-AM@1.0 card tests the correction directly, and the s42-AM rerun (~08:00) resolves the seed axis. |
 | 2026-07-15 | `rfinal_amw4_7070m10.zip`: mainT pack with `model/` = weak4-AM seed7070 (clean run, AMP skips 0, INT8 511/512) **and** routing restored `<1.25 -> <1.0` (script one-line change) | leak-free band audit: AM [1.00,1.25) band is 19.4% error (vs 41.5% on s202, whose widening was Public-neutral) -> marginal band tilts negative on AM mains | **0.7976673203** | `+0.0004860553` vs mainT champion; `+0.00167` vs s909-AM@1.25 | **NEW TEAM PUBLIC CHAMPION.** Runtime `7:23` (−32s vs s909@1.25, matching the routing cut 39.7%→34.1%). The +0.00167 vs the sibling probe mixes seed draw (±0.0006) and the routing correction; the correction direction was pre-registered from the band audit. Gap to 1st: **`0.0009626797`** — under 0.001 for the first time. s42-AM@1.0 (fidelity 512/512) follows as best-of-N at the winning configuration. |
+| 2026-07-15 | `rfinal_amw4_42m10.zip`: same winning configuration, `model/` = weak4-AM seed42 (fidelity 512/512), @1.0, members/script byte-kept | n/a (seed-only draw) | **0.7960642287** | `-0.0016030916` vs s7070-AM champion | **Not promoted — weak draw.** Runtime `7:31`. Kills the "seed42 always wins" heuristic decisively (largest same-config seed spread observed: 0.79606 vs 0.79767). Champion remains s7070-AM@1.0; AM@1.0 seed spread now measured at ~0.0016 peak-to-peak. |
+| 2026-07-15 | `rfinal_amhyb_m10.zip`: champion pack with only `model_c` swapped old-M8-s7070-INT4 -> weak4-AM-s42-INT4 (own int4-group128-v1 encoder, codec parity 170/170 byte-exact vs team files); removes the main/member seed-7070 duplication, keeps one generalist (old s909) | member-identity evidence: c0a8 exact tie within M8 family | **0.7976673203** | exactly `0.0000000000` vs champion | **Exact tie to 10 decimals — zero prediction flips, again.** Runtime `7:15` (−8s vs champion 7:23). Member identity inside the centered low-margin average is prediction-inert even ACROSS training-objective families (2nd exact tie after c0a8). Side value: this is the fastest pack holding the top score — relevant to the finals inference-speed criterion (발표40/점수50/속도10, speed tied to the top-score solution). |
+| 2026-07-15 | `rfinal_amw4_7070m075.zip`: champion pack with only the routing threshold tightened `<1.0 -> <0.75` (script one line; routing ~34% -> ~28.5%) — deliberate coin-flip on the final slot, submitted 09:57 before the 10:00 close | leak-free AM band profile: [0.75,1.0) main-err 33.4% vs the weakly-identified 41.5% break-even anchor — direction genuinely uncertain, ±0.0005 scale; zero-mean variance is EV-positive under Dacon-max | *submitted; scoring queued (~70 ahead)* | vs champion `0.7976673203` | Final submission of the competition (slot 10/10). Chosen over the s777-AM race (training finished 09:54, physically unpackageable by 10:00) and over s909-AM@1.0 (weak-instance evidence). Fill Public when the queue drains. |
 | 2026-07-15 | `rfinal_bfast_s202.zip` / `...kd_sieve_ca_bfast_s202`: reconstructed seed202 sieve x conditional-alpha refit using the **original M8 teacher** plus trusted predecessor KD on 7,112 consensus-`c>=2` legacy replay rows; mainT/trioT explicitly absent; submitted pack replaces only `model/` while preserving model_b/model_c/script | n/a (direct full refit; replay invariants passed, zero AMP skips, INT8 fidelity 511/512) | **0.79614** (user-reported rounded) | approximately `-0.001041` vs mainT champion; `-0.000484` vs mgn125 | **Not promoted.** Runtime `7:51/10:00`. Inside the 0.002 interpretation band: a lower seed202 main instance, not strong causal evidence against trusted replay KD. `model_b`, `model_c`, and script hashes match mainT/mgn125, but the mainT weights are not stacked because B-fast occupies `model/`. Champion remains `rfinal_mainT_s42`. |
