@@ -5,6 +5,31 @@ entry). All new entries from 2026-07-14 ~23:00 KST onward go here. Deadline:
 **2026-07-15 (Wed) 10:00 KST**; the final day has the full 10 submission slots.
 Dacon retains the team's highest score, so lower-scoring probes cost only slots.
 
+## 2026-07-15 — Local weight cleanup
+
+- Per user instruction, Drive was left untouched and local cleanup was limited
+  to the working tree; `.git` history was not rewritten or pruned.
+- Removed all local model bundles and weight-bearing submission archives,
+  three weak4 full-CV learned checkpoints, and the trained starter
+  TF-IDF/logistic model. Approximate removed file content: 95.62 GB.
+- Preserved non-weight tensor artifacts (logits, OOF/consensus predictions,
+  hidden features, datasets, and caches). Historical artifact paths in this
+  log document provenance and may no longer exist locally.
+- Follow-up audit found `kd_condalpha_refit` FP16 in an unreachable Git tar
+  object. The complete nine-file HF bundle was recovered and uploaded to the
+  Drive project `materials/checkpoints/` tree; model SHA256 is
+  `552868fe63711dc542c1951023513f46b5301b477eaefe99aa3a2390fb294478`
+  and Drive MD5 is `9ff579148caf2c14bc0422de099ffae3`. A non-reproducible
+  31 KB OOF logistic-referee parameter file was also preserved under
+  `materials/classical/`.
+- After remote verification, reproducible random probe heads and all
+  unreachable/reflog-only weight objects were deleted. `.git` shrank from
+  about 4.5 GB to 131 MB without rewriting reachable commit history. Five
+  learned-artifact objects (four initial baseline objects plus the uploaded
+  OOF referee; 71,250,950 bytes total) remain reachable in published history
+  under the prior 3A exclusion. Full hashes and decisions are in
+  `experiments/manifests/20260715_local_weight_cleanup.json`.
+
 ## State snapshot (2026-07-14 ~23:00 KST)
 
 - **Team Public champion: `submissions/rfinal_r1i_seqx.zip`, displayed
@@ -90,8 +115,12 @@ automatic rule inheritance across changed model surfaces is forbidden.
   interpretability is worthless and Dacon-max makes zero-mean variance
   EV-positive; the [0.75,1.0) band (33.4% err) sits below the
   weakly-identified 41.5% break-even anchor, so direction is a genuine coin
-  flip. Submitted 09:57; scoring queued behind ~70 entries — result to be
-  recorded when it lands.
+  flip. Submitted 09:57; scoring queued behind ~70 entries. **Post-close
+  result: `0.79739` (`-0.00028`) — champion unchanged.** The read completes
+  the three-point routing dose-response (@1.25 `0.7960` / @1.0
+  `0.7976673203` / @0.75 `0.79739`), bracketing 1.0 as the measured optimum;
+  the 1.0-vs-0.75 pair is a clean same-seed single-variable comparison
+  confirming net member rescue in the [0.75,1.0) band.
 - **Finals context (user-provided)**: 본선 = presentation 40 / score 50 /
   inference speed 10, with speed expected to bind to the top-score solution.
   The 7:15 exact-tie pack is the fastest holder of the top score; if the

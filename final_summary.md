@@ -1,30 +1,59 @@
 # Final Summary
 
+## Local artifact availability (2026-07-15 cleanup)
+
+- At the user's direction, all weight-bearing artifacts were removed from the
+  local working tree: `model/`, `experiments/incoming/models/`,
+  `submissions/`, the three weak4 full-CV `model.pt` checkpoints, and the
+  trained TF-IDF/logistic baseline files. This reclaimed approximately
+  95.62 GB of file contents.
+- Follow-up cleanup recovered the unique `kd_condalpha_refit` FP16 bundle from
+  an unreachable Git object and uploaded it to
+  `gdrive:Agent_Action_Decision_Prediction/materials/checkpoints/`. A small
+  non-reproducible OOF logistic-referee model was preserved under
+  `materials/classical/`; both uploads were verified by size and MD5.
+- Reachable Git commit history was not rewritten. Unreachable and reflog-only
+  weight objects were pruned after the verified upload, reducing `.git` from
+  about 4.5 GB to 131 MB. Five learned-artifact objects remain in published
+  history (four early baseline objects plus the uploaded OOF referee;
+  71,250,950 bytes total); removing them would require a separate history
+  rewrite, outside the selected 3A scope.
+- The local paths mentioned below are retained as historical provenance, not
+  as statements of current local availability. Non-weight artifacts such as
+  logits, OOF predictions, hidden features, datasets, rules, manifests, and
+  cache payloads remain local.
+
 ## Current Public Baseline
 
 ### Team Public champion: weak4-AM main + routing 1.0 (`0.7976673203`)
 
-- Public Macro-F1 `0.7976673203` (`submissions/rfinal_amw4_7070m10.zip`,
-  2026-07-15), runtime `7:23`. The mainT pack with two changes vs the
-  previous champion: `model/` swapped to the weak4-scoped action-margin KD
-  seed7070 full refit (clean run, AMP skips 0, INT8 fidelity 511/512) and the
-  ensemble routing threshold restored `<1.25 -> <1.0` (the AM main's
-  compressed margins over-route at 1.25: 39.7% routed with a 19.4%-error
-  marginal band; @1.0 restores the ~34% operating point). `+0.0004860553`
-  over mainT-s42. Gap to Public 1st (`0.79863`): **`0.0009626797`**.
+- Public Macro-F1 `0.7976673203`; the registered champion pack is
+  **`submissions/rfinal_amhyb_m10.zip`** (runtime **`7:15`** — the faster of
+  the two exact-tie packs; ties resolve to the faster runtime). The score was
+  first achieved by `rfinal_amw4_7070m10.zip` (`7:23`): the mainT pack with
+  two changes vs the previous champion — `model/` swapped to the weak4-scoped
+  action-margin KD seed7070 full refit (clean run, AMP skips 0, INT8 fidelity
+  511/512) and the ensemble routing threshold restored `<1.25 -> <1.0` (the
+  AM main's compressed margins over-route at 1.25: 39.7% routed with a
+  19.4%-error marginal band; @1.0 restores the ~34% operating point).
+  `+0.0004860553` over mainT-s42. Gap to Public 1st (`0.79863`):
+  **`0.0009626797`**.
 - Evidence chain: recovered-checkpoint screen (raw `+0.00185`, Weak4
   `+0.00844` vs matched control), rules re-gated positive on the AM surface,
   leak-free band audit motivating @1.0; the sibling probe s909-AM@1.25 read
   `0.7960` (`7:55`), isolating the over-routing cost. SHA `47e50cef…`,
   1,002,966,933 B.
-- **Prediction-identical faster twin**: `rfinal_amhyb_m10.zip` (model_c
-  swapped to weak4-AM-s42 INT4) tied the champion to 10 decimals at
-  runtime **`7:15`** — the fastest holder of the top score, relevant to the
-  finals inference-speed criterion (본선 = 발표 40 / 점수 50 / 추론속도 10).
+- **The registered champion is the exact-tie twin**: `rfinal_amhyb_m10.zip`
+  (model_c swapped to weak4-AM-s42 INT4) tied to 10 decimals at runtime
+  **`7:15`** and, being faster, holds the champion slot — so the top score
+  and the fastest runtime sit in the same pack for the finals criteria
+  (본선 = 발표 40 / 점수 50 / 추론속도 10).
 - Leaderboard closed 2026-07-15 10:00 KST with the team at `0.7976673203`,
-  gap to 1st (`0.79863`) `0.0009626797`. One submission still in the scoring
-  queue at close: `rfinal_amw4_7070m075.zip` (routing `<0.75` coin-flip on
-  the champion pack) — record its Public when the queue drains.
+  gap to 1st (`0.79863`) `0.0009626797`. The last queued submission
+  (`rfinal_amw4_7070m075.zip`, routing `<0.75`) scored `0.79739`
+  (`-0.00028`) — champion unchanged, and the read completes a three-point
+  routing dose-response (@1.25 `0.7960` / @1.0 `0.7976673203` / @0.75
+  `0.79739`) bracketing 1.0 as the measured optimum.
 
 ### Previous team Public champion: trio-KD student as ensemble main (`0.797181265`)
 
