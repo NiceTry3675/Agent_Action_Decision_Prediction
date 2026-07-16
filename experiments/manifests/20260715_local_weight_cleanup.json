@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "operation_id": "20260715_local_weight_cleanup",
+  "created_at": "2026-07-15T20:30:07+09:00",
+  "completed_at": "2026-07-15T20:37:14+09:00",
+  "status": "complete_with_reachable_history_exclusion",
+  "policy": {
+    "drive_action": "upload verified unique learned materials only",
+    "local_action": "delete working-tree weights and prune unreachable Git objects",
+    "git_history": "preserve all reachable commits and refs per prior 3A selection"
+  },
+  "drive_root": "gdrive:Agent_Action_Decision_Prediction/materials",
+  "uploads": [
+    {
+      "name": "kd_condalpha_refit",
+      "source_git_blob": "97d4497a431681c4fe8de44a15e514bde7366b6b",
+      "source_tar_size": 1143613440,
+      "source_tar_sha256": "d699112d4f17340374826585965ca3f9bda3b7bdac4a7c6c366af4ce5a35ffbf",
+      "remote_path": "checkpoints/kd_condalpha_refit",
+      "verified_file_count": 9,
+      "verified_total_bytes": 1143603200,
+      "model": {
+        "path": "hf_model/model.safetensors",
+        "size": 1132615896,
+        "sha256": "552868fe63711dc542c1951023513f46b5301b477eaefe99aa3a2390fb294478",
+        "md5": "9ff579148caf2c14bc0422de099ffae3",
+        "drive_file_id": "1hvyzKvbcbyQHZt0GHI_OffY6zwOAnJBV"
+      }
+    },
+    {
+      "name": "pair_referee_oof_trained",
+      "source_path": "experiments/artifacts/oof_error_text_signals_20260707/pair_referee_oof_trained.json",
+      "remote_path": "classical/pair_referee_oof_trained.json",
+      "size": 31063,
+      "sha256": "e989855474267a62309ae8c044950fdd0cc2ac8b064a25b368c29d31e428a0a8",
+      "md5": "16e292bb85906434c2538f4f1e241aba",
+      "drive_file_id": "1gEgaxUBDGVNw67OuxJtRYja53SsAobMI"
+    }
+  ],
+  "reproducible_parameter_files_to_delete_without_upload": [
+    "experiments/artifacts/20260706_c_m8_fla050_kkt_grid_fallback.pt",
+    "experiments/incoming/20260706_090843_20260706_c_m8_fla050_kkt_grid/artifacts/20260706_c_m8_fla050_kkt_grid_fallback.pt",
+    "experiments/artifacts/20260706_c_m8_fla_autotune_smoke_fallback.pt",
+    "experiments/incoming/20260706_085050_20260706_c_m8_fla_autotune_smoke/artifacts/20260706_c_m8_fla_autotune_smoke_fallback.pt",
+    "experiments/incoming/20260706_090039_20260706_c_m8_fla_kkt_grid/artifacts/20260706_c_m8_fla_autotune_smoke_fallback.pt",
+    "experiments/incoming/20260706_090843_20260706_c_m8_fla050_kkt_grid/artifacts/20260706_c_m8_fla_autotune_smoke_fallback.pt",
+    "experiments/artifacts/20260706_c_m8_fla_kkt_grid_fallback.pt",
+    "experiments/incoming/20260706_090039_20260706_c_m8_fla_kkt_grid/artifacts/20260706_c_m8_fla_kkt_grid_fallback.pt",
+    "experiments/incoming/20260706_090843_20260706_c_m8_fla050_kkt_grid/artifacts/20260706_c_m8_fla_kkt_grid_fallback.pt",
+    "experiments/artifacts/m8_qwen35_t4_replica_probe_r3_fallback.pt",
+    "experiments/incoming/20260705_054456_m8_qwen35_t4_replica_probe_r3/artifacts/m8_qwen35_t4_replica_probe_r3_fallback.pt",
+    "experiments/incoming/20260705_055937_m8_qwen35_t4_replica_probe_r4/artifacts/m8_qwen35_t4_replica_probe_r3_fallback.pt",
+    "experiments/artifacts/m8_qwen35_t4_replica_probe_r4_fallback.pt",
+    "experiments/incoming/20260705_055937_m8_qwen35_t4_replica_probe_r4/artifacts/m8_qwen35_t4_replica_probe_r4_fallback.pt"
+  ],
+  "unreachable_git_objects": {
+    "unreachable_blob_count_before": 1537,
+    "disk_bytes_before": 4588981861,
+    "weight_or_weight_archive_bytes_approx": 4549440000,
+    "action": "pruned with git gc --prune=now after verified upload",
+    "loose_objects_after": 0,
+    "pack_size_after_mib": 130.46,
+    "notable_derived_or_reproducible_blobs_not_uploaded": [
+      "70cee3c4eca094230e0d663335a95499e188b305",
+      "41e905c68fe550c0543531c04d1de5fc640aa3d3",
+      "a17be1039fab0eba8a56511fd72b23ce2feda89e",
+      "c0b85ddec0ef87878fb9e971beaad54b0eee7e56",
+      "bcb6a71a151f8ffe4c253c4b1a941d8a130803b4",
+      "e7907f8e7c4ef2e48de5b7afd8c6f12aa6f43ee3",
+      "fd5ab1e67f77e128b1c2c78e15fad4139b9d052f"
+    ]
+  },
+  "reachable_history_exclusion": {
+    "exact_weight_bytes": 71250950,
+    "objects": [
+      {
+        "path": "submit.zip",
+        "git_oid": "a3043d7f0aa9ef7b42eee5be134a1706d451b56b",
+        "size": 27237599
+      },
+      {
+        "path": "model/model.joblib",
+        "git_oid": "1c3ae4b11117c90a0ae97511d1119f19adcaa689",
+        "size": 27234744
+      },
+      {
+        "path": "open/baseline_submit.zip",
+        "git_oid": "e0ab350e4b6a98a8e953a9bb949a63ff0d28f755",
+        "size": 8375608
+      },
+      {
+        "path": "open/baseline_submit/model/tfidf_logreg.pkl",
+        "git_oid": "5bd457ea1a04b03d56ed6d6d1162a0cec70c804d",
+        "size": 8371936
+      },
+      {
+        "path": "experiments/artifacts/oof_error_text_signals_20260707/pair_referee_oof_trained.json",
+        "git_oid": "c265eac50a2e0971e9245f78d9383ddacd75dc40",
+        "size": 31063,
+        "note": "Uploaded and removed from the working tree; retained only in reachable commit history under the prior 3A selection."
+      }
+    ],
+    "reason": "Removing these requires history rewriting and would contradict the prior working-tree-only 3A selection."
+  },
+  "local_result": {
+    "working_tree_weight_scan_matches": 0,
+    "weight_bearing_archive_scan_matches": 0,
+    "repository_size_after": "7.7G",
+    "git_history_rewritten": false
+  },
+  "non_weight_files_preserved": [
+    "logits",
+    "OOF predictions",
+    "teacher targets",
+    "hidden features",
+    "datasets",
+    "compiler caches",
+    "consensus and audit state"
+  ]
+}
